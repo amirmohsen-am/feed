@@ -79,8 +79,8 @@ export default function Chat() {
 
   const hasCriteria =
     preferences?.criteria &&
-    (preferences.criteria.topics.length > 0 ||
-      preferences.criteria.keywords.length > 0);
+    ((preferences.criteria.topics?.length ?? 0) > 0 ||
+      (preferences.criteria.keywords?.length ?? 0) > 0);
 
   return (
     <div className="flex h-screen bg-gray-950 text-gray-100">

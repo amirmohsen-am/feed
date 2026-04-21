@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config({ path: ".env.local" });
+
 import WebSocket from "ws";
 import {
   getPreferences,
@@ -14,6 +17,11 @@ const JETSTREAM_URL =
 let criteria: FeedCriteria = DEFAULT_CRITERIA;
 let pendingPosts: { uri: string; cid: string; did: string; text: string }[] =
   [];
+
+// Sample random posts for AI scoring even without keyword hits.
+// For niche topics, keyword matching alone misses most relevant posts.
+const RANDOM_SAMPLE_RATE = 0.02; // 2% of all posts get AI-scored
+const MAX_PENDING = 100; // cap the queue
 
 function refreshPreferences() {
   const prefs = getPreferences();
@@ -36,15 +44,24 @@ async function processBatch() {
   try {
     const aiScores = await aiScoreBatch(candidates, criteria);
 
+    let inserted = 0;
     for (const post of batch) {
       const score = aiScores.get(post.uri) ?? 0;
-      if (score >= 0.5) {
+      if (score >= 0.3) {
         insertPost(post.uri, post.cid, post.did, post.text, score);
+        inserted++;
+        console.log(
+          `[insert] score=${score.toFixed(2)} "${post.text.slice(0, 100)}"`
+        );
       }
+    }
+    if (batch.length > 0) {
+      console.log(
+        `[batch] Scored ${batch.length}, inserted ${inserted}`
+      );
     }
   } catch (e) {
     console.error("[batch] AI scoring error:", e);
-    // Fallback: insert high keyword-score posts
     for (const post of batch) {
       const ks = keywordScore(post.text, criteria);
       if (ks >= 0.5) {
@@ -62,6 +79,10 @@ function connect() {
     console.log("[firehose] Connected");
   });
 
+  let seen = 0;
+  let kwMatched = 0;
+  let sampled = 0;
+
   ws.on("message", (data: Buffer) => {
     try {
       const event = JSON.parse(data.toString());
@@ -78,19 +99,46 @@ function connect() {
       if (!record?.text) return;
 
       const text: string = record.text;
+      // Skip very short posts (usually noise)
+      if (text.length < 20) return;
+      // Only English-ish posts for now (skip if langs specified and no 'en')
+      const langs: string[] = record.langs || [];
+      if (langs.length > 0 && !langs.some((l: string) => l.startsWith("en"))) return;
+
+      seen++;
       const uri = `at://${event.did}/app.bsky.feed.post/${event.commit.rkey}`;
       const cid: string = event.commit.cid;
 
-      // Quick keyword pre-filter
+      if (pendingPosts.length >= MAX_PENDING) return;
+
+      // Keyword pre-filter
       const ks = keywordScore(text, criteria);
       if (ks < 0) return; // Excluded
-      if (ks === 0 && criteria.topics.length > 0) return; // No match at all
 
-      pendingPosts.push({ uri, cid, did: event.did, text });
+      if (ks > 0) {
+        // Keyword match — always send to AI
+        kwMatched++;
+        pendingPosts.push({ uri, cid, did: event.did, text });
+      } else if (Math.random() < RANDOM_SAMPLE_RATE) {
+        // Random sample — let AI find relevant posts keywords would miss
+        sampled++;
+        pendingPosts.push({ uri, cid, did: event.did, text });
+      }
     } catch {
       // Skip malformed events
     }
   });
+
+  setInterval(() => {
+    if (seen > 0) {
+      console.log(
+        `[stats] ${seen} posts seen (en), ${kwMatched} keyword-matched, ${sampled} random-sampled, ${pendingPosts.length} pending`
+      );
+      seen = 0;
+      kwMatched = 0;
+      sampled = 0;
+    }
+  }, 10_000);
 
   ws.on("close", () => {
     console.log("[firehose] Disconnected, reconnecting in 5s...");
@@ -110,8 +158,8 @@ refreshPreferences();
 // Refresh preferences every 30 seconds
 setInterval(refreshPreferences, 30_000);
 
-// Process AI scoring batches every 5 seconds
-setInterval(processBatch, 5_000);
+// Process AI scoring batches every 3 seconds
+setInterval(processBatch, 3_000);
 
 // Prune old posts every hour
 setInterval(() => pruneOldPosts(10_000), 3600_000);

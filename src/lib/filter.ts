@@ -1,7 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { FeedCriteria } from "./db";
 
-const client = new Anthropic();
+let _client: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (!_client) _client = new Anthropic();
+  return _client;
+}
 
 /**
  * Fast keyword-based pre-filter. Returns a rough score 0-1.
@@ -68,7 +72,7 @@ ${numbered}
 Respond with ONLY a JSON array of numbers, one score per post. Example: [0.8, 0.2, 0.95]`;
 
   try {
-    const response = await client.messages.create({
+    const response = await getClient().messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 256,
       messages: [{ role: "user", content: prompt }],
