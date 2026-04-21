@@ -1,0 +1,10 @@
+README.md
+pyproject.toml
+src/bsky_ingester.egg-info/PKG-INFO
+src/bsky_ingester.egg-info/SOURCES.txt
+src/bsky_ingester.egg-info/dependency_links.txt
+src/bsky_ingester.egg-info/entry_points.txt
+src/bsky_ingester.egg-info/requires.txt
+src/bsky_ingester.egg-info/top_level.txt
+tests/test_enrich.py
+tests/test_writer.py

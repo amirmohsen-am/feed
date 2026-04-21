@@ -33,6 +33,17 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# database
+*.db
+*.db-wal
+*.db-shm
+
+# ingester data
+/data/
+/.venv/
+__pycache__/
+.pytest_cache/
+
 # vercel
 .vercel
 

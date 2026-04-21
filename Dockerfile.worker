@@ -1,0 +1,11 @@
+FROM python:3.13-slim
+
+WORKDIR /app
+
+COPY pyproject.toml ingester.py reader.py ./
+RUN pip install --no-cache-dir .
+
+# Data dir for cursor + compressed JSONL files
+RUN mkdir -p data/raw
+
+CMD ["python", "-m", "ingester"]

@@ -1,36 +1,60 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# bsky-ingester
 
-## Getting Started
+Raw firehose ingester for Bluesky. Connects to [Jetstream](https://docs.bsky.app/blog/jetstream), enriches every post into a flat JSON object, and writes hourly zstd-compressed JSONL files to disk. No filtering, no database — just reliable, resumable capture of the full post stream.
 
-First, run the development server:
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Run
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+python -m ingester
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The ingester connects to Jetstream, resumes from the last saved cursor if one exists, and writes to `data/raw/YYYY/MM/DD/HH.jsonl.zst`. It auto-reconnects on failure.
 
-## Learn More
+Press `Ctrl+C` to stop gracefully.
 
-To learn more about Next.js, take a look at the following resources:
+## Check it's working
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+python scripts/tail.py
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Finds the most recent compressed file and prints a random sample of 20 events.
 
-## Deploy on Vercel
+## Install as a systemd user service
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+# Edit the service file if your project path differs from ~/Developer/feed
+mkdir -p ~/.config/systemd/user
+cp systemd/bsky-ingester.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now bsky-ingester
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Check status:
+
+```bash
+systemctl --user status bsky-ingester
+journalctl --user -u bsky-ingester -f
+```
+
+## Storage
+
+Compressed output is roughly **500 MB/day** (~3 GB/day uncompressed). Plan storage accordingly — a month of data is ~15 GB compressed.
+
+## Tests
+
+```bash
+pytest
+```
+
+## What's next
+
+This ingester captures raw data. A separate filtering pipeline will read these files and apply topic/keyword/AI scoring to curate a personalized feed.

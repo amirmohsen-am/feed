@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: bsky-ingester
+Version: 0.1.0
+Summary: Bluesky firehose ingester — stores raw posts as compressed JSONL
+Requires-Python: >=3.11
+Requires-Dist: websockets<15,>=14.2
+Requires-Dist: zstandard<1,>=0.23
+Provides-Extra: dev
+Requires-Dist: pytest<9,>=8.3; extra == "dev"

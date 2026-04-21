@@ -1,0 +1,14 @@
+[Unit]
+Description=Bluesky firehose ingester
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Developer/feed
+ExecStart=%h/Developer/feed/.venv/bin/python -m ingester
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
