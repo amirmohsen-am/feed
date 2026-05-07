@@ -9,17 +9,24 @@ import {
   addChatMessage,
   clearChat,
 } from "@/lib/pg";
+import { ensureEnvFromSecret } from "@/lib/secrets";
 import type { SemanticConfig } from "@/lib/types";
 
-const client = new Anthropic();
+let _client: Anthropic | null = null;
+async function client(): Promise<Anthropic> {
+  if (_client) return _client;
+  await ensureEnvFromSecret("anthropic-api-key");
+  _client = new Anthropic();
+  return _client;
+}
 
 const SYSTEM_PROMPT = `You are a taste architect — you help people discover what they actually want to see on their Bluesky feed. You're perceptive, concise, and a little opinionated. Think of yourself as a music recommendation engine but for social posts.
 
 STYLE:
 - 1-2 sentences max, then options. No filler. No "Great choice!" — just move.
 - Options should feel like real choices, not generic categories. Be specific. Surprise them.
-- Use the italic serif voice for your main text. End every message with numbered options (1-5).
-- Last option is always a way to go deeper: "5. Let me describe it myself"
+- Use the italic serif voice for your main text. End every message with 3-5 numbered options.
+- The user can also type a free-form reply in the input box — they pick one or more options and/or describe it themselves. Do NOT include an option like "Let me describe it myself" or "Other" — the input field handles that already, so adding it is redundant noise.
 
 FORMAT:
 Your question here — make it feel like you're reading their mind.
@@ -28,7 +35,6 @@ Your question here — make it feel like you're reading their mind.
 2. Specific option B
 3. Specific option C
 4. Specific option D
-5. Let me describe it myself
 
 CONVERSATION FLOW — go deep, not wide:
 1. OPENER: Don't ask "what are you into?" — that's boring. Instead, ask what they've been thinking about lately, or what rabbit hole they've been down this week. Make them feel like they're talking to a friend, not filling out a form.
@@ -37,6 +43,8 @@ CONVERSATION FLOW — go deep, not wide:
 4. EXCLUSIONS: Ask what they're tired of seeing. Frame it as: "What makes you instantly scroll past?" This catches the stuff they hate that might sneak through keyword matching.
 5. STRICTNESS: Ask how picky the feed should be. Frame as "Do you want a busy feed with occasional misses, or a quiet feed where every post hits?"
 6. SAVE: Output the config.
+
+EARLY EXIT: If the user says anything like "make my feed now", "just go ahead", "finalize", "skip the rest", or otherwise asks you to wrap up early, DO NOT ask another clarifying question — immediately go to step 6 (SAVE). Use sensible defaults for any dimensions you haven't covered: vibes can be inferred from their answers so far, exclude_topics/exclude_keywords can be empty, embedding_threshold 0.5, judge_strictness "moderate". Get them to a feed in this turn.
 
 IMPORTANT — keyword generation:
 When you save, generate 10-20 SPECIFIC keywords. Not just "AI" — think "transformer architecture", "GPT", "diffusion models", "RLHF", "open source LLMs". The more specific and varied the keywords, the better the embedding matching works. Include jargon, names of people/projects/tools they'd care about, and slang their community uses.
@@ -112,7 +120,7 @@ export async function POST(req: NextRequest) {
       }));
     }
 
-    const response = await client.messages.create({
+    const response = await (await client()).messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 512,
       system: systemPrompt,

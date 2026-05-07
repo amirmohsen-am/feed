@@ -16,7 +16,7 @@ Ripple Feed is a Bluesky custom-feed curator. The user chats with a Claude agent
 | Database | Cloud SQL Postgres 15 in GCP project `timelines-492720`, instance `feed-db` |
 | Auth | Firebase Auth (Google sign-in). Token verified on the server in `src/lib/auth.ts`. No user-managed admin SA key (org policy blocks creation), so prod uses insecure-decode fallback for the demo. |
 | Chat LLM | Anthropic Claude (`claude-sonnet-4`) via `@anthropic-ai/sdk` — `/api/chat`, `/api/import-memory` |
-| Post search | **happy-feed** — separate service, see below |
+| Post search | Vertex AI Vector Search — called directly from `src/lib/vector-search.ts` (no middleman) |
 | Hosting | Railway (web) — Cloud Run worker is decommissioned |
 
 ## Tables
@@ -27,44 +27,47 @@ Ripple Feed is a Bluesky custom-feed curator. The user chats with a Claude agent
 - `subscribers` — landing-page mailing list
 - `published_rkey` column on `feeds` is unused (publish flow is on hold)
 
-# happy-feed
+# Vector search (direct to Vertex)
 
-This repo does **not** ingest Bluesky's firehose itself. That work lives in the [`happy-feed`](file:///Users/amir/code/happy-feed) service, which:
+This repo calls **Vertex AI Vector Search** directly from `src/lib/vector-search.ts`. The vector index lives in GCP project **`amir-experimental`** and is fed by the [happy-feed](file:///Users/amir/code/happy-feed) Jetstream worker — but our app does not depend on happy-feed's HTTP server. We call Vertex's `MatchService.findNeighbors` and embed queries with Gemini ourselves.
 
-- Subscribes to Bluesky's Jetstream and indexes ~hundreds of thousands of posts.
-- Embeds each post with **Vertex AI `gemini-embedding-001`** (768-d, `RETRIEVAL_DOCUMENT` task type).
-- Stores vectors in **Vertex AI Vector Search** (managed). GCP project: `amir-experimental` (NOT `timelines-492720`).
-- Exposes HTTP search endpoints. Auth is Application Default Credentials only — no API keys.
+| Step | API | Notes |
+|---|---|---|
+| Embed query | `@google/genai` → Vertex Gemini `gemini-embedding-001`, 768d, `RETRIEVAL_QUERY` task type | Matches the embedding the worker uses on ingest (`RETRIEVAL_DOCUMENT`) |
+| Vector search | `@google-cloud/aiplatform` → `MatchServiceClient.findNeighbors` with `returnFullDatapoint: true` | Endpoint host: `538744258.us-central1-446303112556.vdb.vertexai.goog`, deployed index `happy_feed_deployed` |
+| Hydration | Reads post `text`, `did`, `lang`, `domains`, `has_*` flags from the returned datapoint **restricts** | No external lookup. happy-feed stores the post text on the datapoint itself (commit `40fb061` in that repo: "Move post text into Vertex datapoints") |
 
-## What we use
+## Cross-project IAM
 
-We hit one endpoint:
+The vector index is in `amir-experimental`; our Cloud Run service runs in `timelines-492720`. The runtime service account `777152549518-compute@developer.gserviceaccount.com` has `roles/aiplatform.user` on `amir-experimental`. The `aiplatform.googleapis.com` API is enabled in `timelines-492720` so quota is tracked there.
 
-```
-POST {HAPPY_FEED_URL}/query/search
-Content-Type: application/json
-{ "query": "<feed name + topics + keywords + vibes>", "k": 25, "filter": { "lang": "en" }? }
-```
+## Env vars
 
-Response shape: `{ hits: SearchHit[], ms, query_id }`. See `src/lib/happy-feed.ts` for the typed client. The query string is built from the feed's stored `semantic_config` in `src/lib/pg.ts:buildSearchQuery`.
+| Var | Default | Notes |
+|---|---|---|
+| `VERTEX_PROJECT` | `amir-experimental` | Where the index lives |
+| `VERTEX_LOCATION` | `us-central1` | |
+| `VERTEX_INDEX_ENDPOINT_ID` | `73493556223803392` | |
+| `VERTEX_INDEX_ENDPOINT_HOST` | `538744258.us-central1-446303112556.vdb.vertexai.goog` | The match-service public endpoint |
+| `VERTEX_DEPLOYED_INDEX_ID` | `happy_feed_deployed` | |
+
+These are **public resource IDs**, not secrets — plain env vars, not Secret Manager.
 
 ## Local dev
 
-happy-feed defaults to port **3000** in dev — same as Next. Run it on a different port:
+Auth via your local ADC: `gcloud auth application-default login`. The smoke test is:
 
+```bash
+npx tsx -e "import { searchPosts } from './src/lib/vector-search'; (async () => console.log(await searchPosts({ query: 'climate', k: 3 })))()"
 ```
-cd ~/code/happy-feed
-PORT=8787 bun run start
-```
 
-Then in `.env.local` here: `HAPPY_FEED_URL=http://localhost:8787`.
-
-If happy-feed isn't running, the curator's post panel shows a graceful empty state (no 500). The chat agent works fine without it.
+Should return ~3 hits in 1–2 seconds. If it 403s, run `gcloud config set project amir-experimental` for ADC quota project, or set `GOOGLE_CLOUD_QUOTA_PROJECT=amir-experimental`.
 
 ## What this repo does NOT do anymore
 
 - **No Jetstream worker.** Removed in May 2026 along with `scripts/firehose.ts`, `Dockerfile.worker`, `cloudbuild-worker.yaml`, `src/app/api/worker/*`, `src/lib/mechanical-filter.ts`, and the `posts`/`feed_posts`/`author_post_counts` tables.
-- **No OpenAI.** Embeddings come from Vertex via happy-feed; the chat is pure Claude.
+- **No OpenAI.** Embeddings come from Vertex Gemini; the chat is pure Claude.
+- **No happy-feed HTTP middleman.** We call Vertex directly. happy-feed's Jetstream worker still runs in `amir-experimental` to keep the index fresh, but its server is not deployed and we don't depend on it.
 - **No publish-to-Bluesky.** The `/api/publish-feed` route, the xrpc endpoints, and `/.well-known/did.json` are gone (May 2026). The `published_rkey` column is left in place for future revival but is unused.
 - **No synthetic onboarding card bank.** Removed along with `OnboardingFlow`/`TapCards`/`TasteReveal`/`ReversePrompting` and the `onboarding_cards` table. Onboarding is now plain chat with the Claude agent.
 
@@ -76,22 +79,27 @@ If happy-feed isn't running, the curator's post panel shows a graceful empty sta
 
 # Secrets
 
-Production secrets live in **Google Secret Manager** in `timelines-492720`:
+Two real secrets live in **Google Secret Manager** in `timelines-492720`:
 
 | Secret | What |
 |---|---|
 | `database-url` | Full Cloud SQL connection string (includes the postgres password) |
 | `anthropic-api-key` | Anthropic Claude API key |
 
-The Cloud Run `feed-web` service mounts these via `--set-secrets` (see `gcloud run services describe feed-web --region=us-central1` → `valueFrom.secretKeyRef`). The default compute service account `777152549518-compute@developer.gserviceaccount.com` has `roles/secretmanager.secretAccessor` on each secret. Rotate by adding a new version (`gcloud secrets versions add <name> --data-file=-`) — Cloud Run pinned to `:latest` will pick it up on next deploy.
+**The code fetches them at runtime** — see `src/lib/secrets.ts`. There are no `--set-secrets` mounts on Cloud Run and no plaintext copies in `.env.local`. The pattern:
 
-Local dev still uses `.env.local` (gitignored). To sync local from Secret Manager, run:
-```bash
-gcloud secrets versions access latest --secret=database-url --project=timelines-492720
-gcloud secrets versions access latest --secret=anthropic-api-key --project=timelines-492720
+```ts
+// pg.ts (lazy pool init)
+const pool = await getPool();   // fetches DATABASE_URL from SM on first call
+// chat/route.ts (lazy Anthropic client)
+const c = await client();       // fetches ANTHROPIC_API_KEY from SM on first call
 ```
 
-`HAPPY_FEED_URL` is **not** a secret — it's a plain env var (the URL of the search service). In dev: `http://localhost:8787`.
+`getSecret(name)` checks `process.env` first (UPPER_SNAKE_CASE of the secret name) and falls back to Secret Manager. So you can still override locally with an env var if you ever need to.
+
+**Auth**: locally, `gcloud auth application-default login` once. On Cloud Run, the runtime SA `777152549518-compute@developer.gserviceaccount.com` has `roles/secretmanager.secretAccessor` on each secret.
+
+**Rotate**: `echo -n "<new>" | gcloud secrets versions add <name> --project=timelines-492720 --data-file=-`. The cache is per-process — restart Cloud Run revisions (or wait for a cold start) to pick up new versions.
 
 # External resources
 

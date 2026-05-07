@@ -2,9 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { createFeed, updateFeed } from "@/lib/pg";
+import { ensureEnvFromSecret } from "@/lib/secrets";
 import type { SemanticConfig } from "@/lib/types";
 
-const client = new Anthropic();
+let _client: Anthropic | null = null;
+async function client(): Promise<Anthropic> {
+  if (_client) return _client;
+  await ensureEnvFromSecret("anthropic-api-key");
+  _client = new Anthropic();
+  return _client;
+}
 
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req);
@@ -19,7 +26,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const response = await client.messages.create({
+  const response = await (await client()).messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 1024,
     system: `You analyze AI assistant memory exports (from ChatGPT or Claude) and extract the user's interests, profession, hobbies, and preferences to create a Bluesky feed.

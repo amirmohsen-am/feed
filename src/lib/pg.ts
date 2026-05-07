@@ -4,38 +4,49 @@ import type {
   SemanticConfig,
 } from "./types";
 import { withFeedConfigDefaults } from "./defaults";
-import { searchFeed } from "./happy-feed";
+import { searchPosts } from "./vector-search";
+import { getSecret } from "./secrets";
 
 // --- Connection Pool ---
+// The pool is lazy-initialised on first query so the DATABASE_URL can come
+// from Secret Manager (no plaintext copy on Cloud Run revisions / .env.local).
 
 let _pool: Pool | null = null;
+let _poolInit: Promise<Pool> | null = null;
 
-export function getPool(): Pool {
-  if (!_pool) {
-    _pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+export async function getPool(): Promise<Pool> {
+  if (_pool) return _pool;
+  if (_poolInit) return _poolInit;
+  _poolInit = (async () => {
+    const connectionString = await getSecret("database-url");
+    const pool = new Pool({
+      connectionString,
       max: 20,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
     });
-    _pool.on("error", (err) => {
+    pool.on("error", (err) => {
       console.error("[pg] Unexpected pool error:", err.message);
     });
-  }
-  return _pool;
+    _pool = pool;
+    return pool;
+  })();
+  return _poolInit;
 }
 
 export async function query(
   text: string,
   params?: unknown[]
 ): Promise<QueryResult> {
-  return getPool().query(text, params);
+  const pool = await getPool();
+  return pool.query(text, params);
 }
 
 export async function withClient<T>(
   fn: (client: PoolClient) => Promise<T>
 ): Promise<T> {
-  const client = await getPool().connect();
+  const pool = await getPool();
+  const client = await pool.connect();
   try {
     return await fn(client);
   } finally {
@@ -231,14 +242,14 @@ export async function updateFeed(
 
 export async function deleteFeed(id: number): Promise<void> {
   await query("DELETE FROM chat_messages WHERE feed_id = $1", [id]);
-  await query("DELETE FROM feed_posts WHERE feed_id = $1", [id]);
   await query("DELETE FROM feeds WHERE id = $1", [id]);
 }
 
 // --- Posts ---
-// Posts come from the happy-feed service (Vertex AI vector search over
-// Bluesky Jetstream). We build a query string from the feed's stored
-// semantic_config and forward it to happy-feed's /query/search.
+// Posts come from a Vertex AI Vector Search index of Bluesky Jetstream
+// (the index lives in `amir-experimental`, fed by happy-feed's worker).
+// We embed the feed's name + topics + keywords + vibes with Gemini and
+// query the index directly — see src/lib/vector-search.ts.
 
 function buildSearchQuery(feed: DbFeed): string {
   const sc = feed.semantic_config || ({} as SemanticConfig);
@@ -282,8 +293,8 @@ export async function getFeedPreviewPosts(
     : undefined;
 
   try {
-    const result = await searchFeed({ query: queryText, k: limit, filter });
-    return result.hits.map((h) => ({
+    const hits = await searchPosts({ query: queryText, k: limit, filter });
+    return hits.map((h) => ({
       uri: h.uri,
       text: h.text,
       author_did: h.did,
@@ -291,10 +302,10 @@ export async function getFeedPreviewPosts(
       indexed_at: h.created_at,
     }));
   } catch (e) {
-    // happy-feed not reachable. Surface as empty so the UI shows its
+    // Vertex unreachable / IAM issue. Surface as empty so the UI shows its
     // "no posts yet" state instead of a 500.
     console.warn(
-      "[happy-feed] search failed:",
+      "[vector-search] search failed:",
       e instanceof Error ? e.message : String(e)
     );
     return [];

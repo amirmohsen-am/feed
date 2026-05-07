@@ -110,6 +110,7 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
   const [semanticConfig, setSemanticConfig] = useState<SemanticConfig | null>(null);
   const serverFeedIdRef = useRef<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Save mechanical filters to the server
   async function saveMechanicalFilters(filters: MechanicalFilters) {
@@ -143,29 +144,36 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
 
   // Pull all of the user's feeds from Postgres and project to sidebar shape.
   // Single source of truth — called on mount and after any feed-modifying write.
+  // Shows in-progress feeds (no criteria yet) too — they get a "drafting" tag
+  // and click-through to chat instead of the post view.
   const reloadFeeds = useCallback(async () => {
     try {
       const res = await authedFetch("/api/feeds");
       const data = await res.json();
       const serverFeeds: { id: number; name: string; semantic_config: SemanticConfig; created_at: string }[] = data.feeds || [];
-      const mapped: SavedFeed[] = serverFeeds
-        .filter(f => (f.semantic_config?.topics?.length ?? 0) > 0 || (f.semantic_config?.keywords?.length ?? 0) > 0)
-        .map((f, i) => ({
-          id: String(f.id),
-          name: f.name,
-          color: FEED_COLORS[i % FEED_COLORS.length],
-          criteria: {
-            topics: f.semantic_config?.topics ?? [],
-            keywords: f.semantic_config?.keywords ?? [],
-            exclude_topics: f.semantic_config?.exclude_topics ?? [],
-            exclude_keywords: f.semantic_config?.exclude_keywords ?? [],
-            vibes: f.semantic_config?.vibes ?? "",
-          },
-          createdAt: f.created_at,
-        }));
+      const mapped: SavedFeed[] = serverFeeds.map((f, i) => ({
+        id: String(f.id),
+        name: f.name,
+        color: FEED_COLORS[i % FEED_COLORS.length],
+        criteria: {
+          topics: f.semantic_config?.topics ?? [],
+          keywords: f.semantic_config?.keywords ?? [],
+          exclude_topics: f.semantic_config?.exclude_topics ?? [],
+          exclude_keywords: f.semantic_config?.exclude_keywords ?? [],
+          vibes: f.semantic_config?.vibes ?? "",
+        },
+        createdAt: f.created_at,
+      }));
       setFeeds(mapped);
     } catch { /* ignore */ }
   }, []);
+
+  function feedIsComplete(feed: { criteria: FeedCriteria }): boolean {
+    return (
+      (feed.criteria.topics?.length ?? 0) > 0 ||
+      (feed.criteria.keywords?.length ?? 0) > 0
+    );
+  }
 
   useEffect(() => { reloadFeeds(); }, [reloadFeeds, profile.uid]);
 
@@ -273,6 +281,14 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
+  // Auto-grow the chat textarea as the user types.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+  }, [input]);
+
   async function send(text: string) {
     if (!text.trim() || loading) return;
     setInput("");
@@ -293,9 +309,26 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
         setPrefs(p);
         checkNewFeed(p);
       }
+      // Agent emitted FEED_DONE — the feed is finalized server-side.
+      // Hand off to the post view and refresh the sidebar so the entry loses
+      // its "drafting" badge.
+      if (d.done) {
+        const fid = serverFeedIdRef.current;
+        setView("feed");
+        if (fid) loadPosts(fid);
+        reloadFeeds();
+      }
     } catch {
       setMessages(prev => [...prev, { role: "assistant", content: "Something went wrong." }]);
     } finally { setLoading(false); }
+  }
+
+  // "Make this feed now" — sent when the user wants to skip the rest of the
+  // interview. Phrased as a natural reply so the system prompt's finalize
+  // path kicks in and Claude saves the FEED_CONFIG_JSON with what it has.
+  function finalizeNow() {
+    if (loading) return;
+    send("Just go ahead and make my feed now with what you've got — pick reasonable defaults for anything we haven't covered yet.");
   }
 
   // Compose the chat reply from any selected options + the comment box.
@@ -346,6 +379,9 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
     serverFeedIdRef.current = newServerId;
     setActiveFeedId(newServerId.toString());
 
+    // Refresh sidebar so the new (drafting) entry appears immediately.
+    reloadFeeds();
+
     // Kick off the chat — same path as the init effect uses for a fresh feed.
     loadChat(newServerId);
   }
@@ -356,13 +392,16 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
     setMessages([]);
     setPosts([]);
     setPrefs(null);
+    setSelectedOptions(new Set());
     setActiveFeedId(feed.id);
     serverFeedIdRef.current = id;
-    setView("feed");
+    // If the feed is configured (has criteria), open the post view. Otherwise
+    // resume the chat where they left off.
+    const complete = feedIsComplete(feed);
+    setView(complete ? "feed" : "chat");
     if (id) {
-      // Fire both fetches in parallel; don't await.
       loadChat(id);
-      loadPosts(id);
+      if (complete) loadPosts(id);
     }
   }
 
@@ -404,6 +443,14 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
   const lastMsg = messages[messages.length - 1];
   const lastParsed = lastMsg?.role === "assistant" ? parseMessage(lastMsg.content) : null;
 
+  // Show the early-exit "Make this feed" button once the agent has asked
+  // at least 3 questions (assistant messages with options) and the feed
+  // hasn't been finalized yet.
+  const questionCount = messages.filter(
+    (m) => m.role === "assistant" && parseMessage(m.content).options.length > 0
+  ).length;
+  const showFinalize = questionCount >= 3 && !hasCriteria;
+
   if (!initialized) {
     return (
       <div className="curator-shell" style={{ alignItems: "center", justifyContent: "center" }}>
@@ -425,28 +472,36 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
         <div className="cur-sidebar-label">Your Feeds · {feeds.length.toString().padStart(2, "0")}</div>
 
         <div className="cur-feed-list">
-          {feeds.map((feed) => (
-            <div
-              key={feed.id}
-              className={`cur-feed-item${activeFeedId === feed.id && view === "feed" ? " active" : ""}`}
-              onClick={() => selectFeed(feed)}
-            >
-              <span className="swatch" style={{ background: feed.color }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="fi-name">{feed.name}</div>
-                <div className="fi-sub">
-                  {activeFeedId === feed.id ? `${postCount} posts · viewing` : `created ${new Date(feed.createdAt).toLocaleDateString()}`}
-                </div>
-              </div>
-              <button
-                className="cur-feed-delete"
-                onClick={(e) => { e.stopPropagation(); setDeleteTarget(feed.id); }}
-                title="Delete feed"
+          {feeds.map((feed) => {
+            const isActive = activeFeedId === feed.id;
+            const isComplete = feedIsComplete(feed);
+            return (
+              <div
+                key={feed.id}
+                className={`cur-feed-item${isActive ? " active" : ""}${!isComplete ? " drafting" : ""}`}
+                onClick={() => selectFeed(feed)}
               >
-                ×
-              </button>
-            </div>
-          ))}
+                <span className="swatch" style={{ background: feed.color }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="fi-name">{feed.name}</div>
+                  <div className="fi-sub">
+                    {!isComplete
+                      ? "drafting · resume chat"
+                      : isActive && view === "feed"
+                      ? `${postCount} posts · viewing`
+                      : `created ${new Date(feed.createdAt).toLocaleDateString()}`}
+                  </div>
+                </div>
+                <button
+                  className="cur-feed-delete"
+                  onClick={(e) => { e.stopPropagation(); setDeleteTarget(feed.id); }}
+                  title="Delete feed"
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
 
           {feeds.length === 0 && (
             <div style={{
@@ -691,6 +746,21 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
             </div>
 
             <div className="cur-input-bar">
+              {showFinalize && (
+                <div className="cur-finalize-row">
+                  <button
+                    type="button"
+                    className="cur-finalize"
+                    onClick={finalizeNow}
+                    disabled={loading}
+                  >
+                    ✦ Make this feed now
+                  </button>
+                  <span className="cur-finalize-hint">
+                    skip the rest — Claude will use sensible defaults
+                  </span>
+                </div>
+              )}
               <form
                 className="cur-input-wrap"
                 onSubmit={(e) => {
@@ -699,17 +769,26 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
                   else send(input);
                 }}
               >
-                <input
+                <textarea
+                  ref={inputRef}
                   className="cur-input"
-                  type="text"
+                  rows={1}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    // Enter submits; Shift+Enter inserts a newline.
+                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      if (lastParsed?.options.length) submitChat();
+                      else send(input);
+                    }
+                  }}
                   placeholder={
                     lastParsed?.options.length
                       ? selectedOptions.size > 0
-                        ? "Add a comment (optional)..."
-                        : "Pick options above, or type your reply..."
-                      : "Describe your ideal feed..."
+                        ? "Add a comment (optional)…"
+                        : "Tap the options above, or describe it in your own words…"
+                      : "Describe your ideal feed…"
                   }
                   disabled={loading}
                 />
