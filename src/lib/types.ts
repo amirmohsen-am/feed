@@ -40,18 +40,3 @@ export interface FeedConfig {
   semantic: SemanticConfig;
 }
 
-// --- Post Candidate (extracted from Jetstream event) ---
-
-export interface PostCandidate {
-  uri: string;
-  cid: string;
-  did: string;
-  text: string;
-  langs: string[];
-  hasMedia: boolean;
-  hasLink: boolean;
-  hasQuote: boolean;
-  isReply: boolean;
-  hashtags: string[];
-  charLength: number;
-}

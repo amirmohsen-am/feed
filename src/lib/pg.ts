@@ -1,11 +1,10 @@
 import { Pool, type PoolClient, type QueryResult } from "pg";
 import type {
-  FeedConfig,
   MechanicalFilters,
   SemanticConfig,
-  PostCandidate,
 } from "./types";
 import { withFeedConfigDefaults } from "./defaults";
+import { searchFeed } from "./happy-feed";
 
 // --- Connection Pool ---
 
@@ -187,13 +186,6 @@ export async function getFeedByRkey(rkey: string): Promise<DbFeed | null> {
   return res.rows[0] ? rowToFeed(res.rows[0]) : null;
 }
 
-export async function getPublishedFeeds(): Promise<DbFeed[]> {
-  const res = await query(
-    "SELECT * FROM feeds WHERE published_rkey IS NOT NULL ORDER BY updated_at DESC"
-  );
-  return res.rows.map(rowToFeed);
-}
-
 export async function getActiveFeeds(): Promise<DbFeed[]> {
   const res = await query(
     "SELECT * FROM feeds WHERE is_active = true ORDER BY id"
@@ -244,105 +236,31 @@ export async function deleteFeed(id: number): Promise<void> {
 }
 
 // --- Posts ---
+// Posts come from the happy-feed service (Vertex AI vector search over
+// Bluesky Jetstream). We build a query string from the feed's stored
+// semantic_config and forward it to happy-feed's /query/search.
 
-export async function insertPost(params: {
-  uri: string;
-  cid: string;
-  authorDid: string;
-  text: string;
-  embedding?: number[];
-  hasMedia?: boolean;
-  hasLink?: boolean;
-  hasQuote?: boolean;
-  isReply?: boolean;
-  lang?: string;
-  hashtags?: string[];
-  charLength?: number;
-}): Promise<number> {
-  const embeddingStr = params.embedding
-    ? `[${params.embedding.join(",")}]`
-    : null;
-  const res = await query(
-    `INSERT INTO posts (uri, cid, author_did, text, embedding, has_media, has_link, has_quote, is_reply, lang, hashtags, char_length)
-     VALUES ($1, $2, $3, $4, $5::vector, $6, $7, $8, $9, $10, $11, $12)
-     ON CONFLICT (uri) DO UPDATE SET
-       embedding = COALESCE(EXCLUDED.embedding, posts.embedding),
-       indexed_at = now()
-     RETURNING id`,
-    [
-      params.uri,
-      params.cid,
-      params.authorDid,
-      params.text,
-      embeddingStr,
-      params.hasMedia ?? false,
-      params.hasLink ?? false,
-      params.hasQuote ?? false,
-      params.isReply ?? false,
-      params.lang ?? null,
-      params.hashtags ?? [],
-      params.charLength ?? params.text.length,
-    ]
-  );
-  return res.rows[0].id;
-}
-
-export async function assignPostToFeed(params: {
-  feedId: number;
-  postId: number;
-  embeddingScore?: number;
-  judgeApproved?: boolean;
-  finalScore: number;
-}): Promise<void> {
-  await query(
-    `INSERT INTO feed_posts (feed_id, post_id, embedding_score, judge_approved, final_score)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (feed_id, post_id) DO UPDATE SET
-       embedding_score = EXCLUDED.embedding_score,
-       judge_approved = EXCLUDED.judge_approved,
-       final_score = EXCLUDED.final_score`,
-    [
-      params.feedId,
-      params.postId,
-      params.embeddingScore ?? null,
-      params.judgeApproved ?? null,
-      params.finalScore,
-    ]
-  );
-}
-
-export async function getFeedPosts(
-  feedId: number,
-  limit: number = 50,
-  cursor?: string
-): Promise<{ uri: string; indexed_at: string }[]> {
-  if (cursor) {
-    const res = await query(
-      `SELECT p.uri, p.indexed_at::text as indexed_at
-       FROM feed_posts fp
-       JOIN posts p ON p.id = fp.post_id
-       WHERE fp.feed_id = $1 AND p.indexed_at < $2
-       ORDER BY fp.final_score DESC, p.indexed_at DESC
-       LIMIT $3`,
-      [feedId, cursor, limit]
-    );
-    return res.rows;
+function buildSearchQuery(feed: DbFeed): string {
+  const sc = feed.semantic_config || ({} as SemanticConfig);
+  const parts: string[] = [];
+  if (feed.name && feed.name !== "New Feed" && feed.name !== "Untitled") {
+    parts.push(feed.name);
   }
-  const res = await query(
-    `SELECT p.uri, p.indexed_at::text as indexed_at
-     FROM feed_posts fp
-     JOIN posts p ON p.id = fp.post_id
-     WHERE fp.feed_id = $1
-     ORDER BY fp.final_score DESC, p.indexed_at DESC
-     LIMIT $2`,
-    [feedId, limit]
-  );
-  return res.rows;
+  if (sc.topics && sc.topics.length > 0) {
+    parts.push(`Topics: ${sc.topics.join(", ")}`);
+  }
+  if (sc.keywords && sc.keywords.length > 0) {
+    parts.push(`Keywords: ${sc.keywords.join(", ")}`);
+  }
+  if (sc.vibes) {
+    parts.push(sc.vibes);
+  }
+  return parts.join(". ").trim();
 }
 
 export async function getFeedPreviewPosts(
   feedId: number,
-  limit: number = 20
+  limit: number = 25
 ): Promise<
   {
     uri: string;
@@ -352,24 +270,35 @@ export async function getFeedPreviewPosts(
     indexed_at: string;
   }[]
 > {
-  const res = await query(
-    `SELECT p.uri, p.text, p.author_did, fp.final_score as score, p.indexed_at::text as indexed_at
-     FROM feed_posts fp
-     JOIN posts p ON p.id = fp.post_id
-     WHERE fp.feed_id = $1
-     ORDER BY fp.final_score DESC, p.indexed_at DESC
-     LIMIT $2`,
-    [feedId, limit]
-  );
-  return res.rows;
-}
+  const feedRes = await query("SELECT * FROM feeds WHERE id = $1", [feedId]);
+  if (feedRes.rows.length === 0) return [];
+  const feed = rowToFeed(feedRes.rows[0]);
 
-export async function pruneOldPosts(keepDays: number = 7): Promise<void> {
-  await query(
-    `DELETE FROM posts WHERE indexed_at < now() - interval '1 day' * $1
-     AND id NOT IN (SELECT post_id FROM feed_posts)`,
-    [keepDays]
-  );
+  const queryText = buildSearchQuery(feed);
+  if (!queryText) return [];
+
+  const filter = feed.mechanical_filters?.lang_allow?.length
+    ? { lang: feed.mechanical_filters.lang_allow }
+    : undefined;
+
+  try {
+    const result = await searchFeed({ query: queryText, k: limit, filter });
+    return result.hits.map((h) => ({
+      uri: h.uri,
+      text: h.text,
+      author_did: h.did,
+      score: h.vector_score,
+      indexed_at: h.created_at,
+    }));
+  } catch (e) {
+    // happy-feed not reachable. Surface as empty so the UI shows its
+    // "no posts yet" state instead of a 500.
+    console.warn(
+      "[happy-feed] search failed:",
+      e instanceof Error ? e.message : String(e)
+    );
+    return [];
+  }
 }
 
 // --- Chat Messages ---
@@ -399,115 +328,14 @@ export async function clearChat(feedId: number): Promise<void> {
   await query("DELETE FROM chat_messages WHERE feed_id = $1", [feedId]);
 }
 
-// --- Onboarding Card Bank ---
+// --- Mailing list ---
 
-export interface OnboardingCard {
-  id: number;
-  uri: string;
-  text: string;
-  author_handle: string;
-  topic_cluster: string;
-  vibe_tags: string[];
-  format: string;
-}
-
-export async function findCardsByEmbedding(
-  embedding: number[],
-  limit: number = 12,
-  excludeUris: string[] = []
-): Promise<OnboardingCard[]> {
-  const embStr = `[${embedding.join(",")}]`;
-  const res = excludeUris.length > 0
-    ? await query(
-        `SELECT id, uri, text, author_handle, topic_cluster, vibe_tags, format
-         FROM onboarding_cards
-         WHERE uri != ALL($2)
-         ORDER BY embedding <=> $1::vector
-         LIMIT $3`,
-        [embStr, excludeUris, limit]
-      )
-    : await query(
-        `SELECT id, uri, text, author_handle, topic_cluster, vibe_tags, format
-         FROM onboarding_cards
-         ORDER BY embedding <=> $1::vector
-         LIMIT $2`,
-        [embStr, limit]
-      );
-  return res.rows;
-}
-
-export async function findCardsActiveLearning(
-  attractEmbedding: number[],
-  repelEmbedding: number[] | null,
-  limit: number = 8,
-  excludeUris: string[] = []
-): Promise<OnboardingCard[]> {
-  const attractStr = `[${attractEmbedding.join(",")}]`;
-
-  if (!repelEmbedding) {
-    return findCardsByEmbedding(attractEmbedding, limit, excludeUris);
-  }
-
-  const repelStr = `[${repelEmbedding.join(",")}]`;
+export async function addSubscriber(email: string): Promise<{ created: boolean }> {
   const res = await query(
-    `SELECT id, uri, text, author_handle, topic_cluster, vibe_tags, format,
-            (1 - (embedding <=> $1::vector)) - 0.5 * (1 - (embedding <=> $2::vector)) AS score
-     FROM onboarding_cards
-     WHERE uri != ALL($3)
-     ORDER BY score DESC
-     LIMIT $4`,
-    [attractStr, repelStr, excludeUris, limit]
+    `INSERT INTO subscribers (email) VALUES ($1)
+     ON CONFLICT (email) DO NOTHING
+     RETURNING id`,
+    [email]
   );
-  return res.rows;
-}
-
-export async function getCardEmbeddings(
-  uris: string[]
-): Promise<{ uri: string; embedding: number[] }[]> {
-  if (uris.length === 0) return [];
-  const res = await query(
-    `SELECT uri, embedding::text FROM onboarding_cards WHERE uri = ANY($1)`,
-    [uris]
-  );
-  return res.rows.map((r: { uri: string; embedding: string }) => ({
-    uri: r.uri,
-    embedding: JSON.parse(r.embedding),
-  }));
-}
-
-export async function getCardCount(): Promise<number> {
-  const res = await query("SELECT COUNT(*) as count FROM onboarding_cards");
-  return parseInt(res.rows[0].count);
-}
-
-// --- Onboarding State Persistence ---
-
-export async function saveOnboardingState(
-  feedId: number,
-  state: Record<string, unknown>
-): Promise<void> {
-  // Delete existing system message for this feed, then insert new one
-  await query(
-    "DELETE FROM chat_messages WHERE feed_id = $1 AND role = 'system'",
-    [feedId]
-  );
-  await query(
-    "INSERT INTO chat_messages (feed_id, role, content) VALUES ($1, 'system', $2)",
-    [feedId, JSON.stringify(state)]
-  );
-}
-
-export async function loadOnboardingState(
-  feedId: number
-): Promise<Record<string, unknown> | null> {
-  const res = await query(
-    "SELECT content FROM chat_messages WHERE feed_id = $1 AND role = 'system' ORDER BY id DESC LIMIT 1",
-    [feedId]
-  );
-  if (res.rows.length === 0) return null;
-  try {
-    return JSON.parse(res.rows[0].content);
-  } catch {
-    return null;
-  }
+  return { created: res.rowCount === 1 };
 }

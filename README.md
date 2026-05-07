@@ -1,60 +1,46 @@
-# bsky-ingester
+# Ripple Feed
 
-Raw firehose ingester for Bluesky. Connects to [Jetstream](https://docs.bsky.app/blog/jetstream), enriches every post into a flat JSON object, and writes hourly zstd-compressed JSONL files to disk. No filtering, no database — just reliable, resumable capture of the full post stream.
+A Bluesky custom-feed curator. Talk to a Claude agent about what you want to read; the resulting feed config is stored in Postgres and used to query a separate vector-search service for matching posts.
+
+This repo is the web app (Next.js 16 + React 19). Architecture details live in `AGENTS.md`.
 
 ## Setup
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+npm install
+```
+
+Required env vars in `.env.local`:
+
+```
+DATABASE_URL=postgres://...
+ANTHROPIC_API_KEY=sk-ant-...
+HAPPY_FEED_URL=http://localhost:8787
+```
+
+Apply the schema once:
+
+```bash
+npx tsx scripts/setup-postgres.ts
 ```
 
 ## Run
 
 ```bash
-python -m ingester
+npm run dev
 ```
 
-The ingester connects to Jetstream, resumes from the last saved cursor if one exists, and writes to `data/raw/YYYY/MM/DD/HH.jsonl.zst`. It auto-reconnects on failure.
+Open <http://localhost:3000>. Sign in with Google, click **Try demo (feed curation)**, chat with the agent.
 
-Press `Ctrl+C` to stop gracefully.
+## Posts come from happy-feed
 
-## Check it's working
+This repo doesn't ingest Bluesky's firehose. That work lives in [`happy-feed`](file:///Users/amir/code/happy-feed) — a separate Bun service that maintains a Vertex AI vector index of Bluesky posts. To see real posts in the curator, run happy-feed in another terminal:
 
 ```bash
-python scripts/tail.py
+cd ~/code/happy-feed
+PORT=8787 bun run start
 ```
 
-Finds the most recent compressed file and prints a random sample of 20 events.
+Without happy-feed running, the chat works but the post panel stays empty.
 
-## Install as a systemd user service
-
-```bash
-# Edit the service file if your project path differs from ~/Developer/feed
-mkdir -p ~/.config/systemd/user
-cp systemd/bsky-ingester.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now bsky-ingester
-```
-
-Check status:
-
-```bash
-systemctl --user status bsky-ingester
-journalctl --user -u bsky-ingester -f
-```
-
-## Storage
-
-Compressed output is roughly **500 MB/day** (~3 GB/day uncompressed). Plan storage accordingly — a month of data is ~15 GB compressed.
-
-## Tests
-
-```bash
-pytest
-```
-
-## What's next
-
-This ingester captures raw data. A separate filtering pipeline will read these files and apply topic/keyword/AI scoring to curate a personalized feed.
+See `AGENTS.md` for the full architecture, the happy-feed integration surface, and the list of things this repo intentionally does **not** do.

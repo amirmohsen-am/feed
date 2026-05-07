@@ -6,13 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "firehose": "tsx scripts/firehose.ts",
-    "publish-feed": "tsx scripts/publish-feed.ts"
+    "lint": "eslint"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
-    "@atproto/api": "^0.19.10",
     "@base-ui/react": "^1.4.1",
     "@paper-design/shaders": "^0.0.76",
     "@react-three/fiber": "^9.6.1",
@@ -27,7 +24,6 @@
     "lucide-react": "^1.8.0",
     "motion": "^12.38.0",
     "next": "16.2.4",
-    "openai": "^6.34.0",
     "pg": "^8.20.0",
     "pgvector": "^0.2.1",
     "react": "19.2.4",

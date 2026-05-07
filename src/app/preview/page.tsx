@@ -56,14 +56,10 @@ export default function Preview() {
           <div className="text-center py-20">
             <p className="text-gray-400 text-lg mb-2">No posts yet</p>
             <p className="text-gray-600 text-sm max-w-md mx-auto">
-              The firehose worker is running and filtering posts against your
-              preferences. Posts matching your criteria will appear here.
-              Niche topics may take a while.
+              No posts matching this feed&apos;s criteria right now. Try refining
+              the feed in the chat, or come back in a bit — niche topics take
+              time to surface.
             </p>
-            <div className="mt-4 flex justify-center">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span className="ml-2 text-xs text-green-400">Listening to firehose...</span>
-            </div>
           </div>
         )}
 

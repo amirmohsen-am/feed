@@ -25,15 +25,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import Onboarding, { useAuth, type UserProfile } from "@/components/Onboarding";
-import { saveFeedToFirestore, loadFeedsFromFirestore, deleteFeedFromFirestore, saveChatMessagesToFirestore, loadChatMessagesFromFirestore } from "@/lib/firebase";
 import VoiceCards, { type Voice } from "@/components/VoiceCards";
 import ImportMemoryModal from "@/components/ImportMemoryModal";
-import PublishFeedModal from "@/components/PublishFeedModal";
 import FilterPanel from "@/components/FilterPanel";
-import Logo from "@/components/Logo";
 import ShaderLogo from "@/components/ShaderLogo";
 import ShaderSendButton from "@/components/ShaderSendButton";
-import OnboardingFlow from "@/components/OnboardingFlow";
 import { authedFetch } from "@/lib/authed-fetch";
 import type { MechanicalFilters, SemanticConfig } from "@/lib/types";
 
@@ -58,20 +54,6 @@ interface SavedFeed {
 }
 
 const FEED_COLORS = ["var(--aurora)", "var(--amber)", "var(--ember)", "var(--rose)", "var(--aurora-deep)", "var(--mist)"];
-
-function loadFeeds(): SavedFeed[] {
-  if (typeof window === "undefined") return [];
-  try { return JSON.parse(localStorage.getItem("ripple_feeds") || "[]"); }
-  catch { return []; }
-}
-function saveFeeds(feeds: SavedFeed[]) {
-  localStorage.setItem("ripple_feeds", JSON.stringify(feeds));
-}
-
-function feedName(criteria: FeedCriteria): string {
-  const parts = [...(criteria.topics || []), ...(criteria.keywords || []).slice(0, 2)];
-  return parts.slice(0, 3).join(", ") || "My Feed";
-}
 
 function parseMessage(content: string) {
   const lines = content.split("\n");
@@ -112,6 +94,10 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [postCount, setPostCount] = useState(0);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [postsStage, setPostsStage] = useState<"idle" | "searching" | "ranking">("idle");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
   const [initialized, setInitialized] = useState(false);
   const [feeds, setFeeds] = useState<SavedFeed[]>([]);
   const [activeFeedId, setActiveFeedId] = useState<string | null>(null);
@@ -120,8 +106,6 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
   const [showVoices, setShowVoices] = useState(false);
   const [addedVoices, setAddedVoices] = useState<Voice[]>([]);
   const [showImportMemory, setShowImportMemory] = useState(false);
-  const [showPublish, setShowPublish] = useState(false);
-  const [onboardingActive, setOnboardingActive] = useState(false);
   const [mechanicalFilters, setMechanicalFilters] = useState<MechanicalFilters | null>(null);
   const [semanticConfig, setSemanticConfig] = useState<SemanticConfig | null>(null);
   const serverFeedIdRef = useRef<number | null>(null);
@@ -157,25 +141,95 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
     }
   }
 
-  // Load saved feeds from localStorage + Firestore
-  useEffect(() => {
-    const local = loadFeeds();
-    setFeeds(local);
-    loadFeedsFromFirestore(profile.uid).then((fsFeeds) => {
-      if (fsFeeds.length > 0) {
-        const merged = [...fsFeeds];
-        for (const lf of local) {
-          if (!merged.find(f => f.id === lf.id)) merged.push(lf);
-        }
-        setFeeds(merged);
-        saveFeeds(merged);
-      }
-    }).catch(() => {});
-  }, [profile.uid]);
+  // Pull all of the user's feeds from Postgres and project to sidebar shape.
+  // Single source of truth — called on mount and after any feed-modifying write.
+  const reloadFeeds = useCallback(async () => {
+    try {
+      const res = await authedFetch("/api/feeds");
+      const data = await res.json();
+      const serverFeeds: { id: number; name: string; semantic_config: SemanticConfig; created_at: string }[] = data.feeds || [];
+      const mapped: SavedFeed[] = serverFeeds
+        .filter(f => (f.semantic_config?.topics?.length ?? 0) > 0 || (f.semantic_config?.keywords?.length ?? 0) > 0)
+        .map((f, i) => ({
+          id: String(f.id),
+          name: f.name,
+          color: FEED_COLORS[i % FEED_COLORS.length],
+          criteria: {
+            topics: f.semantic_config?.topics ?? [],
+            keywords: f.semantic_config?.keywords ?? [],
+            exclude_topics: f.semantic_config?.exclude_topics ?? [],
+            exclude_keywords: f.semantic_config?.exclude_keywords ?? [],
+            vibes: f.semantic_config?.vibes ?? "",
+          },
+          createdAt: f.created_at,
+        }));
+      setFeeds(mapped);
+    } catch { /* ignore */ }
+  }, []);
 
-  // Create a server-side feed and init chat
+  useEffect(() => { reloadFeeds(); }, [reloadFeeds, profile.uid]);
+
+  // Fetch chat history for a feed.
+  const loadChat = useCallback(async (feedId: number) => {
+    setChatLoading(true);
+    try {
+      const res = await authedFetch(`/api/chat?feedId=${feedId}`);
+      const data = await res.json();
+      const msgs: Message[] = data.messages || [];
+      if (data.feed?.criteria) {
+        setPrefs({ description: data.feed.description, criteria: data.feed.criteria });
+        setPrevCriteriaJson(JSON.stringify(data.feed.criteria));
+      }
+      if (msgs.length === 0) {
+        // First time — kick off the agent's opening message.
+        const initRes = await authedFetch("/api/chat", {
+          method: "POST",
+          body: JSON.stringify({ message: "__init__", feedId }),
+        });
+        const d = await initRes.json();
+        setMessages(d.messages || []);
+        if (d.feed?.criteria) {
+          setPrefs({ description: d.feed.description, criteria: d.feed.criteria });
+        }
+      } else {
+        setMessages(msgs);
+      }
+    } catch { /* ignore */ }
+    finally {
+      setChatLoading(false);
+    }
+  }, []);
+
+  // Fetch ranked posts for a feed via happy-feed.
+  const loadPosts = useCallback(async (feedId: number) => {
+    setPostsLoading(true);
+    setPostsStage("searching");
+    try {
+      const res = await authedFetch(`/api/feed-preview?feedId=${feedId}`);
+      const d = await res.json();
+      setPosts(d.posts || []);
+      setPostCount(d.total_stored || (d.posts?.length ?? 0));
+      if (d.mechanical_filters) setMechanicalFilters(d.mechanical_filters);
+      if (d.semantic_config) setSemanticConfig(d.semantic_config);
+    } catch { /* ignore */ }
+    finally {
+      setPostsLoading(false);
+      setPostsStage("idle");
+    }
+  }, []);
+
+  // Get the active server-side feed. Reuses the user's most recent feed
+  // instead of creating a new row on every page load.
   async function ensureServerFeed(): Promise<number> {
     if (serverFeedIdRef.current) return serverFeedIdRef.current;
+    const listRes = await authedFetch("/api/feeds");
+    const listData = await listRes.json();
+    const list: { id: number }[] = listData.feeds || [];
+    if (list.length > 0) {
+      // Server orders by updated_at DESC
+      serverFeedIdRef.current = list[0].id;
+      return list[0].id;
+    }
     const res = await authedFetch("/api/feeds", {
       method: "POST",
       body: JSON.stringify({ name: "New Feed" }),
@@ -186,39 +240,23 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
     return id;
   }
 
-  // Init: create server feed and get opening message
+  // Init: pick the active feed and fire chat + posts fetches in parallel.
   useEffect(() => {
     (async () => {
       try {
         const feedId = await ensureServerFeed();
-        const chatRes = await authedFetch(`/api/chat?feedId=${feedId}`);
-        const data = await chatRes.json();
-        const msgs: Message[] = data.messages || [];
-        if (data.feed?.criteria) {
-          setPrefs({ description: data.feed.description, criteria: data.feed.criteria });
-          setPrevCriteriaJson(JSON.stringify(data.feed.criteria));
-        }
-        if (msgs.length === 0) {
-          setLoading(true);
-          const initRes = await authedFetch("/api/chat", {
-            method: "POST",
-            body: JSON.stringify({ message: "__init__", feedId }),
-          });
-          const d = await initRes.json();
-          setMessages(d.messages || []);
-          if (d.feed?.criteria) {
-            setPrefs({ description: d.feed.description, criteria: d.feed.criteria });
-          }
-          setLoading(false);
-        } else {
-          setMessages(msgs);
-        }
+        setActiveFeedId(String(feedId));
+        // Don't await — let chat and posts hydrate independently.
+        loadChat(feedId);
+        loadPosts(feedId);
       } catch { /* ignore */ }
       setInitialized(true);
     })();
-  }, []);
+  }, [loadChat, loadPosts]);
 
-  // Watch for new criteria — update the active feed entry
+  // Watch for new criteria — re-sync the sidebar from the server (Postgres is
+  // the source of truth; the chat route already PATCHed the feed before
+  // returning new criteria here).
   const checkNewFeed = useCallback((newPrefs: Preferences) => {
     const newJson = JSON.stringify(newPrefs.criteria);
     const hasCriteria = (newPrefs.criteria.topics?.length ?? 0) > 0 ||
@@ -226,58 +264,19 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
 
     if (hasCriteria && newJson !== prevCriteriaJson) {
       setPrevCriteriaJson(newJson);
-      const name = feedName(newPrefs.criteria);
-
-      // If we have an active feed (e.g. "Untitled"), update it with the new criteria + name
-      if (activeFeedId) {
-        const updated = feeds.map(f =>
-          f.id === activeFeedId ? { ...f, name, criteria: newPrefs.criteria } : f
-        );
-        setFeeds(updated);
-        saveFeeds(updated);
-        const updatedFeed = updated.find(f => f.id === activeFeedId);
-        if (updatedFeed) saveFeedToFirestore(profile.uid, updatedFeed).catch(() => {});
-      } else {
-        // No active feed — create one
-        const newFeed: SavedFeed = {
-          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-          name,
-          color: FEED_COLORS[feeds.length % FEED_COLORS.length],
-          criteria: newPrefs.criteria,
-          createdAt: new Date().toISOString(),
-        };
-        const updated = [...feeds, newFeed];
-        setFeeds(updated);
-        saveFeeds(updated);
-        saveFeedToFirestore(profile.uid, newFeed).catch(() => {});
-        setActiveFeedId(newFeed.id);
-      }
+      const id = activeFeedId ?? (serverFeedIdRef.current ? String(serverFeedIdRef.current) : null);
+      if (!activeFeedId && id) setActiveFeedId(id);
       setShowVoices(true);
+      reloadFeeds();
     }
-  }, [feeds, prevCriteriaJson, activeFeedId]);
-
-  // Poll feed posts
-  useEffect(() => {
-    const poll = () => {
-      const fid = serverFeedIdRef.current;
-      if (!fid) return;
-      authedFetch(`/api/feed-preview?feedId=${fid}`).then(r => r.json()).then(d => {
-        setPosts(d.posts || []);
-        setPostCount(d.total_stored || 0);
-        if (d.mechanical_filters) setMechanicalFilters(d.mechanical_filters);
-        if (d.semantic_config) setSemanticConfig(d.semantic_config);
-      }).catch(() => {});
-    };
-    poll();
-    const iv = setInterval(poll, 5000);
-    return () => clearInterval(iv);
-  }, []);
+  }, [prevCriteriaJson, activeFeedId, reloadFeeds]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   async function send(text: string) {
     if (!text.trim() || loading) return;
     setInput("");
+    setSelectedOptions(new Set());
     setMessages(prev => [...prev, { role: "user", content: text.trim() }]);
     setLoading(true);
     try {
@@ -289,10 +288,6 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
       const d = await res.json();
       const msgs = d.messages || [];
       setMessages(msgs);
-      // Save chat history to Firestore
-      if (activeFeedId) {
-        saveChatMessagesToFirestore(profile.uid, activeFeedId, msgs).catch(() => {});
-      }
       if (d.feed?.criteria) {
         const p = { description: d.feed.description, criteria: d.feed.criteria };
         setPrefs(p);
@@ -303,8 +298,37 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
     } finally { setLoading(false); }
   }
 
+  // Compose the chat reply from any selected options + the comment box.
+  function submitChat() {
+    const lastOptions = lastParsed?.options || [];
+    const picks = lastOptions.filter((opt) => selectedOptions.has(opt.key));
+    const comment = input.trim();
+    if (picks.length === 0 && !comment) return;
+
+    let composed = "";
+    if (picks.length > 0) {
+      composed = picks.map((p) => `${p.key}. ${p.label}`).join(", ");
+    }
+    if (comment) {
+      composed = composed ? `${composed} — ${comment}` : comment;
+    }
+    send(composed);
+  }
+
   async function startNewFeed() {
-    // Create a fresh server-side feed
+    // Clear all per-feed state synchronously so the panels go blank instantly.
+    setMessages([]);
+    setPosts([]);
+    setPrefs(null);
+    setAddedVoices([]);
+    setShowVoices(false);
+    setMechanicalFilters(null);
+    setSemanticConfig(null);
+    setSelectedOptions(new Set());
+    setView("chat");
+    setPrevCriteriaJson("");
+
+    // Create a fresh server-side feed.
     const createRes = await authedFetch("/api/feeds", {
       method: "POST",
       body: JSON.stringify({ name: "Untitled" }),
@@ -320,119 +344,54 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
       return;
     }
     serverFeedIdRef.current = newServerId;
+    setActiveFeedId(newServerId.toString());
 
-    // Immediately add an "Untitled" entry to the sidebar
-    const newClientFeed: SavedFeed = {
-      id: newServerId.toString(),
-      name: "Untitled",
-      color: FEED_COLORS[feeds.length % FEED_COLORS.length],
-      criteria: { topics: [], keywords: [], exclude_topics: [], exclude_keywords: [], vibes: "" },
-      createdAt: new Date().toISOString(),
-    };
-    const updated = [...feeds, newClientFeed];
-    setFeeds(updated);
-    saveFeeds(updated);
-    saveFeedToFirestore(profile.uid, newClientFeed).catch(() => {});
-
-    setMessages([]); setPrefs(null);
-    setActiveFeedId(newClientFeed.id);
-    setAddedVoices([]); setShowVoices(false);
-    setMechanicalFilters(null);
-    setSemanticConfig(null);
-    setOnboardingActive(true);
-    setView("chat");
+    // Kick off the chat — same path as the init effect uses for a fresh feed.
+    loadChat(newServerId);
   }
 
-  async function selectFeed(feed: SavedFeed) {
+  function selectFeed(feed: SavedFeed) {
+    const id = parseInt(feed.id) || null;
+    // Clear stale content synchronously — the panels blank instantly.
+    setMessages([]);
+    setPosts([]);
+    setPrefs(null);
     setActiveFeedId(feed.id);
-    serverFeedIdRef.current = parseInt(feed.id) || null;
+    serverFeedIdRef.current = id;
     setView("feed");
-    // Load chat history from Firestore
-    try {
-      const msgs = await loadChatMessagesFromFirestore(profile.uid, feed.id);
-      if (msgs.length > 0) setMessages(msgs as Message[]);
-    } catch { /* ignore */ }
-  }
-
-  async function handleOnboardingComplete(config: SemanticConfig | null, feedName: string) {
-    const feedId = serverFeedIdRef.current;
-    if (!feedId) return;
-
-    const safeConfig: SemanticConfig = config || { topics: [], keywords: [], exclude_topics: [], exclude_keywords: [], vibes: "", embedding_threshold: 0.72, judge_enabled: true, judge_strictness: "moderate" };
-
-    // Update server-side feed
-    try {
-      await authedFetch("/api/feeds", {
-        method: "PATCH",
-        body: JSON.stringify({
-          id: feedId,
-          name: feedName,
-          semantic_config: safeConfig,
-          description: [...(safeConfig.topics || []), ...(safeConfig.keywords || []).slice(0, 5), safeConfig.vibes].filter(Boolean).join(", "),
-        }),
-      });
-    } catch { /* ignore */ }
-
-    // Update sidebar
-    const updated = feeds.map(f =>
-      f.id === feedId.toString()
-        ? { ...f, name: feedName, criteria: { topics: safeConfig.topics || [], keywords: safeConfig.keywords || [], exclude_topics: safeConfig.exclude_topics || [], exclude_keywords: safeConfig.exclude_keywords || [], vibes: safeConfig.vibes || "" } }
-        : f
-    );
-    setFeeds(updated);
-    saveFeeds(updated);
-    const updatedFeed = updated.find(f => f.id === feedId.toString());
-    if (updatedFeed) saveFeedToFirestore(profile.uid, updatedFeed).catch(() => {});
-
-    setSemanticConfig(safeConfig);
-    setOnboardingActive(false);
-    setView("feed");
-  }
-
-  function handleEscapeToChat() {
-    setOnboardingActive(false);
-    // Fall back to existing chat flow — send __init__
-    const feedId = serverFeedIdRef.current;
-    if (!feedId) return;
-    setLoading(true);
-    authedFetch("/api/chat", {
-      method: "POST",
-      body: JSON.stringify({ message: "__init__", feedId }),
-    })
-      .then(r => r.json())
-      .then(d => setMessages(d.messages || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    if (id) {
+      // Fire both fetches in parallel; don't await.
+      loadChat(id);
+      loadPosts(id);
+    }
   }
 
   function confirmDeleteFeed() {
     if (!deleteTarget) return;
-    const updated = feeds.filter(f => f.id !== deleteTarget);
-    setFeeds(updated);
-    saveFeeds(updated);
-    deleteFeedFromFirestore(profile.uid, deleteTarget).catch(() => {});
+    const id = parseInt(deleteTarget);
+    // Optimistic removal so the sidebar updates instantly.
+    setFeeds(feeds.filter(f => f.id !== deleteTarget));
+    if (id) {
+      authedFetch("/api/feeds", {
+        method: "DELETE",
+        body: JSON.stringify({ id }),
+      }).then(() => reloadFeeds()).catch(() => {});
+    }
     if (activeFeedId === deleteTarget) {
       setActiveFeedId(null);
+      serverFeedIdRef.current = null;
       setView("chat");
     }
     setDeleteTarget(null);
   }
 
   function handleMemoryImported(importedFeed: { id: number; name: string; description: string; criteria: FeedCriteria; created_at: string; updated_at: string }) {
-    const newFeed: SavedFeed = {
-      id: importedFeed.id.toString(),
-      name: importedFeed.name,
-      color: FEED_COLORS[feeds.length % FEED_COLORS.length],
-      criteria: importedFeed.criteria,
-      createdAt: importedFeed.created_at,
-    };
-    const updated = [...feeds, newFeed];
-    setFeeds(updated);
-    saveFeeds(updated);
-    saveFeedToFirestore(profile.uid, newFeed).catch(() => {});
-    setActiveFeedId(newFeed.id);
+    setActiveFeedId(importedFeed.id.toString());
+    serverFeedIdRef.current = importedFeed.id;
     setShowImportMemory(false);
     setView("feed");
+    reloadFeeds();
+    loadPosts(importedFeed.id);
   }
 
   const hasCriteria =
@@ -611,7 +570,7 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
         <div className="cur-topbar">
           <div className="cur-topbar-left">
             <h2>
-              {onboardingActive ? "Build your feed" : view === "chat" ? "Curate a feed" : (activeFeed?.name || "Your Feed")}
+              {view === "chat" ? "Curate a feed" : (activeFeed?.name || "Your Feed")}
             </h2>
             {view === "feed" && (
               <span className="live-badge">live</span>
@@ -643,27 +602,10 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
                 <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
               </svg>
             </button>
-            {hasCriteria && (
-              <button
-                onClick={() => setShowPublish(true)}
-                className="cur-topbar-btn publish"
-              >
-                <svg width="14" height="14" viewBox="0 0 600 530" fill="currentColor">
-                  <path d="M135.72 44.03C202.216 93.951 273.74 195.17 300 249.49c26.262-54.316 97.782-155.54 164.28-205.46C512.26 8.009 590-19.862 590 68.825c0 17.712-10.155 148.79-16.111 170.07-20.703 73.984-96.144 92.854-163.25 81.433 117.3 19.964 147.14 86.092 82.697 152.22-122.39 125.59-175.91-31.511-189.63-71.766-2.514-7.38-3.69-10.832-3.708-7.896-.017-2.936-1.193.516-3.707 7.896-13.714 40.255-67.233 197.36-189.63 71.766-64.444-66.128-34.605-132.256 82.697-152.22-67.108 11.421-142.549-7.449-163.25-81.433C20.15 217.613 10 86.536 10 68.824c0-88.687 77.742-60.816 125.72-24.795z" />
-                </svg>
-                Publish
-              </button>
-            )}
           </div>
         </div>
 
-        {view === "chat" && onboardingActive && serverFeedIdRef.current ? (
-          <OnboardingFlow
-            feedId={serverFeedIdRef.current}
-            onComplete={handleOnboardingComplete}
-            onEscapeToChat={handleEscapeToChat}
-          />
-        ) : view === "chat" ? (
+        {view === "chat" ? (
           <>
             <div className="cur-chat-area">
               <div className="cur-chat-inner">
@@ -683,17 +625,30 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
                           ))}
                           {parsed!.options.length > 0 && (
                             <div className="cur-options">
-                              {parsed!.options.map((opt) => (
-                                <button
-                                  key={opt.key}
-                                  className="cur-opt"
-                                  disabled={!isLast || loading}
-                                  onClick={() => isLast && !loading && send(`${opt.key}. ${opt.label}`)}
-                                >
-                                  <span className="cur-opt-key">{opt.key}</span>
-                                  {opt.label}
-                                </button>
-                              ))}
+                              {parsed!.options.map((opt) => {
+                                const checked = selectedOptions.has(opt.key);
+                                const interactive = isLast && !loading;
+                                return (
+                                  <button
+                                    key={opt.key}
+                                    type="button"
+                                    className={`cur-opt${checked ? " cur-opt-selected" : ""}`}
+                                    disabled={!interactive}
+                                    onClick={() => {
+                                      if (!interactive) return;
+                                      setSelectedOptions((prev) => {
+                                        const next = new Set(prev);
+                                        if (next.has(opt.key)) next.delete(opt.key);
+                                        else next.add(opt.key);
+                                        return next;
+                                      });
+                                    }}
+                                  >
+                                    <span className="cur-opt-key">{checked ? "✓" : opt.key}</span>
+                                    {opt.label}
+                                  </button>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
@@ -701,7 +656,7 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
                     </div>
                   );
                 })}
-                {loading && (
+                {(loading || chatLoading) && (
                   <div className="cur-dots"><span /><span /><span /></div>
                 )}
 
@@ -736,16 +691,36 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
             </div>
 
             <div className="cur-input-bar">
-              <form className="cur-input-wrap" onSubmit={(e) => { e.preventDefault(); send(input); }}>
+              <form
+                className="cur-input-wrap"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (lastParsed?.options.length) submitChat();
+                  else send(input);
+                }}
+              >
                 <input
                   className="cur-input"
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder={lastParsed?.options.length ? "Pick an option or type your own..." : "Describe your ideal feed..."}
+                  placeholder={
+                    lastParsed?.options.length
+                      ? selectedOptions.size > 0
+                        ? "Add a comment (optional)..."
+                        : "Pick options above, or type your reply..."
+                      : "Describe your ideal feed..."
+                  }
                   disabled={loading}
                 />
-                <ShaderSendButton disabled={loading || !input.trim()} />
+                <ShaderSendButton
+                  disabled={
+                    loading ||
+                    (lastParsed?.options.length
+                      ? selectedOptions.size === 0 && !input.trim()
+                      : !input.trim())
+                  }
+                />
               </form>
             </div>
           </>
@@ -753,31 +728,82 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
           <div className="cur-feed-layout">
             {/* Posts column */}
             <div className="cur-feed-posts">
+              <div className="cur-feed-posts-header">
+                <div className="cur-feed-stage">
+                  {postsLoading && (
+                    <>
+                      <span className="pulse-dot" />
+                      <span>
+                        {postsStage === "ranking"
+                          ? "Ranking results…"
+                          : "Searching for posts that match your feed…"}
+                      </span>
+                    </>
+                  )}
+                </div>
+                {(() => {
+                  const fid = activeFeedId ? parseInt(activeFeedId) || null : null;
+                  return (
+                    <button
+                      type="button"
+                      className="cur-refresh"
+                      disabled={postsLoading || !fid}
+                      onClick={() => fid && loadPosts(fid)}
+                      title="Refresh posts"
+                    >
+                      ↻ Refresh
+                    </button>
+                  );
+                })()}
+              </div>
               <div className="cur-feed-posts-inner">
                 {posts.length === 0 ? (
                   <div className="cur-empty">
-                    <p><span className="pulse-dot" />Listening to the firehose...</p>
-                    <p className="sub">Posts matching your preferences will appear here as they come in.</p>
-                    {!semanticConfig && (
-                      <p className="sub" style={{ marginTop: 8, color: "var(--amber)" }}>
-                        Complete the feed setup first — the worker needs your preferences to start matching.
-                      </p>
+                    {postsLoading ? (
+                      <p><span className="pulse-dot" />Loading posts…</p>
+                    ) : (
+                      <>
+                        <p>No posts yet.</p>
+                        <p className="sub">
+                          {!semanticConfig
+                            ? "Complete the feed setup first — your preferences are what we search against."
+                            : "Try Refresh, or refine the feed criteria in the chat."}
+                        </p>
+                      </>
                     )}
                   </div>
                 ) : (
-                  posts.map((post) => (
-                    <div key={post.uri} className="cur-post">
-                      <div className="cur-post-head">
-                        <div className="avatar" />
-                        <span className="handle">{post.author_did.slice(0, 24)}...</span>
-                        <span className={`score ${post.score >= 0.6 ? "high" : post.score >= 0.4 ? "mid" : "low"}`}>
-                          {(post.score * 100).toFixed(0)}%
-                        </span>
+                  posts.map((post) => {
+                    const bskyUrl = (() => {
+                      const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+                      return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
+                    })();
+                    return (
+                      <div key={post.uri} className="cur-post">
+                        <div className="cur-post-head">
+                          <div className="avatar" />
+                          <span className="handle">{post.author_did.slice(0, 24)}...</span>
+                          <span className={`score ${post.score >= 0.6 ? "high" : post.score >= 0.4 ? "mid" : "low"}`}>
+                            {(post.score * 100).toFixed(0)}%
+                          </span>
+                          {bskyUrl && (
+                            <a
+                              href={bskyUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="cur-post-link"
+                              title="Open in Bluesky"
+                              aria-label="Open in Bluesky"
+                            >
+                              ↗
+                            </a>
+                          )}
+                        </div>
+                        <div className="cur-post-body">{post.text}</div>
+                        <div className="cur-post-time">{post.indexed_at}</div>
                       </div>
-                      <div className="cur-post-body">{post.text}</div>
-                      <div className="cur-post-time">{post.indexed_at}</div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -803,15 +829,6 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
         />
       )}
 
-      {showPublish && (
-        <PublishFeedModal
-          onClose={() => setShowPublish(false)}
-          blueskyHandle={profile.blueskyHandle}
-          feedName={activeFeed?.name || "My Curated Feed"}
-          feedDescription={activeFeed?.criteria.vibes || prefs?.criteria.vibes || "AI-curated feed based on my preferences"}
-          feedId={serverFeedIdRef.current || undefined}
-        />
-      )}
     </div>
   );
 }

@@ -217,6 +217,82 @@ function Snitch() {
   );
 }
 
+function SubscribeForm() {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
+  const [message, setMessage] = useState("");
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (status === "loading") return;
+    setStatus("loading");
+    setMessage("");
+    try {
+      const res = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStatus("error");
+        setMessage(data.error || "Something went wrong. Try again?");
+        return;
+      }
+      setStatus("ok");
+      setMessage(
+        data.created
+          ? "You're on the list. We'll write when there's something worth your time."
+          : "You're already on the list — we'll be in touch."
+      );
+      setEmail("");
+    } catch {
+      setStatus("error");
+      setMessage("Something went wrong. Try again?");
+    }
+  }
+
+  if (status === "ok") {
+    return (
+      <div className="subscribe-success">
+        <span className="subscribe-success-mark">✦</span>
+        <p>{message}</p>
+      </div>
+    );
+  }
+
+  return (
+    <form className="subscribe-form" onSubmit={onSubmit} noValidate>
+      <div className="subscribe-row">
+        <input
+          type="email"
+          required
+          autoComplete="email"
+          placeholder="your@email.com"
+          aria-label="Email address"
+          value={email}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            if (status === "error") setStatus("idle");
+          }}
+          disabled={status === "loading"}
+        />
+        <button
+          type="submit"
+          className="btn btn-primary subscribe-submit"
+          disabled={status === "loading" || email.trim().length === 0}
+        >
+          {status === "loading" ? "Sending…" : "Notify me"}
+          <span className="arrow">→</span>
+        </button>
+      </div>
+      {status === "error" && message && (
+        <div className="subscribe-error">{message}</div>
+      )}
+    </form>
+  );
+}
+
 const FEEDS = [
   { name: "Morning philosophy", sub: "12 new · refreshed 2m", color: "var(--amber)", desc: "Slow thinking, first thing. Read for twenty minutes, then close." },
   { name: "Climate signals", sub: "4 new · refreshed 18m", color: "var(--ember)", desc: "The slow data, the small shifts — read in steady rhythm." },
@@ -335,9 +411,15 @@ export default function LandingPage() {
             In the same way you <em>curate what you eat</em>, now curate what you read.
             A small, quiet experiment in returning the feed to the reader.
           </p>
+          <div className="hero-subscribe">
+            <p className="hero-subscribe-label">
+              Leave your email — we&apos;ll write the day there&apos;s something worth your time.
+            </p>
+            <SubscribeForm />
+          </div>
           <div className="hero-actions">
             <Link href="/curator" className="btn btn-primary">
-              Begin curating <span className="arrow">→</span>
+              Try demo (feed curation) <span className="arrow">→</span>
             </Link>
             <a href="#manifesto" className="btn btn-ghost">Read the manifesto</a>
           </div>
@@ -518,7 +600,7 @@ export default function LandingPage() {
           <p className="reveal">Start curating your feed now. No waitlist.</p>
           <div className="reveal">
             <Link href="/curator" className="btn btn-primary" style={{ fontSize: 14 }}>
-              Begin curating <span className="arrow">→</span>
+              Try demo (feed curation) <span className="arrow">→</span>
             </Link>
           </div>
         </div>

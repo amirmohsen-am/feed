@@ -54,35 +54,34 @@ export async function getAuthUser(
 ): Promise<AuthUser | null> {
   const token = req.headers.get("Authorization")?.replace("Bearer ", "");
 
-  // Dev mode: if no service account key, use dev user
+  // No service account key (dev or demo).
+  // If a real Firebase ID token is present, decode it and trust the UID
+  // (insecure — no signature verification — but matches the demo policy).
+  // Otherwise, fall back to the shared dev-local-user in dev mode only.
   if (!HAS_SERVICE_ACCOUNT) {
-    if (IS_DEV) {
-      return getOrCreateDevUser();
-    }
-    // In production without service account, try to extract UID from token payload
-    // This is insecure but better than nothing during initial setup
     if (token) {
       try {
-        // Decode JWT payload without verification (ONLY for bootstrap)
         const payload = JSON.parse(
           Buffer.from(token.split(".")[1], "base64").toString()
         );
-        if (payload.user_id || payload.sub) {
-          const uid = payload.user_id || payload.sub;
+        const uid = payload.user_id || payload.sub;
+        if (uid) {
           let user = await getUserByFirebaseUid(uid);
           if (!user) {
             user = await upsertUser({
               firebaseUid: uid,
               name: payload.name || "User",
               email: payload.email || "",
+              photoUrl: payload.picture,
             });
           }
           return { firebaseUid: uid, userId: user.id };
         }
       } catch {
-        return null;
+        /* fall through to dev fallback */
       }
     }
+    if (IS_DEV) return getOrCreateDevUser();
     return null;
   }
 
@@ -120,16 +119,6 @@ export async function requireAuth(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   return user;
-}
-
-/**
- * Verify the worker API key from x-api-key header.
- */
-export function verifyWorkerKey(req: NextRequest): boolean {
-  const key = req.headers.get("x-api-key");
-  const expected = process.env.WORKER_API_KEY;
-  if (!expected) return false;
-  return key === expected;
 }
 
 /**

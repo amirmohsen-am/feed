@@ -265,6 +265,15 @@
   color: var(--parchment);
   background: transparent;
 }
+.cur-opt-selected{
+  border-color: var(--amber);
+  color: var(--amber);
+  background: rgba(232,185,136,0.08);
+}
+.cur-opt-selected:hover{
+  border-color: var(--amber);
+  background: rgba(232,185,136,0.12);
+}
 .cur-opt-key{
   font-family: var(--rf-mono);
   font-size: 10px;
@@ -431,6 +440,57 @@
 .cur-post .score.high{ background: rgba(125,203,165,0.15); color: var(--aurora); }
 .cur-post .score.mid{ background: rgba(232,185,136,0.12); color: var(--amber); }
 .cur-post .score.low{ background: rgba(243,236,221,0.08); color: var(--parchment-dim); }
+.cur-post-link{
+  margin-left: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  font-family: var(--rf-mono);
+  font-size: 11px;
+  color: var(--parchment-dim);
+  text-decoration: none;
+  transition: color 0.2s, background 0.2s, transform 0.2s;
+}
+.cur-post-link:hover{
+  color: var(--cream);
+  background: rgba(243,236,221,0.08);
+  transform: translate(1px, -1px);
+}
+
+.cur-feed-posts-header{
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 0 10px;
+  border-bottom: 1px solid var(--hair);
+  margin-bottom: 8px;
+  gap: 12px;
+}
+.cur-feed-stage{
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--rf-mono);
+  font-size: 11px; letter-spacing: 0.06em;
+  color: var(--parchment-dim);
+  min-height: 18px;
+}
+.cur-refresh{
+  font-family: var(--rf-mono);
+  font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--hair-strong);
+  background: transparent;
+  color: var(--parchment);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.cur-refresh:hover:not(:disabled){
+  color: var(--amber);
+  border-color: rgba(232,185,136,0.4);
+  background: rgba(232,185,136,0.05);
+}
+.cur-refresh:disabled{
+  opacity: 0.45; cursor: default;
+}
 .cur-post-body{
   color: var(--parchment);
   font-size: 15px;

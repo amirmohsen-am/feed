@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { auth, googleProvider, saveProfileToFirestore, loadProfileFromFirestore } from "@/lib/firebase";
+import { auth, googleProvider } from "@/lib/firebase";
 import { signInWithPopup, onAuthStateChanged, User } from "firebase/auth";
+import { authedFetch } from "@/lib/authed-fetch";
 
 export interface UserProfile {
   uid: string;
@@ -23,20 +24,31 @@ export function useAuth() {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
-        // Try localStorage first (fast), then Firestore
+        // localStorage acts as a fast cache; Postgres is the source of truth
         const saved = localStorage.getItem(`ripple_profile_${u.uid}`);
         if (saved) {
           setProfileState(JSON.parse(saved));
-        } else {
-          try {
-            const fsProfile = await loadProfileFromFirestore(u.uid);
-            if (fsProfile) {
-              const p = fsProfile as UserProfile;
+        }
+        try {
+          const res = await authedFetch("/api/user");
+          if (res.ok) {
+            const data = await res.json();
+            const row = data.user;
+            if (row && row.bluesky_handle) {
+              const p: UserProfile = {
+                uid: u.uid,
+                name: row.name || u.displayName || "Friend",
+                email: row.email || u.email || "",
+                photoURL: row.photo_url || u.photoURL || "",
+                blueskyHandle: row.bluesky_handle || "",
+                blueskyDid: row.bluesky_did || "",
+                onboardedAt: (row.created_at && typeof row.created_at === "string") ? row.created_at : new Date().toISOString(),
+              };
               localStorage.setItem(`ripple_profile_${u.uid}`, JSON.stringify(p));
               setProfileState(p);
             }
-          } catch { /* ignore */ }
-        }
+          }
+        } catch { /* ignore */ }
       } else {
         setProfileState(null);
       }
@@ -48,8 +60,16 @@ export function useAuth() {
   function setProfile(p: UserProfile) {
     localStorage.setItem(`ripple_profile_${p.uid}`, JSON.stringify(p));
     setProfileState(p);
-    // Save to Firestore in background
-    saveProfileToFirestore(p).catch(() => {});
+    authedFetch("/api/user", {
+      method: "POST",
+      body: JSON.stringify({
+        name: p.name,
+        email: p.email,
+        photoUrl: p.photoURL,
+        blueskyHandle: p.blueskyHandle,
+        blueskyDid: p.blueskyDid,
+      }),
+    }).catch(() => {});
   }
 
   function clearProfile() {
