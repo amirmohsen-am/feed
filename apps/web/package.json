@@ -1,5 +1,5 @@
 {
-  "name": "feed",
+  "name": "web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -50,5 +50,17 @@
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@firebase/util",
+      "better-sqlite3",
+      "esbuild",
+      "sharp",
+      "unrs-resolver",
+      "@google/genai",
+      "msw",
+      "protobufjs"
+    ]
   }
 }

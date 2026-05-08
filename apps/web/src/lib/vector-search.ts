@@ -1,17 +1,14 @@
 /**
  * Direct Vertex AI Vector Search client.
  *
- * Replaces happy-feed's HTTP middleman. Embeds the query with Gemini
- * (`gemini-embedding-001`, 768d, RETRIEVAL_QUERY) then calls
- * MatchServiceClient.findNeighbors against the Vertex Vector Search index
- * in `amir-experimental`. Post text + metadata are stored as Vertex datapoint
- * restricts (commit `40fb061` in happy-feed: "Move post text into Vertex
- * datapoints"), so a single round-trip returns hydrated posts.
+ * Embeds the query with Gemini (`gemini-embedding-001`, 768d, RETRIEVAL_QUERY)
+ * then calls MatchServiceClient.findNeighbors against the Vertex Vector Search
+ * index in `timelines-492720`. Post text + metadata are stored as datapoint
+ * restricts by the jetstream-indexer worker, so a single round-trip returns
+ * hydrated posts.
  *
- * The runtime needs Application Default Credentials with `roles/aiplatform.user`
- * on the index endpoint in `amir-experimental`. Locally: `gcloud auth
- * application-default login`. On Cloud Run: grant the runtime SA cross-project
- * (see AGENTS.md).
+ * The runtime needs ADC with `roles/aiplatform.user` on this project. On
+ * Cloud Run, the default compute SA already has it.
  */
 
 import { v1 } from "@google-cloud/aiplatform";
@@ -19,16 +16,16 @@ import { GoogleGenAI } from "@google/genai";
 
 const { MatchServiceClient } = v1;
 
-// All four IDs come from happy-feed's `prod` config (src/config.ts in that repo).
-// They identify the live index in amir-experimental / us-central1. These are
-// public resource IDs, not secrets — hardcoded so a fresh clone runs with no
-// env setup.
-const VERTEX_PROJECT = "amir-experimental";
-const VERTEX_LOCATION = "us-central1";
-const VERTEX_INDEX_ENDPOINT_ID = "73493556223803392";
+// Public resource IDs (not secrets). Overridable via env for local-dev / staging.
+const VERTEX_PROJECT = process.env.VERTEX_PROJECT ?? "timelines-492720";
+const VERTEX_LOCATION = process.env.VERTEX_LOCATION ?? "us-central1";
+const VERTEX_INDEX_ENDPOINT_ID =
+  process.env.VERTEX_INDEX_ENDPOINT_ID ?? "5941683870687559680";
 const VERTEX_INDEX_ENDPOINT_HOST =
-  "538744258.us-central1-446303112556.vdb.vertexai.goog";
-const VERTEX_DEPLOYED_INDEX_ID = "happy_feed_deployed";
+  process.env.VERTEX_INDEX_ENDPOINT_HOST ??
+  "1238902659.us-central1-777152549518.vdb.vertexai.goog";
+const VERTEX_DEPLOYED_INDEX_ID =
+  process.env.VERTEX_DEPLOYED_INDEX_ID ?? "happy_feed_v2";
 
 const EMBEDDING_MODEL = "gemini-embedding-001";
 const EMBEDDING_DIMENSION = 768;

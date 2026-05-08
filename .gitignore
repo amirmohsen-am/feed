@@ -1,8 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
-/.pnp
+node_modules/
+.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -11,14 +11,15 @@
 !.yarn/versions
 
 # testing
-/coverage
+coverage/
 
 # next.js
-/.next/
-/out/
+.next/
+out/
 
 # production
-/build
+build/
+dist/
 
 # misc
 .DS_Store
@@ -44,11 +45,12 @@ yarn-error.log*
 *.db-wal
 *.db-shm
 
-# ingester data
-/data/
-/.venv/
+# python
+data/
+.venv/
 __pycache__/
 .pytest_cache/
+*.egg-info/
 
 # vercel
 .vercel
