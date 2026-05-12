@@ -314,9 +314,11 @@ export async function getFeedPreviewPosts(
     indexed_at: string;
   }[]
 > {
+  const t0 = performance.now();
   const feedRes = await query("SELECT * FROM feeds WHERE id = $1", [feedId]);
   if (feedRes.rows.length === 0) return [];
   const feed = rowToFeed(feedRes.rows[0]);
+  const tFeed = performance.now();
 
   const queryText = buildSearchQuery(feed);
   if (!queryText) return [];
@@ -327,6 +329,12 @@ export async function getFeedPreviewPosts(
 
   try {
     const hits = await searchPosts({ query: queryText, k: limit, filter });
+    const tSearch = performance.now();
+    console.log(
+      `[timing] getFeedPreviewPosts feed-lookup=${(tFeed - t0).toFixed(0)}ms ` +
+        `searchPosts=${(tSearch - tFeed).toFixed(0)}ms ` +
+        `total=${(tSearch - t0).toFixed(0)}ms feedId=${feedId} hits=${hits.length}`
+    );
     return hits.map((h) => ({
       uri: h.uri,
       text: h.text,

@@ -61,8 +61,10 @@ Current saved preferences:
 `;
 
 export async function POST(req: NextRequest) {
+  const t0 = performance.now();
   const auth = await requireAuth(req);
   if (isAuthError(auth)) return auth;
+  const tAuth = performance.now();
 
   try {
     const { message, feedId, reset } = await req.json();
@@ -118,12 +120,14 @@ export async function POST(req: NextRequest) {
       }));
     }
 
+    const tBeforeLLM = performance.now();
     const response = await (await client()).messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 512,
       system: systemPrompt,
       messages: apiMessages,
     });
+    const tAfterLLM = performance.now();
 
     const assistantText =
       response.content[0].type === "text" ? response.content[0].text : "";
@@ -223,6 +227,14 @@ export async function POST(req: NextRequest) {
 
     const allMessages = await getChatMessages(feedId);
     const updatedFeed = await getFeed(feedId);
+    const tEnd = performance.now();
+    console.log(
+      `[timing] POST /api/chat auth=${(tAuth - t0).toFixed(0)}ms ` +
+        `pre-llm=${(tBeforeLLM - tAuth).toFixed(0)}ms ` +
+        `llm=${(tAfterLLM - tBeforeLLM).toFixed(0)}ms ` +
+        `post-llm=${(tEnd - tAfterLLM).toFixed(0)}ms ` +
+        `total=${(tEnd - t0).toFixed(0)}ms feedId=${feedId} init=${message === "__init__"}`
+    );
 
     return NextResponse.json({
       messages: allMessages,
@@ -240,8 +252,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const t0 = performance.now();
   const auth = await requireAuth(req);
   if (isAuthError(auth)) return auth;
+  const tAuth = performance.now();
 
   const feedId = Number(req.nextUrl.searchParams.get("feedId"));
   if (!feedId) {
@@ -252,9 +266,15 @@ export async function GET(req: NextRequest) {
   if (!feed) {
     return NextResponse.json({ error: "Feed not found" }, { status: 404 });
   }
+  const tFeed = performance.now();
+  const messages = await getChatMessages(feedId);
+  const tMessages = performance.now();
+  console.log(
+    `[timing] GET /api/chat auth=${(tAuth - t0).toFixed(0)}ms ` +
+      `feed-lookup=${(tFeed - tAuth).toFixed(0)}ms ` +
+      `messages=${(tMessages - tFeed).toFixed(0)}ms ` +
+      `total=${(tMessages - t0).toFixed(0)}ms feedId=${feedId} count=${messages.length}`
+  );
 
-  return NextResponse.json({
-    messages: await getChatMessages(feedId),
-    feed,
-  });
+  return NextResponse.json({ messages, feed });
 }

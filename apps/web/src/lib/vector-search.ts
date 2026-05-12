@@ -104,7 +104,23 @@ export interface SearchFilter {
   createdAfterUs?: number;
 }
 
+// In-memory LRU cache for query embeddings. The embedding is a pure function
+// of the query text, which itself is a deterministic projection of the feed's
+// semantic_config — so it only changes when the user edits the feed. Keyed by
+// raw query text; evicts FIFO when over capacity. Process-local; does not
+// survive restarts or scale-out (acceptable for the demo; persist on the feed
+// row when we need cross-instance durability).
+const EMBED_CACHE_MAX = 256;
+const embedCache = new Map<string, number[]>();
+
 async function embedQuery(query: string): Promise<number[]> {
+  const cached = embedCache.get(query);
+  if (cached) {
+    // Touch: re-insert to make it MRU.
+    embedCache.delete(query);
+    embedCache.set(query, cached);
+    return cached;
+  }
   const res = await genai().models.embedContent({
     model: EMBEDDING_MODEL,
     contents: [{ parts: [{ text: query }] }],
@@ -117,6 +133,11 @@ async function embedQuery(query: string): Promise<number[]> {
   if (!values || values.length === 0) {
     throw new Error("Vertex Gemini returned an empty embedding");
   }
+  if (embedCache.size >= EMBED_CACHE_MAX) {
+    const oldest = embedCache.keys().next().value;
+    if (oldest !== undefined) embedCache.delete(oldest);
+  }
+  embedCache.set(query, values);
   return values;
 }
 
@@ -273,7 +294,10 @@ export async function searchPosts(opts: {
   filter?: SearchFilter;
 }): Promise<VectorHit[]> {
   const k = opts.k ?? 25;
+  const t0 = performance.now();
+  const embedCached = embedCache.has(opts.query);
   const queryVec = await embedQuery(opts.query);
+  const tEmbed = performance.now();
 
   const indexEndpoint = `projects/${VERTEX_PROJECT}/locations/${VERTEX_LOCATION}/indexEndpoints/${VERTEX_INDEX_ENDPOINT_ID}`;
   const restricts = buildQueryRestricts(opts.filter);
@@ -296,6 +320,7 @@ export async function searchPosts(opts: {
       },
     ],
   });
+  const tFind = performance.now();
   const resp = Array.isArray(findRes) ? findRes[0] : findRes;
 
   const neighbors = resp.nearestNeighbors?.[0]?.neighbors ?? [];
@@ -313,7 +338,16 @@ export async function searchPosts(opts: {
     scoreByUri.set(uri, score);
   }
 
-  return hydrateFromPostgres(uris, scoreByUri);
+  const hits = await hydrateFromPostgres(uris, scoreByUri);
+  const tHydrate = performance.now();
+  console.log(
+    `[timing] searchPosts embed=${(tEmbed - t0).toFixed(0)}ms${embedCached ? "(cached)" : ""} ` +
+      `findNeighbors=${(tFind - tEmbed).toFixed(0)}ms ` +
+      `pg-hydrate=${(tHydrate - tFind).toFixed(0)}ms ` +
+      `total=${(tHydrate - t0).toFixed(0)}ms ` +
+      `neighbors=${neighbors.length} hits=${hits.length}`
+  );
+  return hits;
 }
 
 /**

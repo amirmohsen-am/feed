@@ -10,10 +10,18 @@ import {
 import type { MechanicalFilters, SemanticConfig } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
+  const t0 = performance.now();
   const auth = await requireAuth(req);
   if (isAuthError(auth)) return auth;
+  const tAuth = performance.now();
 
   const feeds = await listFeedsForUser(auth.userId);
+  const tFeeds = performance.now();
+  console.log(
+    `[timing] GET /api/feeds auth=${(tAuth - t0).toFixed(0)}ms ` +
+      `list=${(tFeeds - tAuth).toFixed(0)}ms ` +
+      `total=${(tFeeds - t0).toFixed(0)}ms count=${feeds.length}`
+  );
   return NextResponse.json({ feeds });
 }
 
