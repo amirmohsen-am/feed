@@ -41,8 +41,141 @@ interface FeedCriteria {
 }
 interface Preferences { description: string; criteria: FeedCriteria; }
 interface Post {
-  uri: string; author_did: string; text: string;
-  score: number; indexed_at: string;
+  uri: string;
+  author_did: string;
+  text: string;
+  score: number;
+  indexed_at: string;
+  author_handle: string | null;
+  author_display_name: string | null;
+  author_avatar_cid: string | null;
+  like_count: number;
+  repost_count: number;
+  reply_count: number;
+  quote_count: number;
+  external_uri: string | null;
+  external_title: string | null;
+  external_desc: string | null;
+  quote_uri: string | null;
+  has_images: boolean;
+  image_count: number;
+  image_alts: string[];
+  is_reply: boolean;
+}
+
+function avatarUrl(did: string, cid: string | null): string | null {
+  if (!cid) return null;
+  return `https://cdn.bsky.app/img/avatar_thumbnail/plain/${did}/${cid}@jpeg`;
+}
+
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return iso;
+  const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (diffSec < 60) return `${diffSec}s`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d`;
+  const d = new Date(iso);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+}
+
+function formatAbsoluteTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatCount(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 10000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+  if (n < 1_000_000) return `${Math.floor(n / 1000)}k`;
+  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+}
+
+function externalHost(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+const SIDEBAR_W_KEY = "curator:sidebarWidth";
+const RIGHT_W_KEY = "curator:rightWidth";
+const SIDEBAR_MIN = 200;
+const SIDEBAR_MAX = 480;
+const RIGHT_MIN = 320;
+const RIGHT_MAX = 720;
+
+function readStoredWidth(key: string, fallback: number, min: number, max: number): number {
+  if (typeof window === "undefined") return fallback;
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return fallback;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function useResizable(
+  key: string,
+  initial: number,
+  min: number,
+  max: number,
+  direction: "left" | "right"
+): [number, (e: React.PointerEvent<HTMLDivElement>) => void] {
+  // Lazy init keeps SSR (no window) returning `initial`; the client picks up
+  // the stored value on first render via the same initializer.
+  const [width, setWidth] = useState<number>(() => readStoredWidth(key, initial, min, max));
+  const draggingRef = useRef<{ startX: number; startW: number } | null>(null);
+
+  useEffect(() => {
+    function onMove(e: PointerEvent) {
+      const d = draggingRef.current;
+      if (!d) return;
+      const dx = e.clientX - d.startX;
+      const next = direction === "left" ? d.startW + dx : d.startW - dx;
+      const clamped = Math.min(max, Math.max(min, next));
+      setWidth(clamped);
+    }
+    function onUp() {
+      if (!draggingRef.current) return;
+      draggingRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      try { window.localStorage.setItem(key, String(width)); } catch { /* ignore */ }
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [key, min, max, direction, width]);
+
+  const startDrag = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    draggingRef.current = { startX: e.clientX, startW: width };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [width]);
+
+  return [width, startDrag];
 }
 
 interface SavedFeed {
@@ -98,6 +231,12 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
   const [mobileTab, setMobileTab] = useState<"chat" | "feed" | "tune">("chat");
   const [rightPane, setRightPane] = useState<"chat" | "tune">("chat");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarWidth, startSidebarDrag] = useResizable(
+    SIDEBAR_W_KEY, 264, SIDEBAR_MIN, SIDEBAR_MAX, "left"
+  );
+  const [rightWidth, startRightDrag] = useResizable(
+    RIGHT_W_KEY, 380, RIGHT_MIN, RIGHT_MAX, "right"
+  );
   const [optionsUnread, setOptionsUnread] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -498,7 +637,10 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
         />
       )}
       {/* SIDEBAR */}
-      <div className={`cur-sidebar${sidebarOpen ? " is-open" : ""}`}>
+      <div
+        className={`cur-sidebar${sidebarOpen ? " is-open" : ""}`}
+        style={{ ["--cur-sidebar-w" as string]: `${sidebarWidth}px` }}
+      >
         <div className="cur-sidebar-head">
           <Link href="/">
             <ShaderLogo height={32} />
@@ -623,6 +765,15 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
         </div>
       </div>
 
+      {/* SIDEBAR RESIZER */}
+      <div
+        className="cur-resizer cur-resizer-sidebar"
+        onPointerDown={startSidebarDrag}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+      />
+
       {/* DELETE CONFIRMATION */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent className="profile-dialog">
@@ -740,38 +891,189 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
                     const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
                     return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
                   })();
+                  const profileUrl = post.author_handle
+                    ? `https://bsky.app/profile/${post.author_handle}`
+                    : `https://bsky.app/profile/${post.author_did}`;
+                  const avatar = avatarUrl(post.author_did, post.author_avatar_cid);
+                  const displayName =
+                    post.author_display_name?.trim() ||
+                    post.author_handle ||
+                    post.author_did.slice(0, 16) + "…";
+                  const handleLabel = post.author_handle
+                    ? `@${post.author_handle}`
+                    : post.author_did.slice(0, 20) + "…";
+                  const extHost = externalHost(post.external_uri);
                   return (
-                    <div key={post.uri} className="cur-post">
-                      <div className="cur-post-head">
-                        <div className="avatar" />
-                        <span className="handle">{post.author_did.slice(0, 24)}...</span>
-                        <span className={`score ${post.score >= 0.6 ? "high" : post.score >= 0.4 ? "mid" : "low"}`}>
+                    <article key={post.uri} className="cur-post-card">
+                      <header className="cur-post-card-head">
+                        <a
+                          href={profileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="cur-post-avatar"
+                          aria-label={`Open ${displayName} on Bluesky`}
+                        >
+                          {avatar ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img
+                              src={avatar}
+                              alt=""
+                              referrerPolicy="no-referrer"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <span className="cur-post-avatar-fallback" aria-hidden>
+                              {(displayName[0] || "?").toUpperCase()}
+                            </span>
+                          )}
+                        </a>
+                        <div className="cur-post-author">
+                          <a
+                            href={profileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="cur-post-name"
+                          >
+                            {displayName}
+                          </a>
+                          <span className="cur-post-meta">
+                            <a
+                              href={profileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="cur-post-handle"
+                            >
+                              {handleLabel}
+                            </a>
+                            <span className="cur-post-meta-sep" aria-hidden>·</span>
+                            <time
+                              className="cur-post-time"
+                              dateTime={post.indexed_at}
+                              title={formatAbsoluteTime(post.indexed_at)}
+                            >
+                              {formatRelativeTime(post.indexed_at)}
+                            </time>
+                            {post.is_reply && (
+                              <>
+                                <span className="cur-post-meta-sep" aria-hidden>·</span>
+                                <span className="cur-post-reply-tag">reply</span>
+                              </>
+                            )}
+                          </span>
+                        </div>
+                        <span
+                          className={`cur-post-score ${post.score >= 0.6 ? "high" : post.score >= 0.4 ? "mid" : "low"}`}
+                          title="Match score"
+                        >
                           {(post.score * 100).toFixed(0)}%
+                        </span>
+                      </header>
+
+                      <div className="cur-post-card-body">{post.text}</div>
+
+                      {post.external_uri && (
+                        <a
+                          className="cur-post-embed"
+                          href={post.external_uri}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <div className="cur-post-embed-host">{extHost || "link"}</div>
+                          {post.external_title && (
+                            <div className="cur-post-embed-title">{post.external_title}</div>
+                          )}
+                          {post.external_desc && (
+                            <div className="cur-post-embed-desc">{post.external_desc}</div>
+                          )}
+                        </a>
+                      )}
+
+                      {post.quote_uri && !post.external_uri && (
+                        <a
+                          className="cur-post-embed quote"
+                          href={(() => {
+                            const m = post.quote_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+                            return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : "#";
+                          })()}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <div className="cur-post-embed-host">↳ quoted post</div>
+                          <div className="cur-post-embed-desc">Open on Bluesky to view the quoted post.</div>
+                        </a>
+                      )}
+
+                      {post.has_images && post.image_count > 0 && (
+                        <div className="cur-post-images-note">
+                          {post.image_count} image{post.image_count === 1 ? "" : "s"}
+                          {post.image_alts.filter(Boolean).length > 0 && (
+                            <span className="cur-post-images-alt">
+                              {" — "}
+                              {post.image_alts.filter(Boolean).join(" · ")}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      <footer className="cur-post-stats">
+                        <span className="cur-post-stat" title="Replies">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                          </svg>
+                          {formatCount(post.reply_count)}
+                        </span>
+                        <span className="cur-post-stat" title="Reposts">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <polyline points="17 1 21 5 17 9" />
+                            <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                            <polyline points="7 23 3 19 7 15" />
+                            <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                          </svg>
+                          {formatCount(post.repost_count)}
+                        </span>
+                        <span className="cur-post-stat" title="Likes">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                          </svg>
+                          {formatCount(post.like_count)}
+                        </span>
+                        <span className="cur-post-stat" title="Quotes">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <path d="M3 21c3 0 5-2 5-5V7H3v8h4" />
+                            <path d="M14 21c3 0 5-2 5-5V7h-5v8h4" />
+                          </svg>
+                          {formatCount(post.quote_count)}
                         </span>
                         {bskyUrl && (
                           <a
                             href={bskyUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="cur-post-link"
+                            className="cur-post-open"
                             title="Open in Bluesky"
-                            aria-label="Open in Bluesky"
                           >
-                            ↗
+                            Open ↗
                           </a>
                         )}
-                      </div>
-                      <div className="cur-post-body">{post.text}</div>
-                      <div className="cur-post-time">{post.indexed_at}</div>
-                    </div>
+                      </footer>
+                    </article>
                   );
                 })
               )}
             </div>
           </div>
 
+          {/* WORKBENCH RESIZER */}
+          <div
+            className="cur-resizer cur-resizer-workbench"
+            onPointerDown={startRightDrag}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize right pane"
+          />
+
           {/* CHAT PANE (right, when rightPane === "chat") */}
-          <div className="cur-chat-pane">
+          <div className="cur-chat-pane" style={{ ["--cur-right-w" as string]: `${rightWidth}px` }}>
             <div className="cur-right-toggle" role="tablist" aria-label="Workbench mode">
               <button
                 type="button"
@@ -938,6 +1240,7 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
             postCount={postCount}
             rightPane={rightPane}
             onRightPaneChange={setRightPane}
+            style={{ ["--cur-right-w" as string]: `${rightWidth}px` }}
           />
         </div>
 

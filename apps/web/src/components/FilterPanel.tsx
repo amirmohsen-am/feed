@@ -12,6 +12,7 @@ interface FilterPanelProps {
   postCount: number;
   rightPane?: "chat" | "tune";
   onRightPaneChange?: (pane: "chat" | "tune") => void;
+  style?: React.CSSProperties;
 }
 
 export default function FilterPanel({
@@ -22,6 +23,7 @@ export default function FilterPanel({
   postCount,
   rightPane,
   onRightPaneChange,
+  style,
 }: FilterPanelProps) {
   const [mech, setMech] = useState<MechanicalFilters>({
     ...DEFAULT_MECHANICAL_FILTERS,
@@ -104,7 +106,7 @@ export default function FilterPanel({
   }
 
   return (
-    <div className="ctrl-tower">
+    <div className="ctrl-tower" style={style}>
       {onRightPaneChange && (
         <div className="cur-right-toggle" role="tablist" aria-label="Workbench mode">
           <button
