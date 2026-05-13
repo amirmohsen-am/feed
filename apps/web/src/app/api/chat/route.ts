@@ -79,24 +79,28 @@ Generate 10-20 SPECIFIC keywords. Not just "AI" — think "transformer architect
 ============================================================
 STRUCTURAL FILTERS — reactive, never probing
 ============================================================
-Some preferences are about post *shape*, not topic. Do NOT add a question for these — only set them when the user volunteers a preference. Defaults are inclusive (post_type "all", everything else off / empty). Map natural language like:
-- "skip replies" / "top-level only"            → post_type: "top_level"
-- "only replies" / "discussion threads only"   → post_type: "replies"
-- "English only" / "no Japanese posts"          → lang_allow: ["en"]
-- "with photos" / "image-heavy" / "visual"      → require_media: true
-- "no images" / "text only"                     → exclude_media: true
-- "with links" / "articles"                     → require_link: true
-- "no link spam" / "no article shares"          → exclude_links: true
-- "quote-posts" / "reacting to other posts"     → require_quote: true
-- "only #aiart posts"                           → hashtag_include: ["aiart"]
-Lang codes are ISO-639-1. Hashtags are lowercase, no \`#\`. If the user contradicts an earlier structural preference, flip the field.
+Some preferences are about post *shape*, not topic. Do NOT add a question for these — only set them when the user volunteers a preference, but be GENEROUS in recognizing the phrasing. Defaults are inclusive (post_type "all", everything else off / empty). Recognize the intent first, then map to the field:
+
+- ANY negation involving replies — "hide replies", "no replies", "skip replies", "without replies", "exclude replies", "I don't want replies", "no reply chains", "top-level only", "originals only" — all map to → **post_type: "top_level"**
+- ANY request to see ONLY replies / discussion — "only replies", "discussion threads", "just the conversations" — → **post_type: "replies"**
+- Language preferences — "English only", "no Japanese", "just en/es" — → **lang_allow: ["en"]** (ISO-639-1 codes)
+- Wanting images — "with photos", "image-heavy", "visual posts" — → **require_media: true**
+- Avoiding images — "no images", "text only", "no photos", "hide images" — → **exclude_media: true**
+- Wanting video — "with video", "video clips", "only videos", "video-heavy" — → **require_video: true**
+- Avoiding video — "no video", "hide videos", "skip clips" — → **exclude_video: true**
+- Wanting links — "with links", "articles" — → **require_link: true**
+- Avoiding links — "no link spam", "no article shares", "hide links" — → **exclude_links: true**
+- Wanting quote posts — "quote-posts", "reacting to other posts" — → **require_quote: true**
+- Specific hashtags — "only #aiart posts" — → **hashtag_include: ["aiart"]** (lowercase, no \`#\`)
+
+If the user contradicts an earlier structural preference, FLIP the field — don't keep stale values. When in doubt, lean toward acting: if a sentence sounds like a structural preference, it probably is one.
 
 ============================================================
 LIVE CONFIG — after EVERY assistant reply, append ALL THREE on their own lines:
 ============================================================
 - FEED_NAME:Short Feed Name (2-4 words, punchy — e.g. "Indie Dev Underground", "NBA Brain", "AI Paper Trail"). Re-emit each turn; refine as you learn more.
 - FEED_CONFIG_JSON:{"topics":[...],"keywords":[...],"exclude_topics":[...],"exclude_keywords":[...],"vibes":"...","embedding_threshold":0.5,"judge_enabled":true,"judge_strictness":"moderate"}
-- MECHANICAL_FILTERS_JSON:{"post_type":"all","lang_allow":[],"require_media":false,"exclude_media":false,"require_link":false,"exclude_links":false,"require_quote":false,"hashtag_include":[]}
+- MECHANICAL_FILTERS_JSON:{"post_type":"all","lang_allow":[],"require_media":false,"exclude_media":false,"require_video":false,"exclude_video":false,"require_link":false,"exclude_links":false,"require_quote":false,"hashtag_include":[]}
 
 Both JSON blocks must reflect your CURRENT BEST UNDERSTANDING — cumulative, not a delta. Always include EVERY field. Empty arrays / false / "all" are fine for fields the user hasn't touched. NEVER drop a value you previously inferred unless the user explicitly contradicts it.
 
@@ -243,6 +247,10 @@ export async function POST(req: NextRequest) {
             pickScalar(incoming.require_media, existing.require_media) ?? false,
           exclude_media:
             pickScalar(incoming.exclude_media, existing.exclude_media) ?? false,
+          require_video:
+            pickScalar(incoming.require_video, existing.require_video) ?? false,
+          exclude_video:
+            pickScalar(incoming.exclude_video, existing.exclude_video) ?? false,
           require_link:
             pickScalar(incoming.require_link, existing.require_link) ?? false,
           exclude_links:
@@ -251,9 +259,16 @@ export async function POST(req: NextRequest) {
             pickScalar(incoming.require_quote, existing.require_quote) ?? false,
           hashtag_include: pickList(incoming.hashtag_include, existing.hashtag_include),
         };
+        console.log(
+          `[chat] feedId=${feedId} mechanical_filters incoming=${JSON.stringify(incoming)} merged=${JSON.stringify(updates.mechanical_filters)}`
+        );
       } catch {
         // parsing failed, skip
       }
+    } else {
+      console.log(
+        `[chat] feedId=${feedId} no MECHANICAL_FILTERS_JSON trailer in assistant reply`
+      );
     }
 
     if (Object.keys(updates).length > 0) {

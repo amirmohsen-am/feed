@@ -1431,6 +1431,45 @@
 .ctrl-textarea::placeholder{ color: var(--ink-4); }
 .ctrl-textarea:focus{ border-color: var(--aurora-deep); }
 
+.ctrl-safety{
+  background: rgba(192, 86, 86, 0.05);
+  border: 1px solid rgba(192, 86, 86, 0.2);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ctrl-safety-head{
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.ctrl-safety-icon{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  flex-shrink: 0;
+  color: var(--rose, #c05656);
+  margin-top: 1px;
+}
+.ctrl-safety-text{
+  font-family: var(--rf-body);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.ctrl-safety-text strong{
+  color: var(--ink);
+  font-weight: 600;
+}
+.ctrl-safety-tags{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 /* ── RESIZERS ─────────────────────────── */
 .cur-resizer{
   width: 5px;

@@ -296,6 +296,8 @@ function mechanicalToSearchFilter(m?: MechanicalFilters): SearchFilter | undefin
   if (m.post_type === "replies") { f.isReply = true; any = true; }
   if (m.require_media) { f.hasImages = true; any = true; }
   else if (m.exclude_media) { f.hasImages = false; any = true; }
+  if (m.require_video) { f.hasVideo = true; any = true; }
+  else if (m.exclude_video) { f.hasVideo = false; any = true; }
   if (m.require_link) { f.hasExternalLink = true; any = true; }
   else if (m.exclude_links) { f.hasExternalLink = false; any = true; }
   if (m.require_quote) { f.hasQuote = true; any = true; }
@@ -304,6 +306,7 @@ function mechanicalToSearchFilter(m?: MechanicalFilters): SearchFilter | undefin
     any = true;
   }
   if (m.author_blocklist?.length) { f.didExclude = m.author_blocklist; any = true; }
+  if (m.block_labels?.length) { f.selfLabelsDeny = m.block_labels; any = true; }
   return any ? f : undefined;
 }
 

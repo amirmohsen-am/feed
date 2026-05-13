@@ -6,10 +6,12 @@ export interface MechanicalFilters {
   min_length: number;             // minimum character count (default 20)
   max_length: number;             // 0 = unlimited
   post_type: "all" | "top_level" | "replies";
-  require_media: boolean;
+  require_media: boolean;         // post must have images
+  require_video: boolean;         // post must have video
   require_link: boolean;
   require_quote: boolean;
-  exclude_media: boolean;
+  exclude_media: boolean;         // reject posts with images
+  exclude_video: boolean;         // reject posts with video
   exclude_links: boolean;
   hashtag_include: string[];      // post must contain at least one (case-insensitive)
   hashtag_exclude: string[];      // reject if post contains any
@@ -18,6 +20,7 @@ export interface MechanicalFilters {
   author_allowlist: string[];     // DIDs — if non-empty, ONLY these authors pass
   author_blocklist: string[];     // DIDs — reject these authors
   author_max_per_hour: number;    // 0 = unlimited
+  block_labels: string[];         // Bluesky self-labels to reject (e.g. ["porn","sexual","nudity","graphic-media"])
 }
 
 // --- Semantic Config (Stage 2: embeddings + LLM judge) ---

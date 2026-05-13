@@ -31,6 +31,13 @@ const VERTEX_DEPLOYED_INDEX_ID =
 const EMBEDDING_MODEL = "gemini-embedding-001";
 const EMBEDDING_DIMENSION = 768;
 
+// AppView host + the official Bluesky moderation labeler. We ask the AppView
+// to attach this labeler's labels onto getPosts responses so we can drop
+// labeler-applied NSFW that wasn't self-labeled by the author.
+const APPVIEW_HOST = process.env.BLUESKY_APPVIEW_HOST ?? "https://public.api.bsky.app";
+const OFFICIAL_LABELER_DID = "did:plc:ar7c4by46qjdydhdevvrndac";
+const GET_POSTS_BATCH = 25; // app.bsky.feed.getPosts caps at 25 URIs per call
+
 let _matchClient: InstanceType<typeof MatchServiceClient> | null = null;
 function matchClient() {
   if (!_matchClient) {
@@ -288,6 +295,66 @@ async function hydrateFromPostgres(
   return hits;
 }
 
+/**
+ * Fetch attached labels for a set of post URIs from the public Bluesky
+ * AppView, asking it to merge in labels from the official moderation labeler.
+ *
+ * The AppView caps `app.bsky.feed.getPosts` at 25 URIs per call, so we batch
+ * and fan out in parallel. Returns a `uri → label-values[]` map containing
+ * both self-labels (always present) and labels emitted by the labelers
+ * named in the `atproto-accept-labelers` header.
+ *
+ * Fail-soft: any HTTP error returns an empty map for that batch — the caller
+ * treats "no labels known" as "don't filter," so a flaky AppView never blocks
+ * the user from seeing their feed.
+ */
+async function fetchPostLabels(
+  uris: string[],
+  labelerDids: string[] = [OFFICIAL_LABELER_DID]
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (uris.length === 0) return out;
+
+  const batches: string[][] = [];
+  for (let i = 0; i < uris.length; i += GET_POSTS_BATCH) {
+    batches.push(uris.slice(i, i + GET_POSTS_BATCH));
+  }
+
+  const acceptHeader = labelerDids.join(",");
+  const results = await Promise.all(
+    batches.map(async (batch) => {
+      const params = new URLSearchParams();
+      for (const uri of batch) params.append("uris", uri);
+      const url = `${APPVIEW_HOST}/xrpc/app.bsky.feed.getPosts?${params}`;
+      try {
+        const res = await fetch(url, {
+          headers: { "atproto-accept-labelers": acceptHeader },
+        });
+        if (!res.ok) {
+          console.warn(
+            `[vector-search] AppView getPosts ${res.status} (batch of ${batch.length})`
+          );
+          return [] as Array<{ uri: string; labels?: Array<{ val: string }> }>;
+        }
+        const json = (await res.json()) as {
+          posts?: Array<{ uri: string; labels?: Array<{ val: string }> }>;
+        };
+        return json.posts ?? [];
+      } catch (e) {
+        console.warn("[vector-search] AppView getPosts failed:", e);
+        return [];
+      }
+    })
+  );
+
+  for (const posts of results) {
+    for (const p of posts) {
+      out.set(p.uri, (p.labels ?? []).map((l) => l.val));
+    }
+  }
+  return out;
+}
+
 export async function searchPosts(opts: {
   query: string;
   k?: number;
@@ -338,16 +405,40 @@ export async function searchPosts(opts: {
     scoreByUri.set(uri, score);
   }
 
-  const hits = await hydrateFromPostgres(uris, scoreByUri);
-  const tHydrate = performance.now();
+  // Hydrate from Postgres AND fetch labeler-applied labels in parallel — both
+  // take the same URI list. Skip the AppView call entirely if there's nothing
+  // to filter on (block_labels turned off).
+  const blockLabels = opts.filter?.selfLabelsDeny ?? [];
+  const blockSet = new Set(blockLabels);
+  const wantLabels = blockLabels.length > 0;
+
+  const [hits, postLabels] = await Promise.all([
+    hydrateFromPostgres(uris, scoreByUri),
+    wantLabels ? fetchPostLabels(uris) : Promise.resolve(null as Map<string, string[]> | null),
+  ]);
+  const tParallel = performance.now();
+
+  let filteredHits = hits;
+  let removed = 0;
+  if (postLabels) {
+    filteredHits = hits.filter((h) => {
+      const labels = postLabels.get(h.uri);
+      if (!labels || labels.length === 0) return true;
+      const hit = labels.some((l) => blockSet.has(l));
+      if (hit) removed++;
+      return !hit;
+    });
+  }
+
   console.log(
     `[timing] searchPosts embed=${(tEmbed - t0).toFixed(0)}ms${embedCached ? "(cached)" : ""} ` +
       `findNeighbors=${(tFind - tEmbed).toFixed(0)}ms ` +
-      `pg-hydrate=${(tHydrate - tFind).toFixed(0)}ms ` +
-      `total=${(tHydrate - t0).toFixed(0)}ms ` +
-      `neighbors=${neighbors.length} hits=${hits.length}`
+      `hydrate+labels=${(tParallel - tFind).toFixed(0)}ms ` +
+      `total=${(tParallel - t0).toFixed(0)}ms ` +
+      `neighbors=${neighbors.length} hits=${hits.length}` +
+      (postLabels ? ` labeler-filtered=${removed}` : "")
   );
-  return hits;
+  return filteredHits;
 }
 
 /**
