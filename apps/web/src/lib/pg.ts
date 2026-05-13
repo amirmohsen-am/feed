@@ -302,18 +302,33 @@ function buildSearchQuery(feed: DbFeed): string {
   return parts.join(". ").trim();
 }
 
+export interface FeedPreviewPost {
+  uri: string;
+  text: string;
+  author_did: string;
+  author_handle: string | null;
+  author_display_name: string | null;
+  author_avatar_cid: string | null;
+  score: number;
+  indexed_at: string;
+  like_count: number;
+  repost_count: number;
+  reply_count: number;
+  quote_count: number;
+  external_uri: string | null;
+  external_title: string | null;
+  external_desc: string | null;
+  quote_uri: string | null;
+  has_images: boolean;
+  image_count: number;
+  image_alts: string[];
+  is_reply: boolean;
+}
+
 export async function getFeedPreviewPosts(
   feedId: number,
   limit: number = 25
-): Promise<
-  {
-    uri: string;
-    text: string;
-    author_did: string;
-    score: number;
-    indexed_at: string;
-  }[]
-> {
+): Promise<FeedPreviewPost[]> {
   const t0 = performance.now();
   const feedRes = await query("SELECT * FROM feeds WHERE id = $1", [feedId]);
   if (feedRes.rows.length === 0) return [];
@@ -339,8 +354,23 @@ export async function getFeedPreviewPosts(
       uri: h.uri,
       text: h.text,
       author_did: h.did,
+      author_handle: h.author_handle,
+      author_display_name: h.author_display_name,
+      author_avatar_cid: h.author_avatar_cid,
       score: h.vector_score,
       indexed_at: h.created_at,
+      like_count: h.like_count ?? 0,
+      repost_count: h.repost_count ?? 0,
+      reply_count: h.reply_count ?? 0,
+      quote_count: h.quote_count ?? 0,
+      external_uri: h.external_uri,
+      external_title: h.external_title,
+      external_desc: h.external_desc,
+      quote_uri: h.quote_uri,
+      has_images: h.has_images,
+      image_count: h.image_count,
+      image_alts: h.image_alts,
+      is_reply: h.is_reply,
     }));
   } catch (e) {
     // Vertex unreachable / IAM issue. Surface as empty so the UI shows its
