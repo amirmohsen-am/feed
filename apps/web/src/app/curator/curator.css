@@ -823,6 +823,59 @@
 .cur-refresh:disabled{
   opacity: 0.45; cursor: default;
 }
+
+/* ── CARDS ↔ EMBED VIEW TOGGLE ─────────────────── */
+.cur-view-toggle{
+  display: inline-flex;
+  background: var(--paper-3);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+.cur-view-seg{
+  background: transparent;
+  border: none;
+  font-family: var(--rf-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+  white-space: nowrap;
+}
+.cur-view-seg:hover{ color: var(--ink); }
+.cur-view-seg.active{
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 1px 0 rgba(11,24,20,0.06);
+}
+
+/* ── BLUESKY EMBED WRAP ─────────────────────────── */
+.cur-post-embed-wrap{
+  margin: 12px 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--hair);
+}
+.cur-post-embed-wrap:last-child{ border-bottom: none; }
+.cur-post-embed-meta{
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 6px;
+  padding: 0 4px;
+}
+.cur-post-embed-meta .cur-post-score{ margin-top: 0; }
+.cur-post-embed-meta .cur-post-open{
+  margin-left: auto;
+  padding-top: 0;
+}
+/* Override Bluesky's 600px cap so embeds fill the post column on wide panes. */
+.cur-post-embed-wrap .bluesky-embed{
+  margin: 0 !important;
+  max-width: 100% !important;
+}
+
 .cur-empty{
   text-align: center;
   padding: 80px 0;

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import Script from "next/script";
 import "./curator.css";
 import "./onboarding.css";
 import "./voices.css";
@@ -113,6 +114,15 @@ function externalHost(url: string | null): string | null {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
     return null;
+  }
+}
+
+type ViewMode = "card" | "embed";
+const VIEW_MODE_KEY = "curator:viewMode";
+
+declare global {
+  interface Window {
+    bluesky?: { scan: (root?: Element | Document) => void };
   }
 }
 
@@ -237,6 +247,15 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
   const [rightWidth, startRightDrag] = useResizable(
     RIGHT_W_KEY, 380, RIGHT_MIN, RIGHT_MAX, "right"
   );
+  const [viewMode, setViewModeState] = useState<ViewMode>(() => {
+    if (typeof window === "undefined") return "card";
+    const stored = window.localStorage.getItem(VIEW_MODE_KEY);
+    return stored === "embed" ? "embed" : "card";
+  });
+  function setViewMode(next: ViewMode) {
+    setViewModeState(next);
+    try { window.localStorage.setItem(VIEW_MODE_KEY, next); } catch { /* ignore */ }
+  }
   const [optionsUnread, setOptionsUnread] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -431,6 +450,17 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
   }, [prevCriteriaJson, activeFeedId, reloadFeeds]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  // Re-scan Bluesky embeds whenever the post list or view mode changes.
+  // The embed script auto-scans on first load; manual rescans cover React rerenders.
+  useEffect(() => {
+    if (viewMode !== "embed") return;
+    const scan = () => window.bluesky?.scan?.();
+    scan();
+    // Script may load slightly after mount — retry briefly.
+    const t = setTimeout(scan, 300);
+    return () => clearTimeout(t);
+  }, [viewMode, posts]);
 
   async function send(text: string) {
     if (!text.trim() || loading) return;
@@ -629,6 +659,11 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
 
   return (
     <div className="curator-shell">
+      <Script
+        src="https://embed.bsky.app/static/embed.js"
+        strategy="afterInteractive"
+        onLoad={() => window.bluesky?.scan?.()}
+      />
       {sidebarOpen && (
         <div
           className="cur-sidebar-backdrop"
@@ -854,6 +889,26 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
                   </>
                 )}
               </div>
+              <div className="cur-view-toggle" role="tablist" aria-label="Post view">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={viewMode === "card"}
+                  className={`cur-view-seg${viewMode === "card" ? " active" : ""}`}
+                  onClick={() => setViewMode("card")}
+                >
+                  Cards
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={viewMode === "embed"}
+                  className={`cur-view-seg${viewMode === "embed" ? " active" : ""}`}
+                  onClick={() => setViewMode("embed")}
+                >
+                  Bluesky embed
+                </button>
+              </div>
               {(() => {
                 const fid = activeFeedId ? parseInt(activeFeedId) || null : null;
                 return (
@@ -885,6 +940,50 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
                     </>
                   )}
                 </div>
+              ) : viewMode === "embed" ? (
+                posts.map((post) => {
+                  const bskyUrl = (() => {
+                    const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+                    return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
+                  })();
+                  return (
+                    <div key={post.uri} className="cur-post-embed-wrap">
+                      <div className="cur-post-embed-meta">
+                        <span
+                          className={`cur-post-score ${post.score >= 0.6 ? "high" : post.score >= 0.4 ? "mid" : "low"}`}
+                          title="Match score"
+                        >
+                          {(post.score * 100).toFixed(0)}%
+                        </span>
+                        {bskyUrl && (
+                          <a
+                            href={bskyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="cur-post-open"
+                            title="Open in Bluesky"
+                          >
+                            Open ↗
+                          </a>
+                        )}
+                      </div>
+                      <div
+                        className="bluesky-embed"
+                        data-bluesky-uri={post.uri}
+                        data-bluesky-embed-color-mode="light"
+                      >
+                        <p>{post.text}</p>
+                        {bskyUrl && (
+                          <p>
+                            <a href={bskyUrl} target="_blank" rel="noopener noreferrer">
+                              View on Bluesky
+                            </a>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
               ) : (
                 posts.map((post) => {
                   const bskyUrl = (() => {
