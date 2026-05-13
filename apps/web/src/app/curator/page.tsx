@@ -62,6 +62,7 @@ interface Post {
   image_count: number;
   image_alts: string[];
   is_reply: boolean;
+  reply_parent_uri: string | null;
 }
 
 function avatarUrl(did: string, cid: string | null): string | null {
@@ -119,6 +120,7 @@ function externalHost(url: string | null): string | null {
 
 type ViewMode = "card" | "embed";
 const VIEW_MODE_KEY = "curator:viewMode";
+const HIDE_UNAVAIL_KEY = "curator:hideUnavailable";
 
 declare global {
   interface Window {
@@ -256,6 +258,23 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
     setViewModeState(next);
     try { window.localStorage.setItem(VIEW_MODE_KEY, next); } catch { /* ignore */ }
   }
+  const [hideUnavailable, setHideUnavailableState] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem(HIDE_UNAVAIL_KEY) !== "false";
+  });
+  function setHideUnavailable(next: boolean) {
+    setHideUnavailableState(next);
+    try {
+      window.localStorage.setItem(HIDE_UNAVAIL_KEY, String(next));
+    } catch {
+      /* ignore */
+    }
+  }
+  const [unavailableUris, setUnavailableUris] = useState<Set<string>>(
+    () => new Set()
+  );
+  // Memoizes getPostThread results across re-renders: uri → true(available) | false(unavailable)
+  const bskyAvailabilityCache = useRef<Map<string, boolean>>(new Map());
   const [optionsUnread, setOptionsUnread] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -451,8 +470,10 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  // Re-scan Bluesky embeds whenever the post list or view mode changes.
-  // The embed script auto-scans on first load; manual rescans cover React rerenders.
+  // Re-scan Bluesky embeds whenever the visible set of posts changes — that
+  // includes view mode, the posts array, AND the hide-unavailable toggle or
+  // newly-detected unavailable URIs (which un/mount wraps with fresh fallback
+  // text the embed script needs to swap out).
   useEffect(() => {
     if (viewMode !== "embed") return;
     const scan = () => window.bluesky?.scan?.();
@@ -460,6 +481,80 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
     // Script may load slightly after mount — retry briefly.
     const t = setTimeout(scan, 300);
     return () => clearTimeout(t);
+  }, [viewMode, posts, hideUnavailable, unavailableUris]);
+
+  // Detect unavailable posts via the public AT Proto API instead of
+  // measuring iframe heights. Two cases we want to hide:
+  //   1. Deleted/not-found posts          → getPostThread returns 4xx.
+  //   2. "!no-unauthenticated" authors    → returns 200 but the author's
+  //      labels include this label; the iframe renders the
+  //      "author has requested their posts not be displayed" template.
+  // Results are cached in a ref so we don't refetch URIs as state changes.
+  useEffect(() => {
+    if (viewMode !== "embed") return;
+    if (posts.length === 0) return;
+
+    const ac = new AbortController();
+    const cache = bskyAvailabilityCache.current;
+
+    async function check(uri: string) {
+      const cached = cache.get(uri);
+      if (cached !== undefined) {
+        if (cached === false) {
+          setUnavailableUris((prev) =>
+            prev.has(uri) ? prev : new Set(prev).add(uri)
+          );
+        }
+        return;
+      }
+      try {
+        const res = await fetch(
+          `https://public.api.bsky.app/xrpc/app.bsky.feed.getPostThread?uri=${encodeURIComponent(
+            uri
+          )}&depth=0&parentHeight=0`,
+          { signal: ac.signal }
+        );
+        if (!res.ok) {
+          // 4xx → NotFound / deleted / blocked. Unavailable.
+          cache.set(uri, false);
+          setUnavailableUris((prev) =>
+            prev.has(uri) ? prev : new Set(prev).add(uri)
+          );
+          return;
+        }
+        const data = (await res.json()) as {
+          thread?: {
+            post?: {
+              labels?: { val?: string }[];
+              author?: { labels?: { val?: string }[] };
+            };
+          };
+        };
+        const post = data.thread?.post;
+        const hasNoUnauth =
+          post?.labels?.some((l) => l.val === "!no-unauthenticated") ||
+          post?.author?.labels?.some((l) => l.val === "!no-unauthenticated") ||
+          false;
+        if (!post || hasNoUnauth) {
+          cache.set(uri, false);
+          setUnavailableUris((prev) =>
+            prev.has(uri) ? prev : new Set(prev).add(uri)
+          );
+        } else {
+          cache.set(uri, true);
+        }
+      } catch (e) {
+        if ((e as { name?: string }).name === "AbortError") return;
+        // Network failure → don't flag; let the embed iframe render whatever
+        // it renders. Treat as unknown rather than unavailable.
+      }
+    }
+
+    posts.forEach((p) => {
+      check(p.uri);
+    });
+
+    return () => ac.abort();
   }, [viewMode, posts]);
 
   async function send(text: string) {
@@ -861,6 +956,17 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
             {hasCriteria && <span className="live-badge">live</span>}
           </div>
           <div className="cur-topbar-right">
+            <Link
+              href="/search"
+              className="cur-topbar-btn ghost"
+              title="Open retrieval search lab"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="7" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              Search
+            </Link>
             <button
               onClick={() => setShowImportMemory(true)}
               className="cur-topbar-icon"
@@ -909,6 +1015,27 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
                   Bluesky embed
                 </button>
               </div>
+              {viewMode === "embed" && (
+                <label
+                  className="cur-unavail-toggle"
+                  title="Hide posts whose Bluesky iframe renders the 'post not found / deleted' template"
+                >
+                  <input
+                    type="checkbox"
+                    checked={hideUnavailable}
+                    onChange={(e) => setHideUnavailable(e.target.checked)}
+                  />
+                  <span>
+                    Hide unavailable
+                    {unavailableUris.size > 0 && (
+                      <span className="cur-unavail-count">
+                        {" "}
+                        ({unavailableUris.size})
+                      </span>
+                    )}
+                  </span>
+                </label>
+              )}
               {(() => {
                 const fid = activeFeedId ? parseInt(activeFeedId) || null : null;
                 return (
@@ -946,8 +1073,39 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
                     const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
                     return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
                   })();
+                  const replyParentUrl = (() => {
+                    if (!post.reply_parent_uri) return null;
+                    const m = post.reply_parent_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+                    return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
+                  })();
+                  if (hideUnavailable && unavailableUris.has(post.uri)) {
+                    return null;
+                  }
                   return (
-                    <div key={post.uri} className="cur-post-embed-wrap">
+                    <div
+                      key={post.uri}
+                      className="cur-post-embed-wrap"
+                      data-bsky-uri={post.uri}
+                    >
+                      {post.is_reply && (
+                        <div className="cur-post-reply-banner cur-post-reply-banner-embed">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <polyline points="9 17 4 12 9 7" />
+                            <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+                          </svg>
+                          {replyParentUrl ? (
+                            <a
+                              href={replyParentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              Replying to a post
+                            </a>
+                          ) : (
+                            <span>Reply</span>
+                          )}
+                        </div>
+                      )}
                       <div className="cur-post-embed-meta">
                         <span
                           className={`cur-post-score ${post.score >= 0.6 ? "high" : post.score >= 0.4 ? "mid" : "low"}`}
@@ -1002,8 +1160,32 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
                     ? `@${post.author_handle}`
                     : post.author_did.slice(0, 20) + "…";
                   const extHost = externalHost(post.external_uri);
+                  const replyParentUrl = (() => {
+                    if (!post.reply_parent_uri) return null;
+                    const m = post.reply_parent_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+                    return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
+                  })();
                   return (
                     <article key={post.uri} className="cur-post-card">
+                      {post.is_reply && (
+                        <div className="cur-post-reply-banner">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <polyline points="9 17 4 12 9 7" />
+                            <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+                          </svg>
+                          {replyParentUrl ? (
+                            <a
+                              href={replyParentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              Replying to a post
+                            </a>
+                          ) : (
+                            <span>Reply</span>
+                          )}
+                        </div>
+                      )}
                       <header className="cur-post-card-head">
                         <a
                           href={profileUrl}
@@ -1052,12 +1234,6 @@ function CuratorApp({ profile }: { profile: UserProfile }) {
                             >
                               {formatRelativeTime(post.indexed_at)}
                             </time>
-                            {post.is_reply && (
-                              <>
-                                <span className="cur-post-meta-sep" aria-hidden>·</span>
-                                <span className="cur-post-reply-tag">reply</span>
-                              </>
-                            )}
                           </span>
                         </div>
                         <span

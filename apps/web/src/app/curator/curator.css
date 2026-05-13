@@ -674,6 +674,25 @@
   padding: 1px 6px;
   border-radius: 999px;
 }
+.cur-post-reply-banner{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--rf-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  margin: -4px 0 -2px;
+  padding-bottom: 6px;
+  border-bottom: 1px dotted var(--hair);
+}
+.cur-post-reply-banner svg{ color: var(--ink-4); flex-shrink: 0; }
+.cur-post-reply-banner a{
+  color: var(--ink-3);
+  text-decoration: none;
+  border-bottom: 1px dotted transparent;
+}
+.cur-post-reply-banner a:hover{ color: var(--aurora-deep); border-bottom-color: var(--aurora-deep); }
 .cur-post-score{
   flex-shrink: 0;
   font-family: var(--rf-mono);
@@ -853,6 +872,24 @@
   box-shadow: 0 1px 0 rgba(11,24,20,0.06);
 }
 
+.cur-unavail-toggle{
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--rf-mono); font-size: 10px;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-3);
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 0.18s, background 0.18s;
+}
+.cur-unavail-toggle:hover{ color: var(--ink); background: rgba(11,24,20,0.04); }
+.cur-unavail-toggle input[type="checkbox"]{
+  accent-color: var(--aurora-deep);
+  margin: 0;
+}
+.cur-unavail-count{ color: var(--ink-4); text-transform: none; letter-spacing: 0.02em; }
+
 /* ── BLUESKY EMBED WRAP ─────────────────────────── */
 .cur-post-embed-wrap{
   margin: 12px 0;
@@ -874,6 +911,11 @@
 .cur-post-embed-wrap .bluesky-embed{
   margin: 0 !important;
   max-width: 100% !important;
+}
+.cur-post-reply-banner-embed{
+  margin: 0 4px 6px;
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
 .cur-empty{
