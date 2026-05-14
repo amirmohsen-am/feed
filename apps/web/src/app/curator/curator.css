@@ -468,6 +468,43 @@
   color: var(--ink-3);
   font-style: italic;
 }
+.cur-mode-row{
+  max-width: 640px;
+  margin: 0 auto 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cur-mode-toggle{
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--rf-body);
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--hair);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.cur-mode-toggle:hover:not(:disabled){
+  border-color: var(--ink-2);
+  color: var(--ink-1);
+}
+.cur-mode-toggle:disabled{
+  opacity: 0.5; cursor: default;
+}
+.cur-mode-toggle.is-active{
+  border-color: rgba(62,138,108,0.4);
+  background: rgba(125,203,165,0.08);
+  color: var(--aurora-deep);
+}
+.cur-mode-hint{
+  font-family: var(--rf-body);
+  font-size: 12px;
+  color: var(--ink-3);
+  font-style: italic;
+}
 .cur-input-wrap{
   max-width: 640px;
   margin: 0 auto;
@@ -907,10 +944,21 @@
   margin-left: auto;
   padding-top: 0;
 }
-/* Override Bluesky's 600px cap so embeds fill the post column on wide panes. */
-.cur-post-embed-wrap .bluesky-embed{
-  margin: 0 !important;
-  max-width: 100% !important;
+/* Bluesky's embed.js swaps the .bluesky-embed div for an iframe in place. We
+   override its 600px cap so embeds fill the post column, then `zoom` scales
+   the iframe contents (incl. font) down to a denser size. `zoom` scales the
+   layout box too, so there's no gap below the scaled element. */
+/* Cap at Bluesky's natural 600px so margin:auto has slack to center within the
+   wider post column. `zoom` scales contents (and layout box) to 85%, then the
+   block centers horizontally. */
+.cur-post-embed-wrap .bluesky-embed,
+.cur-post-embed-wrap iframe{
+  display: block !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  max-width: 600px !important;
+  width: 100% !important;
+  zoom: 0.85;
 }
 .cur-post-reply-banner-embed{
   margin: 0 4px 6px;
@@ -1393,6 +1441,45 @@
 }
 .ctrl-textarea::placeholder{ color: var(--ink-4); }
 .ctrl-textarea:focus{ border-color: var(--aurora-deep); }
+
+.ctrl-safety{
+  background: rgba(192, 86, 86, 0.05);
+  border: 1px solid rgba(192, 86, 86, 0.2);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ctrl-safety-head{
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.ctrl-safety-icon{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  flex-shrink: 0;
+  color: var(--rose, #c05656);
+  margin-top: 1px;
+}
+.ctrl-safety-text{
+  font-family: var(--rf-body);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.ctrl-safety-text strong{
+  color: var(--ink);
+  font-weight: 600;
+}
+.ctrl-safety-tags{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 
 /* ── RESIZERS ─────────────────────────── */
 .cur-resizer{

@@ -10,7 +10,7 @@ import {
   clearChat,
 } from "@/lib/pg";
 import { ensureEnvFromSecret } from "@/lib/secrets";
-import type { SemanticConfig } from "@/lib/types";
+import type { SemanticConfig, MechanicalFilters } from "@/lib/types";
 
 let _client: Anthropic | null = null;
 async function client(): Promise<Anthropic> {
@@ -20,42 +20,104 @@ async function client(): Promise<Anthropic> {
   return _client;
 }
 
-const SYSTEM_PROMPT = `You are a taste architect — you help people discover what they actually want to see on their Bluesky feed. You're perceptive, concise, and a little opinionated. Think of yourself as a music recommendation engine but for social posts.
+const SYSTEM_PROMPT = `You are a thoughtful curator helping someone build their Bluesky feed. Be perceptive, concise, and a little opinionated — like a friend with good taste who's actually listening. You operate in two modes; you decide which one to use based on the most recent user message.
 
-STYLE:
-- 1-2 sentences max, then options. No filler. No "Great choice!" — just move.
-- Options should feel like real choices, not generic categories. Be specific. Surprise them.
-- Use the italic serif voice for your main text. End every message with 3-5 numbered options.
-- The user can also type a free-form reply in the input box — they pick one or more options and/or describe it themselves. Do NOT include an option like "Let me describe it myself" or "Other" — the input field handles that already, so adding it is redundant noise.
+============================================================
+DEFAULT MODE — free-form chat (this is where you start)
+============================================================
+- Conversational, 1-3 sentences. Match the user's energy.
+- React SPECIFICALLY to what they say. No canned acknowledgments, no "Great choice!", no parroting their words back at them.
+- DO NOT produce numbered option lists. Let the user lead.
+- If you want to suggest a direction, fold it into a single short follow-up — one angle at a time, never a menu.
+- The conversation can wander. Build the config trailers (see below) silently in the background as the user talks.
 
-FORMAT:
-Your question here — make it feel like you're reading their mind.
+============================================================
+GUIDED-QUESTIONS MODE — only when the user explicitly asks
+============================================================
+ENTER this mode when the user's most recent message clearly asks you to walk them through it with questions. Triggers like:
+- "Help me build my prompt"
+- "Walk me through this step by step — ask me questions to figure out what I want"
+- "Guide me", "ask me questions", "interview me"
+
+While in guided-questions mode, follow this 6-step interview, one step per reply:
+1. OPENER — Don't ask "what are you into?". Ask what rabbit hole they've been down lately, or what they've been thinking about this week. Feel like a friend reading their mind.
+2. PULL THE THREAD — When they pick something, go deeper. "AI" → which corner: foundation model drops, AI art drama, agent frameworks, policy debates?
+3. FIND THE VIBE — Tone, not topic. "Takes that make you think vs. make you laugh?" "Shitposts or thinkpieces?" "Hot takes or deep dives?"
+4. EXCLUSIONS — "What makes you instantly scroll past?"
+5. STRICTNESS — "Busy feed with occasional misses, or quiet feed where every post hits?"
+6. CONFIRM — When the user signals they're satisfied, output FEED_DONE on its own line.
+
+FORMAT while in guided-questions mode:
+Your question here — 1-2 sentences max, no filler.
 
 1. Specific option A
 2. Specific option B
 3. Specific option C
 4. Specific option D
 
-CONVERSATION FLOW — go deep, not wide:
-1. OPENER: Don't ask "what are you into?" — that's boring. Instead, ask what they've been thinking about lately, or what rabbit hole they've been down this week. Make them feel like they're talking to a friend, not filling out a form.
-2. PULL THE THREAD: When they pick something, don't immediately move on. Pull the thread. If they say "AI", ask what corner — are they watching foundation model drops, AI art drama, agent frameworks, policy debates? The good stuff is in the specifics.
-3. FIND THE VIBE: Ask what makes a post worth reading vs. scrolling past. This is about tone, not topic. Examples: "Do you want the takes that make you think, or the ones that make you laugh?" / "Shitposts or thinkpieces?" / "Hot takes or deep dives?"
-4. EXCLUSIONS: Ask what they're tired of seeing. Frame it as: "What makes you instantly scroll past?" This catches the stuff they hate that might sneak through keyword matching.
-5. STRICTNESS: Ask how picky the feed should be. Frame as "Do you want a busy feed with occasional misses, or a quiet feed where every post hits?"
-6. CONFIRM: When the user signals they're satisfied, output FEED_DONE on its own line.
+Options must feel like real choices, not generic categories. Be specific. Surprise them. Do NOT include an "Other" or "Let me describe it myself" option — the input box already handles free-form text.
 
-EARLY EXIT: If the user says anything like "make my feed now", "just go ahead", "finalize", "skip the rest", or otherwise asks you to wrap up early, DO NOT ask another clarifying question — immediately go to FEED_DONE. Use sensible defaults for any dimensions you haven't covered: vibes can be inferred from their answers so far, exclude_topics/exclude_keywords can be empty, embedding_threshold 0.5, judge_strictness "moderate".
+============================================================
+EXITING GUIDED-QUESTIONS MODE — return to free-form chat
+============================================================
+EXIT this mode the moment the user's latest message signals they want to stop the questions. Triggers like:
+- "Cancel", "Stop asking questions", "Stop with the questions", "Enough questions"
+- "Let me just chat", "I'd rather just talk", "Drop the questions"
 
-IMPORTANT — keyword generation:
-Generate 10-20 SPECIFIC keywords. Not just "AI" — think "transformer architecture", "GPT", "diffusion models", "RLHF", "open source LLMs". The more specific and varied the keywords, the better the embedding matching works. Include jargon, names of people/projects/tools they'd care about, and slang their community uses.
+After this signal: stop emitting numbered options IMMEDIATELY. Acknowledge in one sentence ("Cool, just chat then.") and revert to free-form chat behavior. Do NOT slip an options list into the cancel-acknowledgement reply.
 
-LIVE CONFIG — after EVERY assistant reply, append BOTH of these on their own lines:
-- FEED_NAME:Short Feed Name (2-4 words, punchy — e.g. "Indie Dev Underground", "NBA Brain", "AI Paper Trail"). Re-emit each turn; you may refine the name as you learn more.
+============================================================
+EARLY EXIT — finalize the feed
+============================================================
+If the user says "make my feed now", "just go ahead", "finalize", "skip the rest", or otherwise asks you to wrap up early: DO NOT ask another clarifying question — immediately output FEED_DONE on its own line plus a single closing sentence. Use sensible defaults for any dimensions you haven't covered (empty exclude_topics/exclude_keywords, embedding_threshold 0.5, judge_strictness "moderate"; infer vibes from the conversation).
+
+============================================================
+KEYWORD GENERATION
+============================================================
+Generate 10-20 SPECIFIC keywords. Not just "AI" — think "transformer architecture", "GPT", "diffusion models", "RLHF", "open source LLMs". Include jargon, project names, and community slang they'd care about. More specific = better embedding matches.
+
+============================================================
+STRUCTURAL FILTERS — reactive, never probing
+============================================================
+Some preferences are about post *shape*, not topic. Do NOT add a question for these — only set them when the user volunteers a preference, but be GENEROUS in recognizing the phrasing. Defaults are inclusive (post_type "all", everything else off / empty). Recognize the intent first, then map to the field:
+
+- ANY negation involving replies — "hide replies", "no replies", "skip replies", "without replies", "exclude replies", "I don't want replies", "no reply chains", "top-level only", "originals only" — all map to → **post_type: "top_level"**
+- ANY request to see ONLY replies / discussion — "only replies", "discussion threads", "just the conversations" — → **post_type: "replies"**
+- Language preferences — "English only", "no Japanese", "just en/es" — → **lang_allow: ["en"]** (ISO-639-1 codes)
+- Wanting images — "with photos", "image-heavy", "visual posts" — → **require_media: true**
+- Avoiding images — "no images", "text only", "no photos", "hide images" — → **exclude_media: true**
+- Wanting video — "with video", "video clips", "only videos", "video-heavy" — → **require_video: true**
+- Avoiding video — "no video", "hide videos", "skip clips" — → **exclude_video: true**
+- Wanting links — "with links", "articles" — → **require_link: true**
+- Avoiding links — "no link spam", "no article shares", "hide links" — → **exclude_links: true**
+- Wanting quote posts — "quote-posts", "reacting to other posts" — → **require_quote: true**
+- Specific hashtags — "only #aiart posts" — → **hashtag_include: ["aiart"]** (lowercase, no \`#\`)
+- TIME WINDOW — how recent the posts should be. The default is "24h" (past 24 hours). Map phrasing:
+  - "last hour", "past hour" → **time_window: "1h"**
+  - "today", "past 24 hours", "in the last day", "fresh", "latest" → **time_window: "24h"**
+  - "this week", "past week", "last 7 days" → **time_window: "7d"**
+  - "this month", "past 30 days" → **time_window: "30d"**
+  - "all time", "any time", "old or new", "don't care about time" → **time_window: "all"**
+  - A specific date range ("between Jan 1 and Jan 15", "from 2026-03-01 to 2026-03-15") → **time_window: "custom"** with created_after_iso and created_before_iso set to the corresponding ISO timestamps (e.g. "2026-03-01T00:00:00Z"). Leave a bound empty if only one side is specified.
+- ENGAGEMENT / "hotness" — three independent minimums on like_count, repost_count, reply_count. Defaults are 0 (no filter). Map intent like so:
+  - "popular", "hot", "trending", "what's hot" → **min_like_count: 10, min_repost_count: 2, min_reply_count: 1**
+  - "viral", "blowing up", "really popular" → **min_like_count: 50, min_repost_count: 10, min_reply_count: 5**
+  - "high engagement", "lots of discussion", "actually being talked about" → **min_like_count: 10, min_repost_count: 2, min_reply_count: 5** (reply-weighted)
+  - "underrated", "small accounts", "low engagement", "from anyone" → reset all three to **0**
+  - Literal numbers from the user ("100+ likes", "at least 10 reposts") → respect them exactly.
+
+If the user contradicts an earlier structural preference, FLIP the field — don't keep stale values. When in doubt, lean toward acting: if a sentence sounds like a structural preference, it probably is one.
+
+============================================================
+LIVE CONFIG — after EVERY assistant reply, append ALL THREE on their own lines:
+============================================================
+- FEED_NAME:Short Feed Name (2-4 words, punchy — e.g. "Indie Dev Underground", "NBA Brain", "AI Paper Trail"). Re-emit each turn; refine as you learn more.
 - FEED_CONFIG_JSON:{"topics":[...],"keywords":[...],"exclude_topics":[...],"exclude_keywords":[...],"vibes":"...","embedding_threshold":0.5,"judge_enabled":true,"judge_strictness":"moderate"}
+- MECHANICAL_FILTERS_JSON:{"post_type":"all","lang_allow":[],"require_media":false,"exclude_media":false,"require_video":false,"exclude_video":false,"require_link":false,"exclude_links":false,"require_quote":false,"hashtag_include":[],"min_like_count":0,"min_repost_count":0,"min_reply_count":0,"time_window":"24h","created_after_iso":"","created_before_iso":""}
 
-The FEED_CONFIG_JSON must reflect your CURRENT BEST UNDERSTANDING of the user's preferences — cumulative, not a delta. Always include EVERY field you've inferred so far. Empty arrays are fine for fields you haven't probed yet ("[]"), and an empty string is fine for vibes early on. NEVER drop a field or value you previously inferred unless the user explicitly contradicts it. The settings panel updates live as you emit this, so partial-but-growing is exactly right.
+Both JSON blocks must reflect your CURRENT BEST UNDERSTANDING — cumulative, not a delta. Always include EVERY field. Empty arrays / false / "all" are fine for fields the user hasn't touched. NEVER drop a value you previously inferred unless the user explicitly contradicts it.
 
-When the user confirms, output FEED_DONE on its own line plus a single closing sentence. Still emit FEED_NAME and FEED_CONFIG_JSON on the same final reply.
+When the user confirms, output FEED_DONE on its own line plus a single closing sentence. Still emit FEED_NAME, FEED_CONFIG_JSON, and MECHANICAL_FILTERS_JSON on the same final reply.
 
 Current saved preferences:
 `;
@@ -122,7 +184,7 @@ export async function POST(req: NextRequest) {
 
     const tBeforeLLM = performance.now();
     const response = await (await client()).messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 512,
       system: systemPrompt,
       messages: apiMessages,
@@ -138,19 +200,22 @@ export async function POST(req: NextRequest) {
       await updateFeed(feedId, { name: nameMatch[1].trim() });
     }
 
-    // Check for config (new format). Merge with existing semantic_config so
-    // the agent emitting a sparser config on a later turn doesn't wipe fields
-    // it inferred earlier — only an explicit non-empty override should replace.
+    // Parse semantic + mechanical config trailers. Merge with existing values
+    // so a sparser config on a later turn doesn't wipe fields the agent
+    // inferred earlier — only an explicit non-empty override replaces.
+    const pickList = (a?: string[], b?: string[]) =>
+      a && a.length > 0 ? a : b ?? [];
+    const pickScalar = <T>(a: T | undefined, b: T | undefined): T | undefined =>
+      a !== undefined ? a : b;
+
+    const updates: Parameters<typeof updateFeed>[1] = {};
+
     const configMatch = assistantText.match(/FEED_CONFIG_JSON:\s*(\{[\s\S]*?\})\s*$/m)
       || assistantText.match(/FEED_CONFIG_JSON:\s*(\{[\s\S]*\})/);
     if (configMatch) {
       try {
         const incoming = JSON.parse(configMatch[1]) as Partial<SemanticConfig>;
         const existing = (feed.semantic_config || {}) as Partial<SemanticConfig>;
-        const pickList = (a?: string[], b?: string[]) =>
-          a && a.length > 0 ? a : b ?? [];
-        const pickScalar = <T>(a: T | undefined, b: T | undefined): T | undefined =>
-          a !== undefined ? a : b;
         const merged: SemanticConfig = {
           topics: pickList(incoming.topics, existing.topics),
           keywords: pickList(incoming.keywords, existing.keywords),
@@ -164,52 +229,75 @@ export async function POST(req: NextRequest) {
           judge_strictness:
             pickScalar(incoming.judge_strictness, existing.judge_strictness) ?? "moderate",
         };
-        const description = [
+        updates.description = [
           ...merged.topics,
           ...merged.keywords,
           merged.vibes,
         ]
           .filter(Boolean)
           .join(", ");
-        await updateFeed(feedId, { description, semantic_config: merged });
+        updates.semantic_config = merged;
       } catch {
         // parsing failed, skip
       }
     }
 
-    // Backward compat: check for old criteria format
-    if (!configMatch) {
-      const criteriaMatch = assistantText.match(
-        /FEED_CRITERIA_JSON:\s*(\{[\s\S]*\})/
-      );
-      if (criteriaMatch) {
-        try {
-          const criteria = JSON.parse(criteriaMatch[1]);
-          const semanticConfig: SemanticConfig = {
-            topics: criteria.topics || [],
-            keywords: criteria.keywords || [],
-            exclude_topics: criteria.exclude_topics || [],
-            exclude_keywords: criteria.exclude_keywords || [],
-            vibes: criteria.vibes || "",
-            embedding_threshold: 0.5,
-            judge_enabled: true,
-            judge_strictness: "moderate",
-          };
-          const description = [
-            ...semanticConfig.topics,
-            ...semanticConfig.keywords,
-            semanticConfig.vibes,
-          ]
-            .filter(Boolean)
-            .join(", ");
-          await updateFeed(feedId, {
-            description,
-            semantic_config: semanticConfig,
-          });
-        } catch {
-          // parsing failed, skip
-        }
+    // Structural / mechanical filters — Claude only updates these reactively
+    // (when the user mentions shape preferences). We merge the LLM-controlled
+    // subset and leave non-LLM fields (regex, author lists, length bounds, …)
+    // as-is from the existing row.
+    const mechMatch = assistantText.match(/MECHANICAL_FILTERS_JSON:\s*(\{[\s\S]*?\})\s*$/m)
+      || assistantText.match(/MECHANICAL_FILTERS_JSON:\s*(\{[\s\S]*\})/);
+    if (mechMatch) {
+      try {
+        const incoming = JSON.parse(mechMatch[1]) as Partial<MechanicalFilters>;
+        const existing = (feed.mechanical_filters || {}) as Partial<MechanicalFilters>;
+        updates.mechanical_filters = {
+          ...(existing as MechanicalFilters),
+          post_type: pickScalar(incoming.post_type, existing.post_type) ?? "all",
+          lang_allow: pickList(incoming.lang_allow, existing.lang_allow),
+          require_media:
+            pickScalar(incoming.require_media, existing.require_media) ?? false,
+          exclude_media:
+            pickScalar(incoming.exclude_media, existing.exclude_media) ?? false,
+          require_video:
+            pickScalar(incoming.require_video, existing.require_video) ?? false,
+          exclude_video:
+            pickScalar(incoming.exclude_video, existing.exclude_video) ?? false,
+          require_link:
+            pickScalar(incoming.require_link, existing.require_link) ?? false,
+          exclude_links:
+            pickScalar(incoming.exclude_links, existing.exclude_links) ?? false,
+          require_quote:
+            pickScalar(incoming.require_quote, existing.require_quote) ?? false,
+          hashtag_include: pickList(incoming.hashtag_include, existing.hashtag_include),
+          min_like_count:
+            pickScalar(incoming.min_like_count, existing.min_like_count) ?? 0,
+          min_repost_count:
+            pickScalar(incoming.min_repost_count, existing.min_repost_count) ?? 0,
+          min_reply_count:
+            pickScalar(incoming.min_reply_count, existing.min_reply_count) ?? 0,
+          time_window:
+            pickScalar(incoming.time_window, existing.time_window) ?? "24h",
+          created_after_iso:
+            pickScalar(incoming.created_after_iso, existing.created_after_iso) ?? "",
+          created_before_iso:
+            pickScalar(incoming.created_before_iso, existing.created_before_iso) ?? "",
+        };
+        console.log(
+          `[chat] feedId=${feedId} mechanical_filters incoming=${JSON.stringify(incoming)} merged=${JSON.stringify(updates.mechanical_filters)}`
+        );
+      } catch {
+        // parsing failed, skip
       }
+    } else {
+      console.log(
+        `[chat] feedId=${feedId} no MECHANICAL_FILTERS_JSON trailer in assistant reply`
+      );
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await updateFeed(feedId, updates);
     }
 
     // Check for done signal
@@ -219,7 +307,7 @@ export async function POST(req: NextRequest) {
     const cleanedText = assistantText
       .replace(/FEED_NAME:.+\n?/g, "")
       .replace(/FEED_CONFIG_JSON:\s*\{[\s\S]*?\}\s*\n?/g, "")
-      .replace(/FEED_CRITERIA_JSON:\s*\{[\s\S]*?\}\s*\n?/g, "")
+      .replace(/MECHANICAL_FILTERS_JSON:\s*\{[\s\S]*?\}\s*\n?/g, "")
       .replace(/FEED_DONE\n?/g, "")
       .trim();
 

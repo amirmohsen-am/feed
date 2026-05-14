@@ -30,7 +30,7 @@ Each app is self-contained with its own `package.json` and `package-lock.json`. 
 | Package manager | npm (each app has its own `package-lock.json`) |
 | Database | Cloud SQL Postgres 15 in `timelines-492720`. Two instances: `feed-db` (web app) and `bsky-db` (indexer). |
 | Auth | Firebase Auth (Google sign-in). Token verified on the server in `apps/web/src/lib/auth.ts`. No user-managed admin SA key (org policy blocks creation), so prod uses insecure-decode fallback for the demo. |
-| Chat LLM | Anthropic Claude (`claude-sonnet-4`) via `@anthropic-ai/sdk` — `/api/chat`, `/api/import-memory` |
+| Chat LLM | Anthropic Claude (`claude-sonnet-4-6`) via `@anthropic-ai/sdk` — `/api/chat`, `/api/import-memory` |
 | Post search | Vertex AI Vector Search — called directly from `apps/web/src/lib/vector-search.ts` |
 | Hosting | Both services on Cloud Run in `timelines-492720` |
 

@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   }
 
   const response = await (await client()).messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6",
     max_tokens: 1024,
     system: `You analyze AI assistant memory exports (from ChatGPT or Claude) and extract the user's interests, profession, hobbies, and preferences to create a Bluesky feed.
 

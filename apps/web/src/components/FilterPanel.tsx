@@ -1,8 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { MechanicalFilters, SemanticConfig } from "@/lib/types";
-import { DEFAULT_MECHANICAL_FILTERS, DEFAULT_SEMANTIC_CONFIG } from "@/lib/defaults";
+import type { MechanicalFilters, SemanticConfig, TimeWindow } from "@/lib/types";
+import {
+  DEFAULT_MECHANICAL_FILTERS,
+  DEFAULT_SEMANTIC_CONFIG,
+  DEFAULT_SENSITIVE_LABELS,
+} from "@/lib/defaults";
 
 interface FilterPanelProps {
   mechanicalFilters: MechanicalFilters;
@@ -33,7 +37,7 @@ export default function FilterPanel({
     ...DEFAULT_SEMANTIC_CONFIG,
     ...semanticConfig,
   });
-  const [activeTab, setActiveTab] = useState<"signal" | "gate" | "tune">("signal");
+  const [activeTab, setActiveTab] = useState<"signal" | "gate" | "refine">("signal");
 
   useEffect(() => {
     setMech({ ...DEFAULT_MECHANICAL_FILTERS, ...mechanicalFilters });
@@ -158,10 +162,10 @@ export default function FilterPanel({
           Gate
         </button>
         <button
-          className={`ctrl-tab ${activeTab === "tune" ? "active" : ""}`}
-          onClick={() => setActiveTab("tune")}
+          className={`ctrl-tab ${activeTab === "refine" ? "active" : ""}`}
+          onClick={() => setActiveTab("refine")}
         >
-          Tune
+          Refine
         </button>
       </div>
 
@@ -219,7 +223,59 @@ export default function FilterPanel({
         {activeTab === "gate" && (
           <div className="ctrl-section-group">
             <div className="ctrl-section">
-              <label className="ctrl-label">Post type</label>
+              <label className="ctrl-label">Time window</label>
+              <div className="ctrl-pill-group">
+                {(
+                  [
+                    ["1h", "1h"],
+                    ["24h", "24h"],
+                    ["7d", "7d"],
+                    ["30d", "30d"],
+                    ["all", "All time"],
+                    ["custom", "Custom"],
+                  ] as Array<[TimeWindow, string]>
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    className={`ctrl-pill ${mech.time_window === value ? "active" : ""}`}
+                    onClick={() => updateMech({ time_window: value })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {mech.time_window === "custom" && (
+                <div className="ctrl-inline-inputs" style={{ marginTop: 8 }}>
+                  <div className="ctrl-mini-field">
+                    <span>From</span>
+                    <input
+                      type="date"
+                      value={isoToDateInput(mech.created_after_iso)}
+                      onChange={(e) =>
+                        updateMech({
+                          created_after_iso: dateInputToIso(e.target.value, "start"),
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="ctrl-mini-field">
+                    <span>To</span>
+                    <input
+                      type="date"
+                      value={isoToDateInput(mech.created_before_iso)}
+                      onChange={(e) =>
+                        updateMech({
+                          created_before_iso: dateInputToIso(e.target.value, "end"),
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="ctrl-section">
+              <label className="ctrl-label">Include</label>
               <div className="ctrl-pill-group">
                 {(["all", "top_level", "replies"] as const).map((t) => (
                   <button
@@ -227,7 +283,7 @@ export default function FilterPanel({
                     className={`ctrl-pill ${mech.post_type === t ? "active" : ""}`}
                     onClick={() => updateMech({ post_type: t })}
                   >
-                    {t === "all" ? "All" : t === "top_level" ? "Original" : "Replies"}
+                    {t === "all" ? "All" : t === "top_level" ? "Posts only" : "Replies only"}
                   </button>
                 ))}
               </div>
@@ -242,6 +298,11 @@ export default function FilterPanel({
                   onChange={(v) => updateMech({ require_media: v, exclude_media: false })}
                 />
                 <Toggle
+                  label="Must have video"
+                  checked={mech.require_video}
+                  onChange={(v) => updateMech({ require_video: v, exclude_video: false })}
+                />
+                <Toggle
                   label="Must have links"
                   checked={mech.require_link}
                   onChange={(v) => updateMech({ require_link: v, exclude_links: false })}
@@ -252,14 +313,59 @@ export default function FilterPanel({
                   onChange={(v) => updateMech({ require_quote: v })}
                 />
                 <Toggle
-                  label="No media posts"
+                  label="No image posts"
                   checked={mech.exclude_media}
                   onChange={(v) => updateMech({ exclude_media: v, require_media: false })}
+                />
+                <Toggle
+                  label="No video posts"
+                  checked={mech.exclude_video}
+                  onChange={(v) => updateMech({ exclude_video: v, require_video: false })}
                 />
                 <Toggle
                   label="No link posts"
                   checked={mech.exclude_links}
                   onChange={(v) => updateMech({ exclude_links: v, require_link: false })}
+                />
+              </div>
+            </div>
+
+            <div className="ctrl-section">
+              <label className="ctrl-label">Engagement</label>
+              <div className="ctrl-mini-field">
+                <span>Min likes</span>
+                <input
+                  type="number"
+                  value={mech.min_like_count}
+                  min={0}
+                  placeholder="0"
+                  onChange={(e) =>
+                    updateMech({ min_like_count: parseInt(e.target.value) || 0 })
+                  }
+                />
+              </div>
+              <div className="ctrl-mini-field">
+                <span>Min reposts</span>
+                <input
+                  type="number"
+                  value={mech.min_repost_count}
+                  min={0}
+                  placeholder="0"
+                  onChange={(e) =>
+                    updateMech({ min_repost_count: parseInt(e.target.value) || 0 })
+                  }
+                />
+              </div>
+              <div className="ctrl-mini-field">
+                <span>Min replies</span>
+                <input
+                  type="number"
+                  value={mech.min_reply_count}
+                  min={0}
+                  placeholder="0"
+                  onChange={(e) =>
+                    updateMech({ min_reply_count: parseInt(e.target.value) || 0 })
+                  }
                 />
               </div>
             </div>
@@ -336,9 +442,45 @@ export default function FilterPanel({
           </div>
         )}
 
-        {/* TUNE TAB — Threshold & strictness */}
-        {activeTab === "tune" && (
+        {/* REFINE TAB — Threshold & strictness */}
+        {activeTab === "refine" && (
           <div className="ctrl-section-group">
+            <div className="ctrl-section">
+              <label className="ctrl-label">Safety</label>
+              <div className="ctrl-safety">
+                <div className="ctrl-safety-head">
+                  <span className="ctrl-safety-icon" aria-hidden>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                  </span>
+                  <div className="ctrl-safety-text">
+                    {mech.block_labels.length > 0 ? (
+                      <>
+                        <strong>Sensitive content is filtered.</strong> Posts self-labeled as one of the following are hidden from your feed:
+                      </>
+                    ) : (
+                      <strong>Sensitive content is NOT filtered. Your feed may include adult or graphic posts.</strong>
+                    )}
+                  </div>
+                </div>
+                {mech.block_labels.length > 0 && (
+                  <div className="ctrl-safety-tags">
+                    {mech.block_labels.map((l) => (
+                      <span key={l} className="ctrl-tag rose">{l}</span>
+                    ))}
+                  </div>
+                )}
+                <Toggle
+                  label="Show sensitive content"
+                  checked={mech.block_labels.length === 0}
+                  onChange={(v) =>
+                    updateMech({ block_labels: v ? [] : DEFAULT_SENSITIVE_LABELS })
+                  }
+                />
+              </div>
+            </div>
+
             <div className="ctrl-section">
               <label className="ctrl-label">
                 Similarity threshold
@@ -392,6 +534,19 @@ export default function FilterPanel({
       </div>
     </div>
   );
+}
+
+// --- Helpers ---
+
+function isoToDateInput(iso: string): string {
+  if (!iso) return "";
+  // YYYY-MM-DD is the first 10 chars of any ISO 8601 timestamp.
+  return iso.slice(0, 10);
+}
+
+function dateInputToIso(date: string, bound: "start" | "end"): string {
+  if (!date) return "";
+  return bound === "start" ? `${date}T00:00:00Z` : `${date}T23:59:59Z`;
 }
 
 // --- Sub-components ---
