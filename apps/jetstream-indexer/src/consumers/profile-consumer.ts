@@ -15,6 +15,7 @@ import {
 import {
   recordEventsConsumed,
   recordEventsFlushed,
+  recordFlushDropped,
   recordFlushFailed,
   registerCursorLagUs,
   registerQueueDepth,
@@ -41,6 +42,14 @@ export const startProfileConsumer = async (cfg: Config, workerId: string, initia
     flushMs: cfg.profileFlushMs,
     queueMax: 5_000,
     onDrop: (n) => log('queue_drop', { dropped: n }),
+    onFailure: (batch, err) => {
+      recordFlushFailed(1, { kind: 'profile', worker: workerId })
+      log('flush_failed', { n: batch.length, error: String(err) })
+    },
+    onPoison: (batch, err) => {
+      recordFlushDropped(batch.length, { kind: 'profile', worker: workerId })
+      log('flush_poison_dropped', { n: batch.length, error: String(err) })
+    },
     flush: async (batch) => {
       const t0 = Date.now()
       const profiles: ProfileRecord[] = []
@@ -76,14 +85,6 @@ export const startProfileConsumer = async (cfg: Config, workerId: string, initia
       })
     },
   })
-
-  const origFlushNow = harness.flushNow
-  harness.flushNow = async () => {
-    try { await origFlushNow() } catch (err) {
-      recordFlushFailed(1, { kind: 'profile', worker: workerId })
-      log('flush_failed', { error: String(err) })
-    }
-  }
 
   registerQueueDepth(CONSUMER_KEY, () => harness.size())
   registerCursorLagUs(CONSUMER_KEY, () => Date.now() * 1000 - latestCursorUs)
