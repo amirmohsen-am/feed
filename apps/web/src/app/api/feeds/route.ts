@@ -50,6 +50,7 @@ export async function PATCH(req: NextRequest) {
     subqueries,
     candidate_budget,
     rerank_prompt,
+    rerank_model,
   } = body as {
     id?: number;
     name?: string;
@@ -57,6 +58,7 @@ export async function PATCH(req: NextRequest) {
     subqueries?: string[];
     candidate_budget?: number;
     rerank_prompt?: string;
+    rerank_model?: string;
   };
 
   if (!id)
@@ -93,6 +95,9 @@ export async function PATCH(req: NextRequest) {
   };
   if (typeof rerank_prompt === "string") {
     updates.rerank_prompt = rerank_prompt;
+  }
+  if (typeof rerank_model === "string" && rerank_model.length > 0) {
+    updates.rerank_model = rerank_model;
   }
 
   const updated = await updateFeed(id, updates);

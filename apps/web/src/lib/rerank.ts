@@ -16,10 +16,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { ensureEnvFromSecret } from "./secrets";
 import type { VectorHit } from "./vector-search";
+import { DEFAULT_RERANK_MODEL, MAX_RERANK_IMAGES } from "./defaults";
 
-// Haiku 4.5 for bulk listwise rerank — Sonnet is ~5x slower for this shape
-// of task and the quality gap is small when the candidate text is short.
-export const RERANK_MODEL = "claude-haiku-4-5-20251001";
+// Default model name for bulk listwise rerank. Each call can override via
+// `opts.model`; the per-feed setting is read in pg.ts.
+export const RERANK_MODEL = DEFAULT_RERANK_MODEL;
 
 const RERANK_OUTPUT_CONTRACT = `
 
@@ -73,33 +74,98 @@ function safeParseArray(raw: string): unknown {
   return JSON.parse(stripped.slice(start, end + 1));
 }
 
+export interface RerankPhaseInfo {
+  candidates: number;
+  images: number;
+  model: string;
+}
+
 export async function rerank(opts: {
   query: string;
   candidates: VectorHit[];
   topK: number;
   systemPrompt: string;
+  // Override the model for this call. Defaults to RERANK_MODEL.
+  model?: string;
+  // When true, attach `image` content blocks for candidates that have images
+  // (uses `hit.image_urls`). Capped at MAX_RERANK_IMAGES total.
+  withImages?: boolean;
+  // Called once when the Anthropic request is dispatched. Carries the
+  // candidate/image counts so a UI can render "Ranking … 80 candidates · 87 images".
+  onRequestSent?: (info: RerankPhaseInfo) => void;
+  // Called once when the first text delta arrives from the model. The window
+  // between onRequestSent and onFirstToken is effectively the model's
+  // thinking / time-to-first-token; everything after is streaming output.
+  onFirstToken?: () => void;
 }): Promise<RerankResult> {
   const { query, candidates, topK, systemPrompt } = opts;
+  const model = opts.model && opts.model.length > 0 ? opts.model : RERANK_MODEL;
   const t0 = performance.now();
 
   const trimmed = candidates.map((h, i) => trimCandidate(h, i));
-  const userMessage =
+  const textBlock =
     `Query: ${JSON.stringify(query)}\n` +
     `N = ${topK}\n` +
     `Candidates (n=${candidates.length}):\n` +
     JSON.stringify(trimmed);
 
+  // Build the user content. When images are enabled, we send one text block
+  // followed by interleaved `Image for candidate N:` markers + image blocks.
+  // Iteration order is candidate-major: candidate 0's images first, then
+  // candidate 1's, etc. — so when the cap is reached we cut off the tail of
+  // the candidate list rather than dropping images uniformly.
+  const content: Anthropic.ContentBlockParam[] = [
+    { type: "text", text: textBlock },
+  ];
+  let imagesAttached = 0;
+  if (opts.withImages) {
+    outer: for (let i = 0; i < candidates.length; i++) {
+      const urls = candidates[i].image_urls ?? [];
+      if (urls.length === 0) continue;
+      content.push({
+        type: "text",
+        text: `Images for candidate ${i}:`,
+      });
+      for (const url of urls) {
+        if (imagesAttached >= MAX_RERANK_IMAGES) break outer;
+        content.push({
+          type: "image",
+          source: { type: "url", url },
+        });
+        imagesAttached++;
+      }
+    }
+  }
+
   const system = systemPrompt + RERANK_OUTPUT_CONTRACT;
 
-  const res = await (await client()).messages.create({
-    model: RERANK_MODEL,
+  console.log(
+    `[rerank] model=${model} candidates=${candidates.length} ` +
+      `images=${imagesAttached} topK=${topK}`
+  );
+  opts.onRequestSent?.({ candidates: candidates.length, images: imagesAttached, model });
+
+  // Stream so we can detect the "first text delta" moment — that's the
+  // ranking→generating transition we surface to the client loader.
+  const c = await client();
+  const stream = c.messages.stream({
+    model,
     max_tokens: 4096,
     system,
-    messages: [{ role: "user", content: userMessage }],
+    messages: [{ role: "user", content }],
   });
 
+  let firstTokenFired = false;
+  stream.on("text", () => {
+    if (!firstTokenFired) {
+      firstTokenFired = true;
+      opts.onFirstToken?.();
+    }
+  });
+
+  const finalMessage = await stream.finalMessage();
   const text =
-    res.content[0]?.type === "text" ? res.content[0].text : "";
+    finalMessage.content[0]?.type === "text" ? finalMessage.content[0].text : "";
   const parsed = safeParseArray(text);
   if (!Array.isArray(parsed)) {
     throw new Error("reranker output was not a JSON array");

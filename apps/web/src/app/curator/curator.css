@@ -859,6 +859,12 @@
   color: var(--ink-3);
   min-height: 18px;
 }
+/* Pipeline loader row sits above the header, full column width. */
+.cur-feed-loader{
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 4px 0;
+}
 .cur-refresh{
   font-family: var(--rf-mono);
   font-size: 11px; letter-spacing: 0.08em;
@@ -928,29 +934,30 @@
 .cur-unavail-count{ color: var(--ink-4); text-transform: none; letter-spacing: 0.02em; }
 
 /* ── BLUESKY EMBED WRAP ─────────────────────────── */
+/* iframe renders at 600px capped, `zoom: 0.85` shrinks it visually to ~510px.
+   The chrome (reply banner, header, debug strip) above the iframe is wrapped
+   in `.cur-post-embed-frame` and constrained to the same visual width so it
+   aligns with the iframe's left/right edges. */
 .cur-post-embed-wrap{
+  --embed-w: calc(600px * 0.85);
   margin: 12px 0;
   padding: 12px 0;
   border-bottom: 1px solid var(--hair);
 }
 .cur-post-embed-wrap:last-child{ border-bottom: none; }
+.cur-post-embed-frame{
+  max-width: var(--embed-w);
+  margin: 0 auto;
+}
 .cur-post-embed-meta{
   display: flex; align-items: center; gap: 12px;
   margin-bottom: 6px;
-  padding: 0 4px;
 }
 .cur-post-embed-meta .cur-post-score{ margin-top: 0; }
 .cur-post-embed-meta .cur-post-open{
   margin-left: auto;
   padding-top: 0;
 }
-/* Bluesky's embed.js swaps the .bluesky-embed div for an iframe in place. We
-   override its 600px cap so embeds fill the post column, then `zoom` scales
-   the iframe contents (incl. font) down to a denser size. `zoom` scales the
-   layout box too, so there's no gap below the scaled element. */
-/* Cap at Bluesky's natural 600px so margin:auto has slack to center within the
-   wider post column. `zoom` scales contents (and layout box) to 85%, then the
-   block centers horizontally. */
 .cur-post-embed-wrap .bluesky-embed,
 .cur-post-embed-wrap iframe{
   display: block !important;
@@ -961,9 +968,127 @@
   zoom: 0.85;
 }
 .cur-post-reply-banner-embed{
-  margin: 0 4px 6px;
+  margin: 0 0 6px;
   padding-bottom: 0;
   border-bottom: none;
+}
+
+/* ── DEBUG STRIP ─────────────────────────────────── */
+.cur-post-debug{
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  background: rgba(11,24,20,0.04);
+  border-radius: 6px;
+  font-family: var(--rf-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+.cur-post-debug-row{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cur-post-debug-label{
+  color: var(--ink-4);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 9px;
+}
+.cur-post-debug-reason{
+  color: var(--ink-2);
+  font-style: italic;
+  font-family: var(--rf-sans, inherit);
+  font-size: 12px;
+}
+.cur-post-debug-card{ margin-top: 8px; }
+
+/* ── PIPELINE LOADER ────────────────────────────── */
+/* Verbose inline pipeline: Searching → Ranking → Generating. Each step is
+   a small column with a top row (dot + label) and a sub row (timer/count).
+   Sub row has reserved height so the layout doesn't reflow as stages
+   advance. See PipelineLoader.tsx and loader-design.html. */
+.cur-pl{
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: start;
+  column-gap: 18px;
+  font-family: var(--rf-mono);
+  padding: 14px 0 18px;
+}
+.cur-pl-step{
+  display: grid;
+  grid-template-rows: auto auto;
+  row-gap: 4px;
+  min-width: 120px;
+}
+.cur-pl-top{
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.cur-pl-dot{
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--paper-3);
+  transition: background 0.25s;
+  flex-shrink: 0;
+}
+.cur-pl-step.done .cur-pl-top{ color: var(--ink-2); }
+.cur-pl-step.done .cur-pl-dot{ background: var(--aurora-deep); }
+.cur-pl-step.active .cur-pl-top{ color: var(--ink); }
+.cur-pl-step.active .cur-pl-dot{
+  background: var(--aurora-deep);
+  animation: pulse 1.4s infinite;
+}
+.cur-pl-step.active.gen .cur-pl-dot{
+  background: conic-gradient(var(--aurora-deep) 0deg 180deg, var(--paper-3) 180deg 360deg);
+  animation: rotate 1.2s linear infinite;
+}
+.cur-pl-sub{
+  margin-left: 14px;
+  color: var(--ink-3);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  min-height: 14px;
+}
+.cur-pl-accent{ color: var(--ink-2); }
+.cur-pl-muted{ color: var(--ink-4); }
+.cur-pl-detail{ display: block; font-size: 9.5px; color: var(--ink-4); }
+.cur-pl-sep{
+  align-self: center;
+  width: 22px; height: 1px;
+  background: var(--hair);
+  margin-top: -8px;
+}
+.cur-pl-sep.filled{ background: var(--aurora-deep); opacity: 0.5; }
+.cur-pl-timer{
+  align-self: start;
+  margin-left: 4px;
+  font-size: 10px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  padding-top: 1px;
+}
+
+@keyframes rotate{ 0%{ transform: rotate(0) } 100%{ transform: rotate(360deg) } }
+
+.cur-post-debug-flag{
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(206, 90, 90, 0.16);
+  color: #8c2222;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .cur-empty{

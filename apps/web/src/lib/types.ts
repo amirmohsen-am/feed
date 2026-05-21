@@ -14,6 +14,7 @@ export interface MechanicalFilters {
   exclude_links: boolean;
   hashtag_include: string[];      // post must contain at least one (case-insensitive)
   block_labels: string[];         // Bluesky self-labels to reject (NSFW gate)
+  exclude_likely_nsfw: boolean;   // drop posts from authors whose description matches LIKE_NSFW_DESCRIPTION_KEYWORDS
   min_like_count: number;         // Vertex numeric_restrict on like_count
   min_repost_count: number;
   min_reply_count: number;

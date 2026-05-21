@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
     subqueries: feed.subqueries,
     candidate_budget: feed.candidate_budget,
     rerank_prompt: feed.rerank_prompt,
+    rerank_model: feed.rerank_model,
     posts,
   });
 }

@@ -4,9 +4,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Script from "next/script";
 import FilterPanel from "@/components/FilterPanel";
 import ShaderSendButton from "@/components/ShaderSendButton";
+import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
 import { authedFetch } from "@/lib/authed-fetch";
 import type { MechanicalFilters } from "@/lib/types";
-import { DEFAULT_CANDIDATE_BUDGET } from "@/lib/defaults";
+import { DEFAULT_CANDIDATE_BUDGET, DEFAULT_RERANK_MODEL } from "@/lib/defaults";
 import { useResizable } from "../useResizable";
 import { useCurator, feedIsComplete } from "../curatorContext";
 
@@ -16,6 +17,9 @@ interface Post {
   author_did: string;
   text: string;
   score: number;
+  rerank_score?: number;
+  rerank_reason?: string;
+  like_nsfw?: boolean;
   indexed_at: string;
   author_handle: string | null;
   author_display_name: string | null;
@@ -91,6 +95,7 @@ function externalHost(url: string | null): string | null {
 type ViewMode = "card" | "embed";
 const VIEW_MODE_KEY = "curator:viewMode";
 const HIDE_UNAVAIL_KEY = "curator:hideUnavailable";
+const SHOW_DEBUG_KEY = "curator:showDebug";
 
 declare global {
   interface Window {
@@ -153,6 +158,14 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     setHideUnavailableState(next);
     try { window.localStorage.setItem(HIDE_UNAVAIL_KEY, String(next)); } catch { /* ignore */ }
   }
+  const [showDebug, setShowDebugState] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem(SHOW_DEBUG_KEY) !== "false";
+  });
+  function setShowDebug(next: boolean) {
+    setShowDebugState(next);
+    try { window.localStorage.setItem(SHOW_DEBUG_KEY, String(next)); } catch { /* ignore */ }
+  }
   // Per-feed: unavailable URIs from the Bluesky availability probe. Lives
   // inside the workbench so it resets atomically when the feedId-keyed
   // component remounts on URL change.
@@ -165,13 +178,18 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [postCount, setPostCount] = useState(0);
   const [postsLoading, setPostsLoading] = useState(false);
-  const [postsStage, setPostsStage] = useState<"idle" | "searching" | "ranking">("idle");
+  const [pipelineStage, setPipelineStage] = useState<PipelineStage>("idle");
+  const [pipelineCandidates, setPipelineCandidates] = useState<number | undefined>(undefined);
+  const [pipelineHits, setPipelineHits] = useState<number | undefined>(undefined);
+  const [pipelineImages, setPipelineImages] = useState<number | undefined>(undefined);
+  const [pipelineModel, setPipelineModel] = useState<string | undefined>(undefined);
   const [chatLoading, setChatLoading] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
   const [mechanicalFilters, setMechanicalFilters] = useState<MechanicalFilters | null>(null);
   const [subqueries, setSubqueries] = useState<string[]>([]);
   const [candidateBudget, setCandidateBudget] = useState<number>(DEFAULT_CANDIDATE_BUDGET);
   const [rerankPrompt, setRerankPrompt] = useState<string>("");
+  const [rerankModel, setRerankModel] = useState<string>(DEFAULT_RERANK_MODEL);
   const endRef = useRef<HTMLDivElement>(null);
   const lastSubqueriesJsonRef = useRef<string>("");
   const lastMechanicalFiltersJsonRef = useRef<string>("");
@@ -219,6 +237,16 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     } catch { /* ignore */ }
   }
 
+  async function saveRerankModel(model: string) {
+    setRerankModel(model);
+    try {
+      await authedFetch("/api/feeds", {
+        method: "PATCH",
+        body: JSON.stringify({ id: feedId, rerank_model: model }),
+      });
+    } catch { /* ignore */ }
+  }
+
 
   const loadChat = useCallback(async (id: number) => {
     setChatLoading(true);
@@ -235,6 +263,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         lastBudgetRef.current = data.feed.candidate_budget;
       }
       setRerankPrompt(data.feed?.rerank_prompt ?? "");
+      if (typeof data.feed?.rerank_model === "string" && data.feed.rerank_model.length > 0) {
+        setRerankModel(data.feed.rerank_model);
+      }
       setMessages(msgs);
     } catch { /* ignore */ }
     finally {
@@ -244,22 +275,91 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   const loadPosts = useCallback(async (id: number) => {
     setPostsLoading(true);
-    setPostsStage("searching");
+    setPipelineStage("searching");
+    setPipelineCandidates(undefined);
+    setPipelineHits(undefined);
+    setPipelineImages(undefined);
+    setPipelineModel(undefined);
     try {
-      const res = await authedFetch(`/api/feed-preview?feedId=${id}`);
-      const d = await res.json();
-      const nextCount = d.total_stored || (d.posts?.length ?? 0);
-      setPosts(d.posts || []);
-      setPostCount(nextCount);
-      setActivePostCount(nextCount);
-      if (d.mechanical_filters) setMechanicalFilters(d.mechanical_filters);
-      if (Array.isArray(d.subqueries)) setSubqueries(d.subqueries);
-      if (typeof d.candidate_budget === "number") setCandidateBudget(d.candidate_budget);
-      if (typeof d.rerank_prompt === "string") setRerankPrompt(d.rerank_prompt);
+      const res = await authedFetch(`/api/feed-preview/stream?feedId=${id}`);
+      if (!res.ok || !res.body) {
+        setPostsLoading(false);
+        setPipelineStage("idle");
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        // Each event is one line of NDJSON. Process full lines; keep the
+        // last partial line in the buffer until the next chunk completes it.
+        let nl: number;
+        while ((nl = buf.indexOf("\n")) !== -1) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line) continue;
+          try {
+            const ev = JSON.parse(line) as {
+              event?: string;
+              stage?: string;
+              candidates?: number;
+              hits?: number;
+              images?: number;
+              model?: string;
+              posts?: Post[];
+              total_stored?: number;
+              mechanical_filters?: MechanicalFilters;
+              subqueries?: string[];
+              candidate_budget?: number;
+              rerank_prompt?: string;
+              rerank_model?: string;
+              message?: string;
+            };
+            if (ev.event === "stage" && ev.stage) {
+              if (ev.stage === "skipped_rerank") {
+                // No rerank prompt: jump straight past thinking/ranking;
+                // the "done" event will arrive immediately after with posts.
+              } else if (
+                ev.stage === "searching" ||
+                ev.stage === "thinking" ||
+                ev.stage === "ranking" ||
+                ev.stage === "done"
+              ) {
+                setPipelineStage(ev.stage);
+                if (ev.stage === "thinking") {
+                  if (typeof ev.candidates === "number") setPipelineCandidates(ev.candidates);
+                  if (typeof ev.hits === "number") setPipelineHits(ev.hits);
+                  if (typeof ev.images === "number") setPipelineImages(ev.images);
+                  if (typeof ev.model === "string") setPipelineModel(ev.model);
+                }
+              }
+            } else if (ev.event === "done") {
+              setPipelineStage("done");
+              const nextCount = ev.total_stored || (ev.posts?.length ?? 0);
+              setPosts(ev.posts || []);
+              setPostCount(nextCount);
+              setActivePostCount(nextCount);
+              if (ev.mechanical_filters) setMechanicalFilters(ev.mechanical_filters);
+              if (Array.isArray(ev.subqueries)) setSubqueries(ev.subqueries);
+              if (typeof ev.candidate_budget === "number") setCandidateBudget(ev.candidate_budget);
+              if (typeof ev.rerank_prompt === "string") setRerankPrompt(ev.rerank_prompt);
+              if (typeof ev.rerank_model === "string" && ev.rerank_model.length > 0) {
+                setRerankModel(ev.rerank_model);
+              }
+            } else if (ev.event === "error") {
+              console.warn("[feed-preview/stream] error:", ev.message);
+            }
+          } catch {
+            /* ignore malformed line */
+          }
+        }
+      }
     } catch { /* ignore */ }
     finally {
       setPostsLoading(false);
-      setPostsStage("idle");
     }
   }, [setActivePostCount]);
 
@@ -478,19 +578,20 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       <div className="cur-workbench" data-right-pane={rightPane}>
         {/* POSTS PANE (middle) */}
         <div className="cur-feed-posts">
-          <div className="cur-feed-posts-header">
-            <div className="cur-feed-stage">
-              {postsLoading && (
-                <>
-                  <span className="pulse-dot" />
-                  <span>
-                    {postsStage === "ranking"
-                      ? "Ranking results…"
-                      : "Searching for posts that match your feed…"}
-                  </span>
-                </>
-              )}
+          {pipelineStage !== "idle" && (
+            <div className="cur-feed-loader">
+              <PipelineLoader
+                stage={pipelineStage}
+                candidates={pipelineCandidates}
+                hits={pipelineHits}
+                images={pipelineImages}
+                model={pipelineModel}
+                topK={25}
+              />
             </div>
+          )}
+          <div className="cur-feed-posts-header">
+            <div className="cur-feed-stage" />
             <div className="cur-view-toggle" role="tablist" aria-label="Post view">
               <button
                 type="button"
@@ -532,6 +633,17 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 </span>
               </label>
             )}
+            <label
+              className="cur-unavail-toggle"
+              title="Show vector similarity, reranker score, and reranker reason on each card"
+            >
+              <input
+                type="checkbox"
+                checked={showDebug}
+                onChange={(e) => setShowDebug(e.target.checked)}
+              />
+              <span>Debug</span>
+            </label>
             <button
               type="button"
               className="cur-refresh"
@@ -546,7 +658,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
             {posts.length === 0 ? (
               <div className="cur-empty">
                 {postsLoading ? (
-                  <p><span className="pulse-dot" />Loading posts…</p>
+                  // The PipelineLoader in the header already shows live progress;
+                  // leave the empty area quiet.
+                  null
                 ) : (
                   <>
                     <p>No posts yet.</p>
@@ -578,38 +692,56 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                     className="cur-post-embed-wrap"
                     data-bsky-uri={post.uri}
                   >
-                    {post.is_reply && (
-                      <div className="cur-post-reply-banner cur-post-reply-banner-embed">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                          <polyline points="9 17 4 12 9 7" />
-                          <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
-                        </svg>
-                        {replyParentUrl ? (
-                          <a href={replyParentUrl} target="_blank" rel="noopener noreferrer">
-                            Replying to a post
+                    <div className="cur-post-embed-frame">
+                      {post.is_reply && (
+                        <div className="cur-post-reply-banner cur-post-reply-banner-embed">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <polyline points="9 17 4 12 9 7" />
+                            <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+                          </svg>
+                          {replyParentUrl ? (
+                            <a href={replyParentUrl} target="_blank" rel="noopener noreferrer">
+                              Replying to a post
+                            </a>
+                          ) : (
+                            <span>Reply</span>
+                          )}
+                        </div>
+                      )}
+                      <div className="cur-post-embed-meta">
+                        {bskyUrl && (
+                          <a
+                            href={bskyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="cur-post-open"
+                            title="Open in Bluesky"
+                          >
+                            Open ↗
                           </a>
-                        ) : (
-                          <span>Reply</span>
                         )}
                       </div>
-                    )}
-                    <div className="cur-post-embed-meta">
-                      <span
-                        className={`cur-post-score ${post.score >= 0.8 ? "high" : post.score >= 0.7 ? "mid" : "low"}`}
-                        title="Match score (rescaled cosine similarity)"
-                      >
-                        {(post.score * 100).toFixed(0)}%
-                      </span>
-                      {bskyUrl && (
-                        <a
-                          href={bskyUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="cur-post-open"
-                          title="Open in Bluesky"
-                        >
-                          Open ↗
-                        </a>
+                      {showDebug && (
+                        <div className="cur-post-debug">
+                          <span className="cur-post-debug-row">
+                            <span className="cur-post-debug-label">vec</span>
+                            <span>{(post.score * 100).toFixed(1)}%</span>
+                            {typeof post.rerank_score === "number" && (
+                              <>
+                                <span className="cur-post-debug-label">rr</span>
+                                <span>{post.rerank_score}</span>
+                              </>
+                            )}
+                            {post.like_nsfw && (
+                              <span className="cur-post-debug-flag">nsfw?</span>
+                            )}
+                          </span>
+                          {post.rerank_reason && (
+                            <span className="cur-post-debug-reason">
+                              &ldquo;{post.rerank_reason}&rdquo;
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div
@@ -719,12 +851,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                           </time>
                         </span>
                       </div>
-                      <span
-                        className={`cur-post-score ${post.score >= 0.8 ? "high" : post.score >= 0.7 ? "mid" : "low"}`}
-                        title="Match score (rescaled cosine similarity)"
-                      >
-                        {(post.score * 100).toFixed(0)}%
-                      </span>
                     </header>
 
                     <div className="cur-post-card-body">{post.text}</div>
@@ -768,6 +894,26 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                           <span className="cur-post-images-alt">
                             {" — "}
                             {post.image_alts.filter(Boolean).join(" · ")}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {showDebug && (
+                      <div className="cur-post-debug cur-post-debug-card">
+                        <span className="cur-post-debug-row">
+                          <span className="cur-post-debug-label">vec</span>
+                          <span>{(post.score * 100).toFixed(1)}%</span>
+                          {typeof post.rerank_score === "number" && (
+                            <>
+                              <span className="cur-post-debug-label">rr</span>
+                              <span>{post.rerank_score}</span>
+                            </>
+                          )}
+                        </span>
+                        {post.rerank_reason && (
+                          <span className="cur-post-debug-reason">
+                            &ldquo;{post.rerank_reason}&rdquo;
                           </span>
                         )}
                       </div>
@@ -1009,9 +1155,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           subqueries={subqueries}
           candidateBudget={candidateBudget}
           rerankPrompt={rerankPrompt}
+          rerankModel={rerankModel}
           onMechanicalChange={saveMechanicalFilters}
           onSubqueriesChange={saveSubqueries}
           onCandidateBudgetChange={saveCandidateBudget}
+          onRerankModelChange={saveRerankModel}
           postCount={postCount}
           rightPane={rightPane}
           onRightPaneChange={setRightPane}

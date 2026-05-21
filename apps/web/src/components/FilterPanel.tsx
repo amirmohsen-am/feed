@@ -6,8 +6,10 @@ import {
   DEFAULT_MECHANICAL_FILTERS,
   DEFAULT_SENSITIVE_LABELS,
   DEFAULT_CANDIDATE_BUDGET,
+  DEFAULT_RERANK_MODEL,
   MIN_CANDIDATE_BUDGET,
   MAX_CANDIDATE_BUDGET,
+  RERANK_MODEL_OPTIONS,
 } from "@/lib/defaults";
 
 interface FilterPanelProps {
@@ -15,9 +17,11 @@ interface FilterPanelProps {
   subqueries: string[];
   candidateBudget: number;
   rerankPrompt: string;
+  rerankModel: string;
   onMechanicalChange: (filters: MechanicalFilters) => void;
   onSubqueriesChange: (subs: string[]) => void;
   onCandidateBudgetChange: (n: number) => void;
+  onRerankModelChange: (model: string) => void;
   postCount: number;
   rightPane?: "chat" | "tune";
   onRightPaneChange?: (pane: "chat" | "tune") => void;
@@ -31,9 +35,11 @@ export default function FilterPanel({
   subqueries,
   candidateBudget,
   rerankPrompt,
+  rerankModel,
   onMechanicalChange,
   onSubqueriesChange,
   onCandidateBudgetChange,
+  onRerankModelChange,
   postCount,
   rightPane,
   onRightPaneChange,
@@ -324,6 +330,18 @@ export default function FilterPanel({
                 Posts come back in raw vector-similarity order. Tell the agent in chat what to favor / drop and it&apos;ll write an editorial filter.
               </p>
             )}
+            <div className="ctrl-mini-field">
+              <span>Model</span>
+              <select
+                value={rerankModel || DEFAULT_RERANK_MODEL}
+                onChange={(e) => onRerankModelChange(e.target.value)}
+                disabled={!rerankPrompt.trim()}
+              >
+                {RERANK_MODEL_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* ADVANCED — collapsible */}
@@ -465,6 +483,11 @@ export default function FilterPanel({
                     onChange={(v) =>
                       updateMech({ block_labels: v ? [] : DEFAULT_SENSITIVE_LABELS })
                     }
+                  />
+                  <Toggle
+                    label="Drop likely-NSFW authors (description heuristic)"
+                    checked={mech.exclude_likely_nsfw}
+                    onChange={(v) => updateMech({ exclude_likely_nsfw: v })}
                   />
                 </div>
               </div>

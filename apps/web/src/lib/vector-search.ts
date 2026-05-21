@@ -18,6 +18,8 @@
 import { v1 } from "@google-cloud/aiplatform";
 import { GoogleGenAI } from "@google/genai";
 import { bskyQuery } from "./bsky-pg";
+import { LIKE_NSFW_DESCRIPTION_KEYWORDS } from "./defaults";
+import { onAdcChange } from "./adc-watcher";
 
 const { MatchServiceClient } = v1;
 
@@ -40,6 +42,7 @@ const EMBEDDING_DIMENSION = 768;
 const APPVIEW_HOST = process.env.BLUESKY_APPVIEW_HOST ?? "https://public.api.bsky.app";
 const OFFICIAL_LABELER_DID = "did:plc:ar7c4by46qjdydhdevvrndac";
 const GET_POSTS_BATCH = 25; // app.bsky.feed.getPosts caps at 25 URIs per call
+const GET_PROFILES_BATCH = 25; // app.bsky.actor.getProfiles caps at 25 actors per call
 
 let _matchClient: InstanceType<typeof MatchServiceClient> | null = null;
 function matchClient() {
@@ -62,6 +65,13 @@ function genai() {
   }
   return _genai;
 }
+
+onAdcChange(() => {
+  const had = _matchClient !== null || _genai !== null;
+  _matchClient = null;
+  _genai = null;
+  if (had) console.log("[vector-search] Vertex / Gemini clients reset after ADC change");
+});
 
 export interface VectorHit {
   uri: string;
@@ -100,6 +110,17 @@ export interface VectorHit {
   author_handle: string | null;
   author_display_name: string | null;
   author_avatar_cid: string | null;
+
+  // True when the author's description matches one of the heuristics in
+  // LIKE_NSFW_DESCRIPTION_KEYWORDS. Computed by hydrateFromPostgres; always
+  // populated (boolean, never undefined).
+  like_nsfw: boolean;
+
+  // CDN URLs for the post's images, pulled from the AppView via
+  // app.bsky.feed.getPosts. Empty if the post has no images, or if the
+  // AppView fetch was not enabled for this search. The reranker uses these
+  // when the feed has a rerank prompt configured.
+  image_urls: string[];
 }
 
 export interface SearchFilter {
@@ -112,6 +133,9 @@ export interface SearchFilter {
   didExclude?: string[];
   hashtags?: string[];
   selfLabelsDeny?: string[];
+  // Drop hits where hit.like_nsfw === true. Computed after hydration, so
+  // it applies only to the union (not the Vertex pre-filter).
+  excludeLikelyNsfw?: boolean;
   minLikeCount?: number;
   minRepostCount?: number;
   minReplyCount?: number;
@@ -298,26 +322,57 @@ async function hydrateFromPostgres(
       author_handle: r.author_handle,
       author_display_name: r.author_display_name,
       author_avatar_cid: r.author_avatar_cid,
+      like_nsfw: false,
+      image_urls: [],
     });
   }
   return hits;
 }
 
+interface AppViewMeta {
+  labels: string[];
+  imageUrls: string[];
+}
+
+interface AppViewPostView {
+  uri: string;
+  labels?: Array<{ val: string }>;
+  embed?: {
+    $type?: string;
+    images?: Array<{ thumb?: string; fullsize?: string }>;
+    // recordWithMedia nests the media one level deeper.
+    media?: {
+      $type?: string;
+      images?: Array<{ thumb?: string; fullsize?: string }>;
+    };
+  };
+}
+
+function extractImageUrls(p: AppViewPostView): string[] {
+  const direct = p.embed?.images ?? [];
+  const nested = p.embed?.media?.images ?? [];
+  const all = [...direct, ...nested];
+  return all
+    .map((img) => img.thumb ?? img.fullsize ?? null)
+    .filter((u): u is string => typeof u === "string" && u.length > 0);
+}
+
 /**
- * Fetch attached labels for a set of post URIs from the public Bluesky
- * AppView, asking it to merge in labels from the official moderation labeler.
+ * Fetch labels + image URLs for a set of post URIs from the public Bluesky
+ * AppView. Asks the AppView to merge in labels from the official moderation
+ * labeler. Same call returns `embed.images[].thumb` URLs for image posts.
  *
  * The AppView caps `app.bsky.feed.getPosts` at 25 URIs per call, so we batch
- * and fan out in parallel. Returns a `uri → label-values[]` map.
+ * and fan out in parallel. Returns a `uri → {labels, imageUrls}` map.
  *
- * Fail-soft: any HTTP error returns an empty map for that batch — the caller
- * treats "no labels known" as "don't filter."
+ * Fail-soft: any HTTP error returns an empty entry for that batch — callers
+ * treat missing entries as "no labels / no images known."
  */
-async function fetchPostLabels(
+async function fetchAppViewMeta(
   uris: string[],
   labelerDids: string[] = [OFFICIAL_LABELER_DID]
-): Promise<Map<string, string[]>> {
-  const out = new Map<string, string[]>();
+): Promise<Map<string, AppViewMeta>> {
+  const out = new Map<string, AppViewMeta>();
   if (uris.length === 0) return out;
 
   const batches: string[][] = [];
@@ -339,25 +394,91 @@ async function fetchPostLabels(
           console.warn(
             `[vector-search] AppView getPosts ${res.status} (batch of ${batch.length})`
           );
-          return [] as Array<{ uri: string; labels?: Array<{ val: string }> }>;
+          return [] as AppViewPostView[];
         }
-        const json = (await res.json()) as {
-          posts?: Array<{ uri: string; labels?: Array<{ val: string }> }>;
-        };
+        const json = (await res.json()) as { posts?: AppViewPostView[] };
         return json.posts ?? [];
       } catch (e) {
         console.warn("[vector-search] AppView getPosts failed:", e);
-        return [];
+        return [] as AppViewPostView[];
       }
     })
   );
 
   for (const posts of results) {
     for (const p of posts) {
-      out.set(p.uri, (p.labels ?? []).map((l) => l.val));
+      out.set(p.uri, {
+        labels: (p.labels ?? []).map((l) => l.val),
+        imageUrls: extractImageUrls(p),
+      });
     }
   }
   return out;
+}
+
+/**
+ * Fetch author descriptions from the public Bluesky AppView. Batches DIDs
+ * into groups of 25 (the `app.bsky.actor.getProfiles` cap) and fans out in
+ * parallel. Returns a `did → description` map. Authors that don't come back
+ * (deleted, suspended, takedown) are simply absent from the result.
+ *
+ * Fail-soft: any HTTP error on a batch leaves those authors out of the map —
+ * the caller treats "no description known" as "don't flag."
+ */
+async function fetchAuthorDescriptions(
+  dids: string[]
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (dids.length === 0) return out;
+
+  const batches: string[][] = [];
+  for (let i = 0; i < dids.length; i += GET_PROFILES_BATCH) {
+    batches.push(dids.slice(i, i + GET_PROFILES_BATCH));
+  }
+
+  const results = await Promise.all(
+    batches.map(async (batch) => {
+      const params = new URLSearchParams();
+      for (const did of batch) params.append("actors", did);
+      const url = `${APPVIEW_HOST}/xrpc/app.bsky.actor.getProfiles?${params}`;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          console.warn(
+            `[vector-search] AppView getProfiles ${res.status} (batch of ${batch.length})`
+          );
+          return [] as Array<{ did: string; description?: string }>;
+        }
+        const json = (await res.json()) as {
+          profiles?: Array<{ did: string; description?: string }>;
+        };
+        return json.profiles ?? [];
+      } catch (e) {
+        console.warn("[vector-search] AppView getProfiles failed:", e);
+        return [] as Array<{ did: string; description?: string }>;
+      }
+    })
+  );
+
+  for (const profiles of results) {
+    for (const p of profiles) {
+      if (typeof p.description === "string" && p.description.length > 0) {
+        out.set(p.did, p.description);
+      }
+    }
+  }
+  return out;
+}
+
+// Case-insensitive substring scan against LIKE_NSFW_DESCRIPTION_KEYWORDS.
+// Returns true if any keyword appears in the description.
+function descriptionLooksNsfw(description: string | null | undefined): boolean {
+  if (!description) return false;
+  const lower = description.toLowerCase();
+  for (const k of LIKE_NSFW_DESCRIPTION_KEYWORDS) {
+    if (lower.includes(k.toLowerCase())) return true;
+  }
+  return false;
 }
 
 /**
@@ -418,6 +539,10 @@ export interface SearchOpts {
   subqueries: string[];
   totalBudget: number;
   filter?: SearchFilter;
+  // When true, always hit the AppView (even if block_labels is empty) and
+  // populate `hit.image_urls` from the response. Set by callers that intend
+  // to pass images into the reranker.
+  withImages?: boolean;
 }
 
 /**
@@ -455,40 +580,89 @@ export async function searchPosts(opts: SearchOpts): Promise<VectorHit[]> {
   const scoreByUri = new Map<string, number>();
   for (const [uri, raw] of rawByUri) scoreByUri.set(uri, rescaleSimilarity(raw));
 
-  // Hydrate from Postgres AND fetch labeler-applied labels in parallel — both
-  // take the same URI list. Skip the AppView call entirely if there's nothing
-  // to filter on (block_labels turned off).
+  // Hydrate from Postgres AND fetch AppView meta (labels + image URLs) AND
+  // fetch author profiles (descriptions for the NSFW heuristic) in parallel.
+  // Each AppView call is gated on whether the caller actually needs it.
   const blockLabels = opts.filter?.selfLabelsDeny ?? [];
   const blockSet = new Set(blockLabels);
   const wantLabels = blockLabels.length > 0;
+  const wantImages = opts.withImages === true;
+  const wantAppView = wantLabels || wantImages;
+  const wantProfiles = opts.filter?.excludeLikelyNsfw === true;
 
-  const [hits, postLabels] = await Promise.all([
+  // Extract author DIDs from URIs without waiting for hydration: the AT URI
+  // already carries `did:plc:xxx` between `at://` and the next `/`.
+  const authorDids = wantProfiles ? uniqueAuthorDidsFromUris(uris) : [];
+
+  const [hits, appViewMeta, authorDescriptions] = await Promise.all([
     hydrateFromPostgres(uris, scoreByUri),
-    wantLabels ? fetchPostLabels(uris) : Promise.resolve(null as Map<string, string[]> | null),
+    wantAppView
+      ? fetchAppViewMeta(uris)
+      : Promise.resolve(null as Map<string, AppViewMeta> | null),
+    wantProfiles
+      ? fetchAuthorDescriptions(authorDids)
+      : Promise.resolve(null as Map<string, string> | null),
   ]);
   const tParallel = performance.now();
 
+  // Attach image URLs to hits (in place). image_urls is otherwise [].
+  if (wantImages && appViewMeta) {
+    for (const h of hits) {
+      const meta = appViewMeta.get(h.uri);
+      if (meta && meta.imageUrls.length > 0) h.image_urls = meta.imageUrls;
+    }
+  }
+
+  // Mark like_nsfw on hits whose author description matches a keyword.
+  // We do this before filtering so the field is always populated when a
+  // profile fetch happened.
+  if (authorDescriptions) {
+    for (const h of hits) {
+      const desc = authorDescriptions.get(h.did);
+      if (desc && descriptionLooksNsfw(desc)) h.like_nsfw = true;
+    }
+  }
+
   let filteredHits = hits;
-  let removed = 0;
-  if (postLabels) {
-    filteredHits = hits.filter((h) => {
-      const labels = postLabels.get(h.uri);
-      if (!labels || labels.length === 0) return true;
+  let labelerRemoved = 0;
+  if (wantLabels && appViewMeta) {
+    filteredHits = filteredHits.filter((h) => {
+      const meta = appViewMeta.get(h.uri);
+      const labels = meta?.labels ?? [];
+      if (labels.length === 0) return true;
       const hit = labels.some((l) => blockSet.has(l));
-      if (hit) removed++;
+      if (hit) labelerRemoved++;
       return !hit;
     });
+  }
+
+  let nsfwRemoved = 0;
+  if (opts.filter?.excludeLikelyNsfw) {
+    const before = filteredHits.length;
+    filteredHits = filteredHits.filter((h) => !h.like_nsfw);
+    nsfwRemoved = before - filteredHits.length;
   }
 
   console.log(
     `[timing] searchPosts subqueries=${subqueries.length} perK=${perQueryK} ` +
       `find=${(tFind - t0).toFixed(0)}ms ` +
-      `hydrate+labels=${(tParallel - tFind).toFixed(0)}ms ` +
+      `hydrate+appview=${(tParallel - tFind).toFixed(0)}ms ` +
       `total=${(tParallel - t0).toFixed(0)}ms ` +
       `union=${uris.length} hits=${hits.length}` +
-      (postLabels ? ` labeler-filtered=${removed}` : "")
+      (wantLabels ? ` labeler-filtered=${labelerRemoved}` : "") +
+      (wantProfiles ? ` profiles=${authorDescriptions?.size ?? 0}/${authorDids.length}` : "") +
+      (wantProfiles ? ` like_nsfw-filtered=${nsfwRemoved}` : "")
   );
   return filteredHits;
+}
+
+function uniqueAuthorDidsFromUris(uris: string[]): string[] {
+  const seen = new Set<string>();
+  for (const uri of uris) {
+    const m = uri.match(/^at:\/\/([^/]+)\//);
+    if (m) seen.add(m[1]);
+  }
+  return Array.from(seen);
 }
 
 /**
