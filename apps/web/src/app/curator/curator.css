@@ -933,6 +933,38 @@
 }
 .cur-unavail-count{ color: var(--ink-4); text-transform: none; letter-spacing: 0.02em; }
 
+.cur-rerank-toggle{
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--rf-mono); font-size: 10px;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-3);
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 0.18s, background 0.18s;
+}
+.cur-rerank-toggle:hover:not([aria-disabled="true"]){
+  color: var(--ink); background: rgba(11,24,20,0.04);
+}
+.cur-rerank-toggle[aria-disabled="true"]{ cursor: not-allowed; }
+.cur-rerank-toggle input[type="checkbox"]{ accent-color: var(--aurora-deep); margin: 0; }
+
+.cur-rerank-pill{
+  display: inline-flex; align-items: center; gap: 8px;
+  margin: 6px 0 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: var(--rf-mono); font-size: 10px;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-3);
+  background: rgba(11,24,20,0.04);
+  align-self: flex-start;
+  width: fit-content;
+}
+.cur-rerank-pill.done{ color: var(--aurora-deep); background: rgba(63,131,108,0.08); }
+.cur-rerank-pill.error{ color: #a23a3a; background: rgba(162,58,58,0.08); }
+
 /* ── BLUESKY EMBED WRAP ─────────────────────────── */
 /* iframe renders at 600px capped, `zoom: 0.85` shrinks it visually to ~510px.
    The chrome (reply banner, header, debug strip) above the iframe is wrapped
@@ -1652,6 +1684,31 @@
 }
 .ctrl-textarea::placeholder{ color: var(--ink-4); }
 .ctrl-textarea:focus{ border-color: var(--aurora-deep); }
+
+.ctrl-label-hint{
+  color: var(--ink-4);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-weight: 400;
+}
+
+.ctrl-rerank-prompt{
+  margin: 0;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--hair-strong);
+  border-radius: 6px;
+  color: var(--ink);
+  font-family: var(--rf-body);
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.ctrl-rerank-prompt.empty{
+  background: transparent;
+  border-style: dashed;
+  color: var(--ink-4);
+}
 
 .ctrl-safety{
   background: rgba(192, 86, 86, 0.05);

@@ -14,9 +14,12 @@ const bumpCounters = async (rows: LikeRecord[], kind: Kind): Promise<void> => {
   const tally = new Map<string, number>()
   for (const r of rows) tally.set(r.subject_uri, (tally.get(r.subject_uri) ?? 0) + 1)
 
+  // Sort by uri so concurrent writers to bsky.post_engagement (post-consumer
+  // reply/quote bumps, post deletes) acquire row locks in the same order.
+  const sorted = [...tally.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
   const uris: string[] = []
   const deltas: number[] = []
-  for (const [uri, d] of tally) {
+  for (const [uri, d] of sorted) {
     uris.push(uri)
     deltas.push(d)
   }

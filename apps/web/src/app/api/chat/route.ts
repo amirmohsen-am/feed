@@ -215,7 +215,7 @@ export async function POST(req: NextRequest) {
     const tBeforeLLM = performance.now();
     const response = await (await client()).messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 512,
+      max_tokens: 4096,
       system: systemPrompt,
       messages: apiMessages,
     });
@@ -223,6 +223,12 @@ export async function POST(req: NextRequest) {
 
     const assistantText =
       response.content[0].type === "text" ? response.content[0].text : "";
+
+    if (response.stop_reason === "max_tokens") {
+      console.warn(
+        `[chat] feedId=${feedId} response hit max_tokens — trailers likely truncated, config may not update`
+      );
+    }
 
     const nameMatch = assistantText.match(/FEED_NAME:(.+)/);
     if (nameMatch) {
@@ -252,9 +258,17 @@ export async function POST(req: NextRequest) {
             updates.subqueries = cleaned;
           }
         }
-      } catch {
-        // parsing failed, skip
+      } catch (err) {
+        console.warn(
+          `[chat] feedId=${feedId} SUBQUERIES_JSON parse failed: ${
+            err instanceof Error ? err.message : String(err)
+          } — raw=${subMatch[1].slice(0, 200)}`
+        );
       }
+    } else {
+      console.log(
+        `[chat] feedId=${feedId} no SUBQUERIES_JSON trailer in assistant reply`
+      );
     }
 
     // RERANK_PROMPT_JSON is a JSON-encoded string. Empty string disables rerank.
@@ -319,8 +333,17 @@ export async function POST(req: NextRequest) {
           created_before_iso:
             pickScalar(incoming.created_before_iso, existing.created_before_iso) ?? "",
         };
-      } catch {
-        // parsing failed, skip
+        console.log(
+          `[chat] feedId=${feedId} mechanical_filters incoming=${JSON.stringify(
+            incoming
+          )} merged=${JSON.stringify(updates.mechanical_filters)}`
+        );
+      } catch (err) {
+        console.warn(
+          `[chat] feedId=${feedId} MECHANICAL_FILTERS_JSON parse failed: ${
+            err instanceof Error ? err.message : String(err)
+          } — raw=${mechMatch[1].slice(0, 200)}`
+        );
       }
     }
 
