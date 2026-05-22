@@ -257,6 +257,100 @@ interface PgRow {
   author_avatar_cid: string | null;
 }
 
+interface ResolvedAuthor {
+  did: string;
+  handle: string | null;
+  displayName: string | null;
+  avatarCid: string | null;
+}
+
+// Extract the CID from a full Bluesky CDN avatar URL.
+// Format varies:
+//   https://cdn.bsky.app/img/avatar/plain/did:plc:xxx/bafkreiabc123@jpeg  (with format suffix)
+//   https://cdn.bsky.app/img/avatar/plain/did:plc:xxx/bafkreiabc123       (without format suffix)
+function extractAvatarCid(url: string | undefined | null): string | null {
+  if (!url) return null;
+  // Match the last path segment, optionally followed by @format
+  const m = url.match(/\/([a-z0-9]+)(?:@[a-z]+)?$/i);
+  return m ? m[1] : null;
+}
+
+async function fetchAndCacheAuthorProfiles(
+  dids: string[]
+): Promise<Map<string, ResolvedAuthor>> {
+  const out = new Map<string, ResolvedAuthor>();
+  if (dids.length === 0) return out;
+
+  const batches: string[][] = [];
+  for (let i = 0; i < dids.length; i += GET_PROFILES_BATCH) {
+    batches.push(dids.slice(i, i + GET_PROFILES_BATCH));
+  }
+
+  interface AppViewProfile {
+    did: string;
+    handle?: string;
+    displayName?: string;
+    avatar?: string;
+  }
+
+  const results = await Promise.all(
+    batches.map(async (batch) => {
+      const params = new URLSearchParams();
+      for (const did of batch) params.append("actors", did);
+      const url = `${APPVIEW_HOST}/xrpc/app.bsky.actor.getProfiles?${params}`;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          console.warn(
+            `[vector-search] author backfill getProfiles ${res.status} (batch of ${batch.length})`
+          );
+          return [] as AppViewProfile[];
+        }
+        const json = (await res.json()) as { profiles?: AppViewProfile[] };
+        return json.profiles ?? [];
+      } catch (e) {
+        console.warn("[vector-search] author backfill getProfiles failed:", e);
+        return [] as AppViewProfile[];
+      }
+    })
+  );
+
+  for (const profiles of results) {
+    for (const p of profiles) {
+      out.set(p.did, {
+        did: p.did,
+        handle: p.handle ?? null,
+        displayName: p.displayName ?? null,
+        avatarCid: extractAvatarCid(p.avatar),
+      });
+    }
+  }
+
+  // Fire-and-forget batch upsert into bsky.authors so future queries hit Postgres
+  if (out.size > 0) {
+    const rows = Array.from(out.values());
+    bskyQuery(
+      `INSERT INTO bsky.authors (did, handle, display_name, avatar_cid, updated_at)
+       SELECT UNNEST($1::text[]), UNNEST($2::text[]), UNNEST($3::text[]), UNNEST($4::text[]), now()
+       ON CONFLICT (did) DO UPDATE SET
+         handle       = COALESCE(EXCLUDED.handle, bsky.authors.handle),
+         display_name = COALESCE(EXCLUDED.display_name, bsky.authors.display_name),
+         avatar_cid   = COALESCE(EXCLUDED.avatar_cid, bsky.authors.avatar_cid),
+         updated_at   = now()`,
+      [
+        rows.map((r) => r.did),
+        rows.map((r) => r.handle),
+        rows.map((r) => r.displayName),
+        rows.map((r) => r.avatarCid),
+      ]
+    ).catch((e) => {
+      console.warn("[vector-search] author backfill upsert failed:", e);
+    });
+  }
+
+  return out;
+}
+
 async function hydrateFromPostgres(
   uris: string[],
   scoreByUri: Map<string, number>
@@ -326,6 +420,37 @@ async function hydrateFromPostgres(
       image_urls: [],
     });
   }
+
+  // Backfill authors that are missing or have incomplete data (no handle or
+  // no avatar) from the Bluesky AppView.
+  const backfillDids = new Set<string>();
+  for (const h of hits) {
+    if (h.author_handle === null || h.author_avatar_cid === null) {
+      backfillDids.add(h.did);
+    }
+  }
+  if (backfillDids.size > 0) {
+    try {
+      const resolved = await fetchAndCacheAuthorProfiles(
+        Array.from(backfillDids)
+      );
+      for (const h of hits) {
+        const r = resolved.get(h.did);
+        if (!r) continue;
+        if (h.author_handle === null) h.author_handle = r.handle;
+        if (h.author_display_name === null) h.author_display_name = r.displayName;
+        if (h.author_avatar_cid === null) h.author_avatar_cid = r.avatarCid;
+      }
+      if (resolved.size > 0) {
+        console.log(
+          `[vector-search] author backfill: resolved ${resolved.size}/${backfillDids.size} incomplete authors`
+        );
+      }
+    } catch (e) {
+      console.warn("[vector-search] author backfill failed (non-fatal):", e);
+    }
+  }
+
   return hits;
 }
 
