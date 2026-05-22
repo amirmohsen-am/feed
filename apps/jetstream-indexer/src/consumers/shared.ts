@@ -71,10 +71,19 @@ export const makeQueueHarness = <T>(opts: {
   queueMax: number
   flush: (items: T[]) => Promise<void>
   onDrop?: (n: number) => void
+  // Called on every flush failure (transient or poison).
+  onFailure?: (items: T[], err: unknown) => void
+  // Called when a batch has failed maxRetries consecutive times and is being
+  // dropped to unblock the queue. Without this, a deterministically-failing
+  // batch (poison pill) would loop at the front of the queue forever.
+  onPoison?: (items: T[], err: unknown) => void
+  maxRetries?: number
 }): QueueHarness<T> => {
   const queue: T[] = []
   let flushing = false
   let timer: ReturnType<typeof setInterval> | null = null
+  let failStreak = 0
+  const maxRetries = opts.maxRetries ?? 5
 
   const doFlush = async () => {
     if (flushing) return
@@ -83,9 +92,17 @@ export const makeQueueHarness = <T>(opts: {
     const batch = queue.splice(0, opts.batchMax)
     try {
       await opts.flush(batch)
+      failStreak = 0
     } catch (err) {
-      // Put items back so a transient PG/Vertex error doesn't lose them.
-      queue.unshift(...batch)
+      failStreak++
+      opts.onFailure?.(batch, err)
+      if (failStreak >= maxRetries) {
+        opts.onPoison?.(batch, err)
+        failStreak = 0
+      } else {
+        // Put items back so a transient PG/Vertex error doesn't lose them.
+        queue.unshift(...batch)
+      }
       throw err
     } finally {
       flushing = false

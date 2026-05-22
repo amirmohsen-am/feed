@@ -1,4 +1,5 @@
 import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
+import { onAdcChange } from "./adc-watcher";
 
 /**
  * Fetch named secrets from Google Secret Manager.
@@ -23,6 +24,17 @@ function client(): SecretManagerServiceClient {
   if (!_client) _client = new SecretManagerServiceClient();
   return _client;
 }
+
+// Secret values themselves don't change when ADC rotates — they're the
+// secrets, not auth state. But the Secret Manager *client* holds the stale
+// refresh token, so any future cache-miss `accessSecretVersion` call would
+// fail. Drop it on ADC change so the next fetch rebuilds it.
+onAdcChange(() => {
+  if (_client !== null) {
+    _client = null;
+    console.log("[secrets] Secret Manager client reset after ADC change");
+  }
+});
 
 function envFor(secretName: string): string {
   return secretName.toUpperCase().replace(/-/g, "_");

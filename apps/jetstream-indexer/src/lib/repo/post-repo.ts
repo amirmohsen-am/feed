@@ -16,6 +16,15 @@ const escapeArrayLiteral = (xs: string[]): string =>
 
 export const upsertPosts = async (rows: PostUpsertRow[]): Promise<void> => {
   if (rows.length === 0) return
+  // Dedupe by uri (keep last — most recent state) before building the multi-row
+  // INSERT. Postgres rejects ON CONFLICT DO UPDATE when two rows in the same
+  // statement target the same conflict key ("cannot affect row a second time").
+  // Edits and Jetstream replays both produce same-uri pairs.
+  // Sort by uri so concurrent transactions acquire row locks in the same order
+  // and don't deadlock against bumpReplyAndQuoteCounters / delete decrements.
+  const byUri = new Map<string, PostUpsertRow>()
+  for (const r of rows) byUri.set(r.uri, r)
+  rows = [...byUri.values()].sort((a, b) => (a.uri < b.uri ? -1 : a.uri > b.uri ? 1 : 0))
   // One multi-row INSERT keeps round-trips low; the per-row $N placeholder
   // count maxes out at ~600 for a 200-post batch which Postgres handles fine.
   const cols = [
@@ -107,9 +116,12 @@ export const bumpReplyAndQuoteCounters = async (posts: PostRecord[]): Promise<vo
     column: 'reply_count' | 'quote_count',
   ): Promise<void> => {
     if (target.size === 0) return
+    // Sort by uri so concurrent writers to bsky.post_engagement (engagement
+    // consumer, post deletes) acquire row locks in the same order.
+    const sorted = [...target.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
     const uris: string[] = []
     const deltas: number[] = []
-    for (const [uri, d] of target) {
+    for (const [uri, d] of sorted) {
       uris.push(uri)
       deltas.push(d)
     }
@@ -154,9 +166,10 @@ export const deletePostsBatch = async (uris: string[]): Promise<void> => {
     }
     const decrement = async (m: Map<string, number>, column: 'reply_count' | 'quote_count') => {
       if (m.size === 0) return
+      const sorted = [...m.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
       const uris2: string[] = []
       const deltas: number[] = []
-      for (const [u, d] of m) {
+      for (const [u, d] of sorted) {
         uris2.push(u)
         deltas.push(d)
       }

@@ -4,6 +4,7 @@
 import { Connector, IpAddressTypes } from "@google-cloud/cloud-sql-connector";
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
 import { getSecret } from "./secrets";
+import { onAdcChange } from "./adc-watcher";
 
 // Dedicated bsky-db instance (separate from feed-db). The web app reads the
 // bsky_posts database for hydration after Vertex returns URIs.
@@ -16,6 +17,16 @@ const SECRET_NAME = process.env.BSKY_DATABASE_SECRET ?? "bsky-database-url";
 let _pool: Pool | null = null;
 let _poolInit: Promise<Pool> | null = null;
 let _connector: Connector | null = null;
+
+onAdcChange(() => {
+  const had = _pool !== null || _poolInit !== null || _connector !== null;
+  if (_pool) { _pool.end().catch(() => { /* ignore */ }); }
+  _pool = null;
+  _poolInit = null;
+  if (_connector) { try { _connector.close(); } catch { /* ignore */ } }
+  _connector = null;
+  if (had) console.log("[bsky-pg] pool/connector reset after ADC change");
+});
 
 export async function getBskyPool(): Promise<Pool> {
   if (_pool) return _pool;

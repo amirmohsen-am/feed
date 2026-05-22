@@ -4,7 +4,10 @@
     "columns": 12,
     "tiles": [
       {
-        "xPos": 0, "yPos": 0, "width": 3, "height": 4,
+        "xPos": 0,
+        "yPos": 0,
+        "width": 3,
+        "height": 4,
         "widget": {
           "title": "Vertex datapoints upserted (window)",
           "scorecard": {
@@ -18,12 +21,17 @@
                 }
               }
             },
-            "sparkChartView": { "sparkChartType": "SPARK_LINE" }
+            "sparkChartView": {
+              "sparkChartType": "SPARK_LINE"
+            }
           }
         }
       },
       {
-        "xPos": 3, "yPos": 0, "width": 3, "height": 4,
+        "xPos": 3,
+        "yPos": 0,
+        "width": 3,
+        "height": 4,
         "widget": {
           "title": "Vertex datapoints upserted / min",
           "xyChart": {
@@ -42,14 +50,19 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 6, "yPos": 0, "width": 3, "height": 4,
+        "xPos": 6,
+        "yPos": 0,
+        "width": 3,
+        "height": 4,
         "widget": {
-          "title": "Embedding cost (window) — calculated*",
+          "title": "Embedding cost (window) \u2014 calculated*",
           "scorecard": {
             "timeSeriesQuery": {
               "timeSeriesFilter": {
@@ -60,14 +73,19 @@
                 }
               }
             },
-            "sparkChartView": { "sparkChartType": "SPARK_LINE" }
+            "sparkChartView": {
+              "sparkChartType": "SPARK_LINE"
+            }
           }
         }
       },
       {
-        "xPos": 9, "yPos": 0, "width": 3, "height": 4,
+        "xPos": 9,
+        "yPos": 0,
+        "width": 3,
+        "height": 4,
         "widget": {
-          "title": "Embedding cost / min — calculated*",
+          "title": "Embedding cost / min \u2014 calculated*",
           "xyChart": {
             "dataSets": [
               {
@@ -84,26 +102,43 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 0, "yPos": 4, "width": 12, "height": 2,
+        "xPos": 0,
+        "yPos": 4,
+        "width": 12,
+        "height": 2,
         "widget": {
           "title": "About the cost numbers",
           "text": {
-            "content": "**Embedding cost is calculated, not billed.** Estimated as `ceil(chars / 4)` tokens × **$0.00015 / 1K tokens** (Vertex Gemini embeddings online tier, gemini-embedding-001).\n\nNot included in this dashboard:\n- **Vertex AI Vector Search deployed index** — flat **~$220/mo** (1× e2-standard-2 replica)\n- **Cloud Run worker** — **~$70/mo** with 2 vCPU + 2 GiB always-on (`--no-cpu-throttling`, `--min-instances=1`)\n- **Cloud Run server** — **<$5/mo** at <10 users\n- **Cloud SQL feed-db** — billed per instance type\n- **GCS storage** — **<$5/mo** (parquets + cursors)\n\nFor actual billing (24–48h lag), see [Cloud Billing console](https://console.cloud.google.com/billing).",
+            "content": "**Embedding cost is calculated, not billed.** Estimated as `ceil(chars / 4)` tokens \u00d7 **$0.00015 / 1K tokens** (Vertex Gemini embeddings online tier, gemini-embedding-001).\n\nNot included in this dashboard:\n- **Vertex AI Vector Search deployed index** \u2014 flat **~$220/mo** (1\u00d7 e2-standard-2 replica)\n- **Cloud Run worker** \u2014 **~$70/mo** with 2 vCPU + 2 GiB always-on (`--no-cpu-throttling`, `--min-instances=1`)\n- **Cloud Run server** \u2014 **<$5/mo** at <10 users\n- **Cloud SQL feed-db** \u2014 billed per instance type\n- **GCS storage** \u2014 **<$5/mo** (parquets + cursors)\n\nFor actual billing (24\u201348h lag), see [Cloud Billing console](https://console.cloud.google.com/billing).",
             "format": "MARKDOWN"
           }
         }
       },
-
-      { "xPos": 0, "yPos": 6, "width": 12, "height": 1,
-        "widget": { "title": "Consumers (postConsumer / engagementConsumer / profileConsumer / reconciler)", "text": { "content": "Per-consumer queue depth, cursor lag, throughput, and failure rates.", "format": "MARKDOWN" } } },
-
       {
-        "xPos": 0, "yPos": 7, "width": 6, "height": 4,
+        "xPos": 0,
+        "yPos": 6,
+        "width": 12,
+        "height": 1,
+        "widget": {
+          "title": "Consumers (postConsumer / engagementConsumer / profileConsumer / reconciler)",
+          "text": {
+            "content": "Per-consumer queue depth, cursor lag, throughput, and failure rates.",
+            "format": "MARKDOWN"
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 7,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Cursor lag by consumer (microseconds behind real-time)",
           "xyChart": {
@@ -117,19 +152,26 @@
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_MEAN",
                       "crossSeriesReducer": "REDUCE_MEAN",
-                      "groupByFields": ["metric.label.kind"]
+                      "groupByFields": [
+                        "metric.label.kind"
+                      ]
                     }
                   }
                 },
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 6, "yPos": 7, "width": 6, "height": 4,
+        "xPos": 6,
+        "yPos": 7,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Queue depth by consumer",
           "xyChart": {
@@ -143,19 +185,26 @@
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_MAX",
                       "crossSeriesReducer": "REDUCE_MAX",
-                      "groupByFields": ["metric.label.kind"]
+                      "groupByFields": [
+                        "metric.label.kind"
+                      ]
                     }
                   }
                 },
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 0, "yPos": 11, "width": 6, "height": 4,
+        "xPos": 0,
+        "yPos": 11,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Events consumed / min by kind",
           "xyChart": {
@@ -169,19 +218,26 @@
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_DELTA",
                       "crossSeriesReducer": "REDUCE_SUM",
-                      "groupByFields": ["metric.label.kind"]
+                      "groupByFields": [
+                        "metric.label.kind"
+                      ]
                     }
                   }
                 },
                 "plotType": "STACKED_AREA"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 6, "yPos": 11, "width": 6, "height": 4,
+        "xPos": 6,
+        "yPos": 11,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Events flushed / min by kind",
           "xyChart": {
@@ -195,19 +251,26 @@
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_DELTA",
                       "crossSeriesReducer": "REDUCE_SUM",
-                      "groupByFields": ["metric.label.kind"]
+                      "groupByFields": [
+                        "metric.label.kind"
+                      ]
                     }
                   }
                 },
                 "plotType": "STACKED_AREA"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 0, "yPos": 15, "width": 6, "height": 4,
+        "xPos": 0,
+        "yPos": 15,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Flush failures / min by kind",
           "xyChart": {
@@ -221,19 +284,26 @@
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_DELTA",
                       "crossSeriesReducer": "REDUCE_SUM",
-                      "groupByFields": ["metric.label.kind"]
+                      "groupByFields": [
+                        "metric.label.kind"
+                      ]
                     }
                   }
                 },
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 6, "yPos": 15, "width": 6, "height": 4,
+        "xPos": 6,
+        "yPos": 15,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Engagement counter increments / min by kind",
           "xyChart": {
@@ -247,19 +317,59 @@
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_DELTA",
                       "crossSeriesReducer": "REDUCE_SUM",
-                      "groupByFields": ["metric.label.kind"]
+                      "groupByFields": [
+                        "metric.label.kind"
+                      ]
                     }
                   }
                 },
                 "plotType": "STACKED_AREA"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 0, "yPos": 19, "width": 6, "height": 4,
+        "xPos": 0,
+        "yPos": 19,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Flush dropped (records) / min by kind",
+          "xyChart": {
+            "dataSets": [
+              {
+                "legendTemplate": "${metric.label.kind}",
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "metric.type=\"workload.googleapis.com/happy_feed_flush_dropped_total\" resource.type=\"generic_node\"",
+                    "aggregation": {
+                      "alignmentPeriod": "60s",
+                      "perSeriesAligner": "ALIGN_DELTA",
+                      "crossSeriesReducer": "REDUCE_SUM",
+                      "groupByFields": [
+                        "metric.label.kind"
+                      ]
+                    }
+                  }
+                },
+                "plotType": "LINE"
+              }
+            ],
+            "yAxis": {
+              "scale": "LINEAR"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 23,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Reconciler: posts pushed / min",
           "xyChart": {
@@ -278,12 +388,17 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 6, "yPos": 19, "width": 6, "height": 4,
+        "xPos": 6,
+        "yPos": 23,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Reconciler: oldest unflushed engagement row (seconds)",
           "xyChart": {
@@ -302,16 +417,30 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
-
-      { "xPos": 0, "yPos": 23, "width": 12, "height": 1,
-        "widget": { "title": "Cloud Run — jetstream-indexer container", "text": { "content": "Memory / CPU / instances / startup count for the worker container.", "format": "MARKDOWN" } } },
-
       {
-        "xPos": 0, "yPos": 24, "width": 3, "height": 4,
+        "xPos": 0,
+        "yPos": 27,
+        "width": 12,
+        "height": 1,
+        "widget": {
+          "title": "Cloud Run \u2014 jetstream-indexer container",
+          "text": {
+            "content": "Memory / CPU / instances / startup count for the worker container.",
+            "format": "MARKDOWN"
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 28,
+        "width": 3,
+        "height": 4,
         "widget": {
           "title": "Worker memory utilization (p99)",
           "xyChart": {
@@ -329,12 +458,17 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 3, "yPos": 24, "width": 3, "height": 4,
+        "xPos": 3,
+        "yPos": 28,
+        "width": 3,
+        "height": 4,
         "widget": {
           "title": "Worker CPU utilization (p99)",
           "xyChart": {
@@ -352,12 +486,17 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 6, "yPos": 24, "width": 3, "height": 4,
+        "xPos": 6,
+        "yPos": 28,
+        "width": 3,
+        "height": 4,
         "widget": {
           "title": "Worker instances",
           "xyChart": {
@@ -370,19 +509,26 @@
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_MEAN",
                       "crossSeriesReducer": "REDUCE_SUM",
-                      "groupByFields": ["metric.label.state"]
+                      "groupByFields": [
+                        "metric.label.state"
+                      ]
                     }
                   }
                 },
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 9, "yPos": 24, "width": 3, "height": 4,
+        "xPos": 9,
+        "yPos": 28,
+        "width": 3,
+        "height": 4,
         "widget": {
           "title": "Worker container startup latency (p95)",
           "xyChart": {
@@ -400,12 +546,17 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 0, "yPos": 28, "width": 6, "height": 4,
+        "xPos": 0,
+        "yPos": 32,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Worker network egress / min",
           "xyChart": {
@@ -424,12 +575,17 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 6, "yPos": 28, "width": 6, "height": 4,
+        "xPos": 6,
+        "yPos": 32,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Worker network ingress / min",
           "xyChart": {
@@ -448,16 +604,30 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
-
-      { "xPos": 0, "yPos": 32, "width": 12, "height": 1,
-        "widget": { "title": "Cloud SQL — feed-db (postgres)", "text": { "content": "CPU / memory / disk / connections for the shared Postgres instance. The bsky database lives here.", "format": "MARKDOWN" } } },
-
       {
-        "xPos": 0, "yPos": 33, "width": 3, "height": 4,
+        "xPos": 0,
+        "yPos": 36,
+        "width": 12,
+        "height": 1,
+        "widget": {
+          "title": "Cloud SQL \u2014 feed-db (postgres)",
+          "text": {
+            "content": "CPU / memory / disk / connections for the shared Postgres instance. The bsky database lives here.",
+            "format": "MARKDOWN"
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 37,
+        "width": 3,
+        "height": 4,
         "widget": {
           "title": "Cloud SQL CPU utilization",
           "xyChart": {
@@ -475,12 +645,17 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 3, "yPos": 33, "width": 3, "height": 4,
+        "xPos": 3,
+        "yPos": 37,
+        "width": 3,
+        "height": 4,
         "widget": {
           "title": "Cloud SQL memory utilization",
           "xyChart": {
@@ -498,12 +673,17 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 6, "yPos": 33, "width": 3, "height": 4,
+        "xPos": 6,
+        "yPos": 37,
+        "width": 3,
+        "height": 4,
         "widget": {
           "title": "Cloud SQL disk used (bytes)",
           "xyChart": {
@@ -521,12 +701,17 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 9, "yPos": 33, "width": 3, "height": 4,
+        "xPos": 9,
+        "yPos": 37,
+        "width": 3,
+        "height": 4,
         "widget": {
           "title": "Cloud SQL disk utilization",
           "xyChart": {
@@ -544,12 +729,17 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 0, "yPos": 37, "width": 4, "height": 4,
+        "xPos": 0,
+        "yPos": 41,
+        "width": 4,
+        "height": 4,
         "widget": {
           "title": "Cloud SQL active connections",
           "xyChart": {
@@ -567,12 +757,17 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 4, "yPos": 37, "width": 4, "height": 4,
+        "xPos": 4,
+        "yPos": 41,
+        "width": 4,
+        "height": 4,
         "widget": {
           "title": "Cloud SQL transactions / min",
           "xyChart": {
@@ -592,12 +787,17 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 8, "yPos": 37, "width": 4, "height": 4,
+        "xPos": 8,
+        "yPos": 41,
+        "width": 4,
+        "height": 4,
         "widget": {
           "title": "Cloud SQL disk read/write IOPS",
           "xyChart": {
@@ -631,12 +831,17 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 0, "yPos": 41, "width": 6, "height": 4,
+        "xPos": 0,
+        "yPos": 45,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Cloud SQL network bytes / min",
           "xyChart": {
@@ -670,12 +875,17 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 6, "yPos": 41, "width": 6, "height": 4,
+        "xPos": 6,
+        "yPos": 45,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Cloud SQL postgres dead tuples (vacuum signal)",
           "xyChart": {
@@ -688,23 +898,39 @@
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_MEAN",
                       "crossSeriesReducer": "REDUCE_SUM",
-                      "groupByFields": ["metric.label.application"]
+                      "groupByFields": [
+                        "metric.label.application"
+                      ]
                     }
                   }
                 },
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
-
-      { "xPos": 0, "yPos": 45, "width": 12, "height": 1,
-        "widget": { "title": "Vertex Vector Search — query path", "text": { "content": "Query QPS + latency on the deployed index endpoint.", "format": "MARKDOWN" } } },
-
       {
-        "xPos": 0, "yPos": 46, "width": 6, "height": 4,
+        "xPos": 0,
+        "yPos": 49,
+        "width": 12,
+        "height": 1,
+        "widget": {
+          "title": "Vertex Vector Search \u2014 query path",
+          "text": {
+            "content": "Query QPS + latency on the deployed index endpoint.",
+            "format": "MARKDOWN"
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 50,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Vertex query QPS",
           "xyChart": {
@@ -723,12 +949,17 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       },
       {
-        "xPos": 6, "yPos": 46, "width": 6, "height": 4,
+        "xPos": 6,
+        "yPos": 50,
+        "width": 6,
+        "height": 4,
         "widget": {
           "title": "Vertex query latency p95 (ms)",
           "xyChart": {
@@ -747,7 +978,9 @@
                 "plotType": "LINE"
               }
             ],
-            "yAxis": { "scale": "LINEAR" }
+            "yAxis": {
+              "scale": "LINEAR"
+            }
           }
         }
       }

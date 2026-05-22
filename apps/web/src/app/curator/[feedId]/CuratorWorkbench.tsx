@@ -1,28 +1,26 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
-import VoiceCards, { type Voice } from "@/components/VoiceCards";
 import FilterPanel from "@/components/FilterPanel";
 import ShaderSendButton from "@/components/ShaderSendButton";
+import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
 import { authedFetch } from "@/lib/authed-fetch";
-import type { MechanicalFilters, SemanticConfig } from "@/lib/types";
+import type { MechanicalFilters } from "@/lib/types";
+import { DEFAULT_CANDIDATE_BUDGET, DEFAULT_RERANK_MODEL } from "@/lib/defaults";
 import { useResizable } from "../useResizable";
 import { useCurator, feedIsComplete } from "../curatorContext";
 
 interface Message { role: "user" | "assistant"; content: string; }
-interface FeedCriteria {
-  topics: string[]; keywords: string[];
-  exclude_topics: string[]; exclude_keywords: string[];
-  vibes: string;
-}
-interface Preferences { retrieval_query: string; criteria: FeedCriteria; }
 interface Post {
   uri: string;
   author_did: string;
   text: string;
   score: number;
+  rerank_score?: number;
+  rerank_reason?: string;
+  like_nsfw?: boolean;
   indexed_at: string;
   author_handle: string | null;
   author_display_name: string | null;
@@ -98,11 +96,7 @@ function externalHost(url: string | null): string | null {
 type ViewMode = "card" | "embed";
 const VIEW_MODE_KEY = "curator:viewMode";
 const HIDE_UNAVAIL_KEY = "curator:hideUnavailable";
-const RERANK_KEY = (feedId: number) => `curator:rerank:${feedId}`;
-// How many posts to actually display per feed. Anything outside this window
-// (e.g. reranker rejected items) stays mounted but display:none to keep
-// Bluesky iframes alive across reranker toggles.
-const DISPLAY_K = 50;
+const SHOW_DEBUG_KEY = "curator:showDebug";
 
 declare global {
   interface Window {
@@ -115,13 +109,10 @@ const RIGHT_MIN = 320;
 const RIGHT_MAX = 720;
 
 function parseMessage(content: string) {
-  const stripped = content
-    .replace(/FEED_NAME:.+\n?/g, "")
-    .replace(/FEED_CONFIG_JSON:\s*\{[\s\S]*?\}\s*\n?/g, "")
-    .replace(/MECHANICAL_FILTERS_JSON:\s*\{[\s\S]*?\}\s*\n?/g, "")
-    .replace(/FEED_DONE\n?/g, "")
-    .trim();
-  const lines = stripped.split("\n");
+  // Server stores the agent's question text + numbered option lines (rendered
+  // from a present_options tool call). Pull those numbered lines out so we
+  // can render them as chips.
+  const lines = content.split("\n");
   const options: { key: string; label: string }[] = [];
   const textLines: string[] = [];
   for (const line of lines) {
@@ -138,7 +129,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     reloadFeeds,
     setActivePostCount,
     mobileTab,
-    setMobileTab,
     setOptionsUnread,
   } = useCurator();
 
@@ -163,6 +153,14 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   function setHideUnavailable(next: boolean) {
     setHideUnavailableState(next);
     try { window.localStorage.setItem(HIDE_UNAVAIL_KEY, String(next)); } catch { /* ignore */ }
+  }
+  const [showDebug, setShowDebugState] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem(SHOW_DEBUG_KEY) !== "false";
+  });
+  function setShowDebug(next: boolean) {
+    setShowDebugState(next);
+    try { window.localStorage.setItem(SHOW_DEBUG_KEY, String(next)); } catch { /* ignore */ }
   }
   // Per-feed: unavailable URIs from the Bluesky availability probe. Lives
   // inside the workbench so it resets atomically when the feedId-keyed
@@ -191,46 +189,47 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     setTimeout(() => inputRef.current?.focus(), 0);
     router.replace(pathname);
   }, [promptParam, pathname, router]);
-  const [prefs, setPrefs] = useState<Preferences | null>(null);
+
+  // Interview mode is a hint to the agent for the *next* request only; the
+  // agent picks up the pattern from history after that. Set true by the
+  // "Help me build my prompt" button, false by "Cancel questions".
+  const interviewModeRef = useRef(false);
   const [posts, setPosts] = useState<Post[]>([]);
   const [postCount, setPostCount] = useState(0);
   const [postsLoading, setPostsLoading] = useState(false);
-  const [postsStage, setPostsStage] = useState<"idle" | "searching" | "ranking">("idle");
-
-  // Reranker state. `vectorOrder` and `rerankedOrder` are URI lists; `posts`
-  // holds the *union* of all posts referenced by either list so React keeps
-  // them mounted across toggles (the iframes inside the embed wraps stay
-  // alive even when their post falls out of the active top-50).
-  const [vectorOrder, setVectorOrder] = useState<string[]>([]);
-  const [rerankedOrder, setRerankedOrder] = useState<string[] | null>(null);
-  const [rerankAvailable, setRerankAvailable] = useState(false);
-  // The actual editorial paragraph the chat agent drafted, so the user
-  // can read it from the curator instead of querying the DB directly.
-  const [rerankPromptText, setRerankPromptText] = useState<string | null>(null);
-  const [useRerank, setUseRerankState] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(RERANK_KEY(feedId)) === "1";
-  });
-  function setUseRerank(next: boolean) {
-    setUseRerankState(next);
-    try {
-      window.localStorage.setItem(RERANK_KEY(feedId), next ? "1" : "0");
-    } catch { /* ignore */ }
-  }
-  const [rerankPhase, setRerankPhase] = useState<"idle" | "running" | "done" | "error">("idle");
-  const [rerankMs, setRerankMs] = useState<number | null>(null);
-  const [rerankError, setRerankError] = useState<string | null>(null);
+  const [pipelineStage, setPipelineStage] = useState<PipelineStage>("idle");
+  const [pipelineCandidates, setPipelineCandidates] = useState<number | undefined>(undefined);
+  const [pipelineHits, setPipelineHits] = useState<number | undefined>(undefined);
+  const [pipelineImages, setPipelineImages] = useState<number | undefined>(undefined);
+  const [pipelineModel, setPipelineModel] = useState<string | undefined>(undefined);
+  const [pipelineThinkingEnabled, setPipelineThinkingEnabled] = useState<boolean | undefined>(undefined);
   const [chatLoading, setChatLoading] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
-  const [prevCriteriaJson, setPrevCriteriaJson] = useState("");
-  const [showVoices, setShowVoices] = useState(false);
-  const [addedVoices, setAddedVoices] = useState<Voice[]>([]);
   const [mechanicalFilters, setMechanicalFilters] = useState<MechanicalFilters | null>(null);
-  const [semanticConfig, setSemanticConfig] = useState<SemanticConfig | null>(null);
+  const [subqueries, setSubqueries] = useState<string[]>([]);
+  const [candidateBudget, setCandidateBudget] = useState<number>(DEFAULT_CANDIDATE_BUDGET);
+  const [rerankPrompt, setRerankPrompt] = useState<string>("");
+  const [rerankModel, setRerankModel] = useState<string>(DEFAULT_RERANK_MODEL);
+  const [rerankThinkingEnabled, setRerankThinkingEnabled] = useState<boolean>(false);
   const endRef = useRef<HTMLDivElement>(null);
-  const lastSemanticConfigJsonRef = useRef<string>("");
-  const lastMechanicalFiltersJsonRef = useRef<string>("");
+  // Single signature of the fields that, when changed, should re-fetch posts.
+  // Updated by both the user (Tune panel saves) and the agent (chat replies).
+  const feedSignatureRef = useRef<string>("");
   const postsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function feedSignature(f: {
+    subqueries?: string[];
+    mechanical_filters?: MechanicalFilters;
+    candidate_budget?: number;
+    rerank_prompt?: string;
+  }): string {
+    return JSON.stringify({
+      s: f.subqueries ?? [],
+      m: f.mechanical_filters ?? null,
+      b: f.candidate_budget ?? null,
+      r: f.rerank_prompt ?? "",
+    });
+  }
 
   // On unmount (i.e. when the user switches feeds), clear the layout's
   // mirrored post count so the sidebar doesn't briefly show stale numbers
@@ -240,25 +239,43 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     return () => setActivePostCount(0);
   }, [setActivePostCount]);
 
-  async function saveMechanicalFilters(filters: MechanicalFilters) {
-    setMechanicalFilters(filters);
+  // Patches that originate from the Tune panel. We update local state and
+  // the signature in sync so the next chat reply doesn't trigger a redundant
+  // post-refresh just because the server echoed back our own write.
+  async function patchFeed(patch: {
+    mechanical_filters?: MechanicalFilters;
+    subqueries?: string[];
+    candidate_budget?: number;
+    rerank_model?: string;
+    rerank_thinking_enabled?: boolean;
+  }) {
+    if (patch.mechanical_filters) setMechanicalFilters(patch.mechanical_filters);
+    if (patch.subqueries) setSubqueries(patch.subqueries);
+    if (patch.candidate_budget !== undefined) setCandidateBudget(patch.candidate_budget);
+    if (patch.rerank_model) setRerankModel(patch.rerank_model);
+    if (patch.rerank_thinking_enabled !== undefined) setRerankThinkingEnabled(patch.rerank_thinking_enabled);
+    feedSignatureRef.current = feedSignature({
+      subqueries: patch.subqueries ?? subqueries,
+      mechanical_filters: patch.mechanical_filters ?? mechanicalFilters ?? undefined,
+      candidate_budget: patch.candidate_budget ?? candidateBudget,
+      rerank_prompt: rerankPrompt,
+    });
     try {
       await authedFetch("/api/feeds", {
         method: "PATCH",
-        body: JSON.stringify({ id: feedId, mechanical_filters: filters }),
+        body: JSON.stringify({ id: feedId, ...patch }),
       });
     } catch { /* ignore */ }
   }
 
-  async function saveSemanticConfig(config: SemanticConfig) {
-    setSemanticConfig(config);
-    try {
-      await authedFetch("/api/feeds", {
-        method: "PATCH",
-        body: JSON.stringify({ id: feedId, semantic_config: config }),
-      });
-    } catch { /* ignore */ }
-  }
+  const saveMechanicalFilters = (filters: MechanicalFilters) =>
+    patchFeed({ mechanical_filters: filters });
+  const saveSubqueries = (subs: string[]) => patchFeed({ subqueries: subs });
+  const saveCandidateBudget = (n: number) => patchFeed({ candidate_budget: n });
+  const saveRerankModel = (model: string) => patchFeed({ rerank_model: model });
+  const saveRerankThinkingEnabled = (v: boolean) =>
+    patchFeed({ rerank_thinking_enabled: v });
+
 
   const loadChat = useCallback(async (id: number) => {
     setChatLoading(true);
@@ -266,12 +283,20 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       const res = await authedFetch(`/api/chat?feedId=${id}`);
       const data = await res.json();
       const msgs: Message[] = data.messages || [];
-      if (data.feed?.criteria) {
-        setPrefs({ retrieval_query: data.feed.retrieval_query, criteria: data.feed.criteria });
-        setPrevCriteriaJson(JSON.stringify(data.feed.criteria));
+      const f = data.feed;
+      if (f) {
+        if (Array.isArray(f.subqueries)) setSubqueries(f.subqueries);
+        if (typeof f.candidate_budget === "number") setCandidateBudget(f.candidate_budget);
+        if (f.mechanical_filters) setMechanicalFilters(f.mechanical_filters);
+        setRerankPrompt(f.rerank_prompt ?? "");
+        if (typeof f.rerank_model === "string" && f.rerank_model.length > 0) {
+          setRerankModel(f.rerank_model);
+        }
+        if (typeof f.rerank_thinking_enabled === "boolean") {
+          setRerankThinkingEnabled(f.rerank_thinking_enabled);
+        }
+        feedSignatureRef.current = feedSignature(f);
       }
-      setRerankAvailable(!!data.feed?.rerank_prompt);
-      setRerankPromptText(data.feed?.rerank_prompt ?? null);
       setMessages(msgs);
     } catch { /* ignore */ }
     finally {
@@ -279,175 +304,129 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     }
   }, []);
 
-  const loadPosts = useCallback(async (id: number, opts?: { rerank?: boolean }) => {
-    const wantsRerank = !!opts?.rerank;
+  const loadPosts = useCallback(async (id: number) => {
     setPostsLoading(true);
-    setPostsStage(wantsRerank ? "searching" : "searching");
-    setRerankError(null);
-    if (!wantsRerank) {
-      // Plain JSON path — clear any prior rerank state so the curator falls
-      // straight back to vector-only ordering on the next render.
-      setRerankPhase("idle");
-      setRerankMs(null);
-      setRerankedOrder(null);
-    }
+    setPipelineStage("searching");
+    setPipelineCandidates(undefined);
+    setPipelineHits(undefined);
+    setPipelineImages(undefined);
+    setPipelineModel(undefined);
+    setPipelineThinkingEnabled(undefined);
     try {
-      const url = wantsRerank
-        ? `/api/feed-preview?feedId=${id}&rerank=1`
-        : `/api/feed-preview?feedId=${id}`;
-      const res = await authedFetch(url);
-      const ct = res.headers.get("content-type") ?? "";
-
-      if (ct.includes("ndjson") && res.body) {
-        // Streaming path — two NDJSON lines, phase=vector then phase=rerank.
-        setRerankPhase("running");
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          let nl;
-          while ((nl = buf.indexOf("\n")) >= 0) {
-            const line = buf.slice(0, nl).trim();
-            buf = buf.slice(nl + 1);
-            if (!line) continue;
-            let obj: Record<string, unknown>;
-            try { obj = JSON.parse(line); } catch { continue; }
-            if (obj.phase === "vector") {
-              const phasePosts = (obj.posts as Post[]) || [];
-              const phaseOrder = (obj.vectorOrder as string[]) || [];
-              setPosts(phasePosts);
-              setVectorOrder(phaseOrder);
-              setRerankedOrder(null);
-              setPostCount(phasePosts.length);
-              setActivePostCount(phasePosts.length);
-              if (obj.mechanical_filters) setMechanicalFilters(obj.mechanical_filters as MechanicalFilters);
-              if (obj.semantic_config) setSemanticConfig(obj.semantic_config as SemanticConfig);
-              // Phase 1 done — let the user see results while phase 2 runs.
-              setPostsLoading(false);
-              setPostsStage("ranking");
-            } else if (obj.phase === "rerank") {
-              if (obj.error) {
-                setRerankError(String(obj.error));
-                setRerankPhase("error");
-              } else {
-                const extra = (obj.additionalPosts as Post[]) || [];
-                if (extra.length > 0) {
-                  setPosts((prev) => {
-                    const seen = new Set(prev.map((p) => p.uri));
-                    return [...prev, ...extra.filter((p) => !seen.has(p.uri))];
-                  });
+      const res = await authedFetch(`/api/feed-preview/stream?feedId=${id}`);
+      if (!res.ok || !res.body) {
+        setPostsLoading(false);
+        setPipelineStage("idle");
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        // Each event is one line of NDJSON. Process full lines; keep the
+        // last partial line in the buffer until the next chunk completes it.
+        let nl: number;
+        while ((nl = buf.indexOf("\n")) !== -1) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line) continue;
+          try {
+            const ev = JSON.parse(line) as {
+              event?: string;
+              stage?: string;
+              candidates?: number;
+              hits?: number;
+              images?: number;
+              model?: string;
+              thinking_enabled?: boolean;
+              posts?: Post[];
+              total_stored?: number;
+              mechanical_filters?: MechanicalFilters;
+              subqueries?: string[];
+              candidate_budget?: number;
+              rerank_prompt?: string;
+              rerank_model?: string;
+              rerank_thinking_enabled?: boolean;
+              message?: string;
+            };
+            if (ev.event === "stage" && ev.stage) {
+              if (ev.stage === "skipped_rerank") {
+                // No rerank prompt: jump straight past thinking/ranking;
+                // the "done" event will arrive immediately after with posts.
+              } else if (
+                ev.stage === "searching" ||
+                ev.stage === "thinking" ||
+                ev.stage === "ranking" ||
+                ev.stage === "done"
+              ) {
+                setPipelineStage(ev.stage);
+                if (ev.stage === "thinking") {
+                  if (typeof ev.candidates === "number") setPipelineCandidates(ev.candidates);
+                  if (typeof ev.hits === "number") setPipelineHits(ev.hits);
+                  if (typeof ev.images === "number") setPipelineImages(ev.images);
+                  if (typeof ev.model === "string") setPipelineModel(ev.model);
+                  if (typeof ev.thinking_enabled === "boolean") setPipelineThinkingEnabled(ev.thinking_enabled);
                 }
-                setRerankedOrder((obj.rerankedOrder as string[]) || []);
-                setRerankMs(typeof obj.ms_rerank === "number" ? obj.ms_rerank : null);
-                setRerankPhase("done");
               }
-              setPostsStage("idle");
+            } else if (ev.event === "done") {
+              setPipelineStage("done");
+              const nextCount = ev.total_stored || (ev.posts?.length ?? 0);
+              setPosts(ev.posts || []);
+              setPostCount(nextCount);
+              setActivePostCount(nextCount);
+              if (ev.mechanical_filters) setMechanicalFilters(ev.mechanical_filters);
+              if (Array.isArray(ev.subqueries)) setSubqueries(ev.subqueries);
+              if (typeof ev.candidate_budget === "number") setCandidateBudget(ev.candidate_budget);
+              if (typeof ev.rerank_prompt === "string") setRerankPrompt(ev.rerank_prompt);
+              if (typeof ev.rerank_model === "string" && ev.rerank_model.length > 0) {
+                setRerankModel(ev.rerank_model);
+              }
+              if (typeof ev.rerank_thinking_enabled === "boolean") {
+                setRerankThinkingEnabled(ev.rerank_thinking_enabled);
+              }
+              feedSignatureRef.current = feedSignature({
+                subqueries: ev.subqueries,
+                mechanical_filters: ev.mechanical_filters,
+                candidate_budget: ev.candidate_budget,
+                rerank_prompt: ev.rerank_prompt,
+              });
+            } else if (ev.event === "error") {
+              console.warn("[feed-preview/stream] error:", ev.message);
             }
+          } catch {
+            /* ignore malformed line */
           }
         }
-      } else {
-        // Plain JSON path.
-        const d = await res.json();
-        const nextCount = d.total_stored || (d.posts?.length ?? 0);
-        const list = (d.posts as Post[]) || [];
-        setPosts(list);
-        setVectorOrder(list.map((p) => p.uri));
-        setRerankedOrder(null);
-        setPostCount(nextCount);
-        setActivePostCount(nextCount);
-        if (d.mechanical_filters) setMechanicalFilters(d.mechanical_filters);
-        if (d.semantic_config) setSemanticConfig(d.semantic_config);
-        setPostsLoading(false);
-        setPostsStage("idle");
       }
-    } catch (e) {
-      setRerankError(e instanceof Error ? e.message : String(e));
-    } finally {
+    } catch { /* ignore */ }
+    finally {
       setPostsLoading(false);
-      setPostsStage("idle");
     }
   }, [setActivePostCount]);
 
   // On mount (i.e. on feed switch via URL change), hydrate chat + posts.
-  // Initial post load is always plain JSON (cheap, vector-only). If the user
-  // has rerank enabled for this feed and the feed has a rerank_prompt, a
-  // separate effect below upgrades to streaming once loadChat reveals that.
   useEffect(() => {
     loadChat(feedId);
     loadPosts(feedId);
   }, [feedId, loadChat, loadPosts]);
 
-  // After chat loads we know rerankAvailable. If the user wants rerank and
-  // we don't yet have a reranked order for this feed, fire the streaming
-  // /api/feed-preview?rerank=1. Guards prevent double-fetching when this
-  // effect re-runs (e.g. after rerankedOrder is set).
-  const rerankInFlight = useRef(false);
-  useEffect(() => {
-    if (!useRerank || !rerankAvailable) return;
-    if (rerankedOrder !== null) return;
-    if (rerankInFlight.current) return;
-    rerankInFlight.current = true;
-    loadPosts(feedId, { rerank: true }).finally(() => {
-      rerankInFlight.current = false;
-    });
-  }, [feedId, useRerank, rerankAvailable, rerankedOrder, loadPosts]);
-
-  // Active ordering — vector by default, reranked if the user opted in and
-  // we have rerank results. The orderMap is rebuilt only when the active
-  // ordering changes; everything else (display:none toggles, post sort)
-  // derives from it.
-  const orderMap = useMemo(() => {
-    const active = useRerank && rerankedOrder ? rerankedOrder : vectorOrder;
-    const m = new Map<string, number>();
-    active.forEach((uri, i) => m.set(uri, i));
-    return m;
-  }, [useRerank, rerankedOrder, vectorOrder]);
-
-  // Sorted union — same React keys across toggles, just reordered. React
-  // moves the existing DOM nodes instead of remounting, so the iframes
-  // inside the embed wraps survive a rerank toggle.
-  const sortedPosts = useMemo(() => {
-    return [...posts].sort((a, b) => {
-      const ra = orderMap.get(a.uri) ?? Number.POSITIVE_INFINITY;
-      const rb = orderMap.get(b.uri) ?? Number.POSITIVE_INFINITY;
-      return ra - rb;
-    });
-  }, [posts, orderMap]);
-
-  // Watch for new criteria from the chat agent → refresh sidebar + show voices.
-  const checkNewFeed = useCallback((newPrefs: Preferences) => {
-    const newJson = JSON.stringify(newPrefs.criteria);
-    const hasCriteria = (newPrefs.criteria.topics?.length ?? 0) > 0 ||
-      (newPrefs.criteria.keywords?.length ?? 0) > 0;
-
-    if (hasCriteria && newJson !== prevCriteriaJson) {
-      setPrevCriteriaJson(newJson);
-      setShowVoices(true);
-      reloadFeeds();
-    }
-  }, [prevCriteriaJson, reloadFeeds]);
-
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  // Re-scan Bluesky embeds when the visible post set changes. We scan
-  // regardless of viewMode because both Card and Embed wraps are always
-  // mounted (see render-union below) — the embed placeholders just live
-  // under a display:none ancestor when the user is viewing cards. The
-  // bluesky widget's querySelectorAll still finds them and hydrates the
-  // iframes once, so toggling viewMode never re-fetches from
-  // embed.bsky.app.
+  // Re-scan Bluesky embeds when the visible post set changes.
   useEffect(() => {
+    if (viewMode !== "embed") return;
     const scan = () => window.bluesky?.scan?.();
     scan();
     const t = setTimeout(scan, 300);
     return () => clearTimeout(t);
-  }, [posts, hideUnavailable, unavailableUris]);
+  }, [viewMode, posts, hideUnavailable, unavailableUris]);
 
   // Detect unavailable posts via the public AT Proto API.
   useEffect(() => {
+    if (viewMode !== "embed") return;
     if (posts.length === 0) return;
 
     const ac = new AbortController();
@@ -514,49 +493,36 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     setSelectedOptions(new Set());
     setMessages(prev => [...prev, { role: "user", content: text.trim() }]);
     setLoading(true);
+    const interview = interviewModeRef.current;
+    // Interview flag is consumed once: after a single nudged turn, the model
+    // picks up the question/options pattern from history on its own.
+    interviewModeRef.current = false;
     try {
       const res = await authedFetch("/api/chat", {
         method: "POST",
-        body: JSON.stringify({ message: text.trim(), feedId }),
+        body: JSON.stringify({ message: text.trim(), feedId, interview }),
       });
       const d = await res.json();
       const msgs = d.messages || [];
       setMessages(msgs);
-      if (d.feed?.criteria) {
-        const p = { retrieval_query: d.feed.retrieval_query, criteria: d.feed.criteria };
-        setPrefs(p);
-        checkNewFeed(p);
-      }
-      // Reranker availability flips on as soon as the chat agent drafts
-      // a rerank_prompt — usually on the very first turn. Without this
-      // line the toggle would stay disabled until the user navigates
-      // away and back, because rerankAvailable is only set on mount.
-      if (d.feed) {
-        setRerankAvailable(!!d.feed.rerank_prompt);
-        setRerankPromptText(d.feed.rerank_prompt ?? null);
-      }
-      let configChanged = false;
-      if (d.feed?.semantic_config) {
-        const incomingJson = JSON.stringify(d.feed.semantic_config);
-        if (incomingJson !== lastSemanticConfigJsonRef.current) {
-          lastSemanticConfigJsonRef.current = incomingJson;
-          setSemanticConfig(d.feed.semantic_config);
-          configChanged = true;
+      const f = d.feed;
+      if (f) {
+        const prevSubs = subqueries;
+        if (Array.isArray(f.subqueries)) setSubqueries(f.subqueries);
+        if (f.mechanical_filters) setMechanicalFilters(f.mechanical_filters);
+        if (typeof f.candidate_budget === "number") setCandidateBudget(f.candidate_budget);
+        if (typeof f.rerank_prompt === "string") setRerankPrompt(f.rerank_prompt);
+
+        const nextSig = feedSignature(f);
+        const subsChanged =
+          Array.isArray(f.subqueries) &&
+          JSON.stringify(f.subqueries) !== JSON.stringify(prevSubs);
+        if (nextSig !== feedSignatureRef.current) {
+          feedSignatureRef.current = nextSig;
+          if (subsChanged) reloadFeeds();
+          if (postsDebounceRef.current) clearTimeout(postsDebounceRef.current);
+          postsDebounceRef.current = setTimeout(() => loadPosts(feedId), 600);
         }
-      }
-      if (d.feed?.mechanical_filters) {
-        const incomingJson = JSON.stringify(d.feed.mechanical_filters);
-        if (incomingJson !== lastMechanicalFiltersJsonRef.current) {
-          lastMechanicalFiltersJsonRef.current = incomingJson;
-          setMechanicalFilters(d.feed.mechanical_filters);
-          configChanged = true;
-        }
-      }
-      if (configChanged) {
-        if (postsDebounceRef.current) clearTimeout(postsDebounceRef.current);
-        postsDebounceRef.current = setTimeout(() => {
-          loadPosts(feedId);
-        }, 600);
       }
       const last = msgs[msgs.length - 1];
       if (last?.role === "assistant" && parseMessage(last.content).options.length > 0) {
@@ -584,17 +550,20 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   function finalizeNow() {
     if (loading) return;
-    send("Just go ahead and make my feed now with what you've got — pick reasonable defaults for anything we haven't covered yet.");
+    interviewModeRef.current = false;
+    send("Go ahead and finalize the feed now with what you've got — pick reasonable defaults for anything we haven't covered.");
   }
 
   function askForQuestions() {
     if (loading) return;
-    send("Help me build my prompt — walk me through it step by step and ask me questions to figure out what I want.");
+    interviewModeRef.current = true;
+    send("Help me build my feed — walk me through it step by step.");
   }
 
   function cancelQuestions() {
     if (loading) return;
-    send("Cancel — stop with the questions, let me just chat freely.");
+    interviewModeRef.current = false;
+    send("Actually, let's just chat — no more options lists.");
   }
 
   function submitChat() {
@@ -613,11 +582,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     send(composed);
   }
 
-  const hasCriteria =
-    (prefs?.criteria &&
-      ((prefs.criteria.topics?.length ?? 0) > 0 || (prefs.criteria.keywords?.length ?? 0) > 0)) ||
-    (semanticConfig &&
-      ((semanticConfig.topics?.length ?? 0) > 0 || (semanticConfig.keywords?.length ?? 0) > 0));
+  const hasCriteria = subqueries.length > 0;
 
   const activeFeed = feeds.find(f => f.id === String(feedId));
   const lastMsg = messages[messages.length - 1];
@@ -643,19 +608,21 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       <div className="cur-workbench" data-right-pane={rightPane}>
         {/* POSTS PANE (middle) */}
         <div className="cur-feed-posts">
-          <div className="cur-feed-posts-header">
-            <div className="cur-feed-stage">
-              {postsLoading && (
-                <>
-                  <span className="pulse-dot" />
-                  <span>
-                    {postsStage === "ranking"
-                      ? "Ranking results…"
-                      : "Searching for posts that match your feed…"}
-                  </span>
-                </>
-              )}
+          {pipelineStage !== "idle" && (
+            <div className="cur-feed-loader">
+              <PipelineLoader
+                stage={pipelineStage}
+                candidates={pipelineCandidates}
+                hits={pipelineHits}
+                images={pipelineImages}
+                model={pipelineModel}
+                thinkingEnabled={pipelineThinkingEnabled}
+                topK={25}
+              />
             </div>
+          )}
+          <div className="cur-feed-posts-header">
+            <div className="cur-feed-stage" />
             <div className="cur-view-toggle" role="tablist" aria-label="Post view">
               <button
                 type="button"
@@ -698,66 +665,46 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               </label>
             )}
             <label
-              className="cur-rerank-toggle"
-              title={
-                rerankAvailable
-                  ? "Re-rank vector top-200 with Claude, using the editorial prompt this feed's chat agent drafted"
-                  : "The chat agent hasn't drafted a rerank prompt for this feed yet"
-              }
-              aria-disabled={!rerankAvailable}
-              style={{ opacity: rerankAvailable ? 1 : 0.4 }}
+              className="cur-unavail-toggle"
+              title="Show vector similarity, reranker score, and reranker reason on each card"
             >
               <input
                 type="checkbox"
-                checked={useRerank && rerankAvailable}
-                disabled={!rerankAvailable}
-                onChange={(e) => setUseRerank(e.target.checked)}
+                checked={showDebug}
+                onChange={(e) => setShowDebug(e.target.checked)}
               />
-              <span>Reranker</span>
+              <span>Debug</span>
             </label>
             <button
               type="button"
               className="cur-refresh"
               disabled={postsLoading}
-              onClick={() => loadPosts(feedId, { rerank: useRerank && rerankAvailable })}
+              onClick={() => loadPosts(feedId)}
               title="Refresh posts"
             >
               ↻ Refresh
             </button>
           </div>
-          {useRerank && rerankAvailable && rerankPhase === "running" && (
-            <div className="cur-rerank-pill">
-              <span className="pulse-dot" /> Reranking with Claude…
-            </div>
-          )}
-          {useRerank && rerankAvailable && rerankPhase === "done" && rerankMs !== null && (
-            <div className="cur-rerank-pill done">
-              Reranked · {rerankMs}ms
-            </div>
-          )}
-          {useRerank && rerankAvailable && rerankPhase === "error" && (
-            <div className="cur-rerank-pill error" title={rerankError ?? undefined}>
-              Reranker failed — showing vector order
-            </div>
-          )}
           <div className="cur-feed-posts-inner">
             {posts.length === 0 ? (
               <div className="cur-empty">
                 {postsLoading ? (
-                  <p><span className="pulse-dot" />Loading posts…</p>
+                  // The PipelineLoader in the header already shows live progress;
+                  // leave the empty area quiet.
+                  null
                 ) : (
                   <>
                     <p>No posts yet.</p>
                     <p className="sub">
                       {!hasCriteria
                         ? "Posts will appear here as we figure out what you're into."
-                        : "Try Refresh, or refine the feed criteria in the chat."}
+                        : "Try Refresh, or refine the subqueries in chat or the Tune panel."}
                     </p>
                   </>
                 )}
               </div>
-            ) : (
-              sortedPosts.map((post) => {
+            ) : viewMode === "embed" ? (
+              posts.map((post) => {
                 const bskyUrl = (() => {
                   const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
                   return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
@@ -767,44 +714,16 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                   const m = post.reply_parent_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
                   return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
                 })();
-                const profileUrl = post.author_handle
-                  ? `https://bsky.app/profile/${post.author_handle}`
-                  : `https://bsky.app/profile/${post.author_did}`;
-                const avatar = avatarUrl(post.author_did, post.author_avatar_cid);
-                const displayName =
-                  post.author_display_name?.trim() ||
-                  post.author_handle ||
-                  post.author_did.slice(0, 16) + "…";
-                const handleLabel = post.author_handle
-                  ? `@${post.author_handle}`
-                  : post.author_did.slice(0, 20) + "…";
-                const extHost = externalHost(post.external_uri);
-
-                // Both wraps stay mounted; only one is visible. display:none on the
-                // inactive wrap is what stops Bluesky's iframe from being destroyed
-                // when the user toggles to Cards (the iframe is a child of the embed
-                // wrap, so unmounting the wrap killed it; CSS-hiding leaves it alive).
-                const embedHiddenByUnavail = hideUnavailable && unavailableUris.has(post.uri);
-                const showEmbed = viewMode === "embed" && !embedHiddenByUnavail;
-                const showCard = viewMode === "card";
-
-                // Render-union: a post that's in the fetched union but
-                // outside the active top-50 ordering stays mounted (so its
-                // iframe never reloads on a future toggle) but is hidden.
-                const rank = orderMap.get(post.uri);
-                const inActiveTop = rank !== undefined && rank < DISPLAY_K;
-
+                if (hideUnavailable && unavailableUris.has(post.uri)) {
+                  return null;
+                }
                 return (
                   <div
                     key={post.uri}
-                    className="cur-post-slot"
-                    style={{ display: inActiveTop ? undefined : "none" }}
+                    className="cur-post-embed-wrap"
+                    data-bsky-uri={post.uri}
                   >
-                    <div
-                      className="cur-post-embed-wrap"
-                      data-bsky-uri={post.uri}
-                      style={{ display: showEmbed ? undefined : "none" }}
-                    >
+                    <div className="cur-post-embed-frame">
                       {post.is_reply && (
                         <div className="cur-post-reply-banner cur-post-reply-banner-embed">
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -821,12 +740,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                         </div>
                       )}
                       <div className="cur-post-embed-meta">
-                        <span
-                          className={`cur-post-score ${post.score >= 0.6 ? "high" : post.score >= 0.4 ? "mid" : "low"}`}
-                          title="Match score"
-                        >
-                          {(post.score * 100).toFixed(0)}%
-                        </span>
                         {bskyUrl && (
                           <a
                             href={bskyUrl}
@@ -839,187 +752,246 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                           </a>
                         )}
                       </div>
-                      <div
-                        className="bluesky-embed"
-                        data-bluesky-uri={post.uri}
-                        data-bluesky-embed-color-mode="light"
-                      >
-                        <p>{post.text}</p>
-                        {bskyUrl && (
-                          <p>
-                            <a href={bskyUrl} target="_blank" rel="noopener noreferrer">
-                              View on Bluesky
-                            </a>
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <article
-                      className="cur-post-card"
-                      style={{ display: showCard ? undefined : "none" }}
-                    >
-                      {post.is_reply && (
-                        <div className="cur-post-reply-banner">
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                            <polyline points="9 17 4 12 9 7" />
-                            <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
-                          </svg>
-                          {replyParentUrl ? (
-                            <a href={replyParentUrl} target="_blank" rel="noopener noreferrer">
-                              Replying to a post
-                            </a>
-                          ) : (
-                            <span>Reply</span>
+                      {showDebug && (
+                        <div className="cur-post-debug">
+                          <span className="cur-post-debug-row">
+                            <span className="cur-post-debug-label">vec</span>
+                            <span>{(post.score * 100).toFixed(1)}%</span>
+                            {typeof post.rerank_score === "number" && (
+                              <>
+                                <span className="cur-post-debug-label">rr</span>
+                                <span>{post.rerank_score}</span>
+                              </>
+                            )}
+                            {post.like_nsfw && (
+                              <span className="cur-post-debug-flag">nsfw?</span>
+                            )}
+                          </span>
+                          {post.rerank_reason && (
+                            <span className="cur-post-debug-reason">
+                              &ldquo;{post.rerank_reason}&rdquo;
+                            </span>
                           )}
                         </div>
                       )}
-                      <header className="cur-post-card-head">
+                    </div>
+                    <div
+                      className="bluesky-embed"
+                      data-bluesky-uri={post.uri}
+                      data-bluesky-embed-color-mode="light"
+                    >
+                      <p>{post.text}</p>
+                      {bskyUrl && (
+                        <p>
+                          <a href={bskyUrl} target="_blank" rel="noopener noreferrer">
+                            View on Bluesky
+                          </a>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              posts.map((post) => {
+                const bskyUrl = (() => {
+                  const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+                  return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
+                })();
+                const profileUrl = post.author_handle
+                  ? `https://bsky.app/profile/${post.author_handle}`
+                  : `https://bsky.app/profile/${post.author_did}`;
+                const avatar = avatarUrl(post.author_did, post.author_avatar_cid);
+                const displayName =
+                  post.author_display_name?.trim() ||
+                  post.author_handle ||
+                  post.author_did.slice(0, 16) + "…";
+                const handleLabel = post.author_handle
+                  ? `@${post.author_handle}`
+                  : post.author_did.slice(0, 20) + "…";
+                const extHost = externalHost(post.external_uri);
+                const replyParentUrl = (() => {
+                  if (!post.reply_parent_uri) return null;
+                  const m = post.reply_parent_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+                  return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
+                })();
+                return (
+                  <article key={post.uri} className="cur-post-card">
+                    {post.is_reply && (
+                      <div className="cur-post-reply-banner">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <polyline points="9 17 4 12 9 7" />
+                          <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+                        </svg>
+                        {replyParentUrl ? (
+                          <a href={replyParentUrl} target="_blank" rel="noopener noreferrer">
+                            Replying to a post
+                          </a>
+                        ) : (
+                          <span>Reply</span>
+                        )}
+                      </div>
+                    )}
+                    <header className="cur-post-card-head">
+                      <a
+                        href={profileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="cur-post-avatar"
+                        aria-label={`Open ${displayName} on Bluesky`}
+                      >
+                        {avatar ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={avatar}
+                            alt=""
+                            referrerPolicy="no-referrer"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span className="cur-post-avatar-fallback" aria-hidden>
+                            {(displayName[0] || "?").toUpperCase()}
+                          </span>
+                        )}
+                      </a>
+                      <div className="cur-post-author">
                         <a
                           href={profileUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="cur-post-avatar"
-                          aria-label={`Open ${displayName} on Bluesky`}
+                          className="cur-post-name"
                         >
-                          {avatar ? (
-                            /* eslint-disable-next-line @next/next/no-img-element */
-                            <img
-                              src={avatar}
-                              alt=""
-                              referrerPolicy="no-referrer"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <span className="cur-post-avatar-fallback" aria-hidden>
-                              {(displayName[0] || "?").toUpperCase()}
-                            </span>
-                          )}
+                          {displayName}
                         </a>
-                        <div className="cur-post-author">
+                        <span className="cur-post-meta">
                           <a
                             href={profileUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="cur-post-name"
+                            className="cur-post-handle"
                           >
-                            {displayName}
+                            {handleLabel}
                           </a>
-                          <span className="cur-post-meta">
-                            <a
-                              href={profileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="cur-post-handle"
-                            >
-                              {handleLabel}
-                            </a>
-                            <span className="cur-post-meta-sep" aria-hidden>·</span>
-                            <time
-                              className="cur-post-time"
-                              dateTime={post.indexed_at}
-                              title={formatAbsoluteTime(post.indexed_at)}
-                            >
-                              {formatRelativeTime(post.indexed_at)}
-                            </time>
-                          </span>
-                        </div>
-                        <span
-                          className={`cur-post-score ${post.score >= 0.6 ? "high" : post.score >= 0.4 ? "mid" : "low"}`}
-                          title="Match score"
-                        >
-                          {(post.score * 100).toFixed(0)}%
-                        </span>
-                      </header>
-
-                      <div className="cur-post-card-body">{post.text}</div>
-
-                      {post.external_uri && (
-                        <a
-                          className="cur-post-embed"
-                          href={post.external_uri}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <div className="cur-post-embed-host">{extHost || "link"}</div>
-                          {post.external_title && (
-                            <div className="cur-post-embed-title">{post.external_title}</div>
-                          )}
-                          {post.external_desc && (
-                            <div className="cur-post-embed-desc">{post.external_desc}</div>
-                          )}
-                        </a>
-                      )}
-
-                      {post.quote_uri && !post.external_uri && (
-                        <a
-                          className="cur-post-embed quote"
-                          href={(() => {
-                            const m = post.quote_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
-                            return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : "#";
-                          })()}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <div className="cur-post-embed-host">↳ quoted post</div>
-                          <div className="cur-post-embed-desc">Open on Bluesky to view the quoted post.</div>
-                        </a>
-                      )}
-
-                      {post.has_images && post.image_count > 0 && (
-                        <div className="cur-post-images-note">
-                          {post.image_count} image{post.image_count === 1 ? "" : "s"}
-                          {post.image_alts.filter(Boolean).length > 0 && (
-                            <span className="cur-post-images-alt">
-                              {" — "}
-                              {post.image_alts.filter(Boolean).join(" · ")}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      <footer className="cur-post-stats">
-                        <span className="cur-post-stat" title="Replies">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                          </svg>
-                          {formatCount(post.reply_count)}
-                        </span>
-                        <span className="cur-post-stat" title="Reposts">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                            <polyline points="17 1 21 5 17 9" />
-                            <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                            <polyline points="7 23 3 19 7 15" />
-                            <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                          </svg>
-                          {formatCount(post.repost_count)}
-                        </span>
-                        <span className="cur-post-stat" title="Likes">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                          </svg>
-                          {formatCount(post.like_count)}
-                        </span>
-                        <span className="cur-post-stat" title="Quotes">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                            <path d="M3 21c3 0 5-2 5-5V7H3v8h4" />
-                            <path d="M14 21c3 0 5-2 5-5V7h-5v8h4" />
-                          </svg>
-                          {formatCount(post.quote_count)}
-                        </span>
-                        {bskyUrl && (
-                          <a
-                            href={bskyUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="cur-post-open"
-                            title="Open in Bluesky"
+                          <span className="cur-post-meta-sep" aria-hidden>·</span>
+                          <time
+                            className="cur-post-time"
+                            dateTime={post.indexed_at}
+                            title={formatAbsoluteTime(post.indexed_at)}
                           >
-                            Open ↗
-                          </a>
+                            {formatRelativeTime(post.indexed_at)}
+                          </time>
+                        </span>
+                      </div>
+                    </header>
+
+                    <div className="cur-post-card-body">{post.text}</div>
+
+                    {post.external_uri && (
+                      <a
+                        className="cur-post-embed"
+                        href={post.external_uri}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <div className="cur-post-embed-host">{extHost || "link"}</div>
+                        {post.external_title && (
+                          <div className="cur-post-embed-title">{post.external_title}</div>
                         )}
-                      </footer>
-                    </article>
-                  </div>
+                        {post.external_desc && (
+                          <div className="cur-post-embed-desc">{post.external_desc}</div>
+                        )}
+                      </a>
+                    )}
+
+                    {post.quote_uri && !post.external_uri && (
+                      <a
+                        className="cur-post-embed quote"
+                        href={(() => {
+                          const m = post.quote_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+                          return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : "#";
+                        })()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <div className="cur-post-embed-host">↳ quoted post</div>
+                        <div className="cur-post-embed-desc">Open on Bluesky to view the quoted post.</div>
+                      </a>
+                    )}
+
+                    {post.has_images && post.image_count > 0 && (
+                      <div className="cur-post-images-note">
+                        {post.image_count} image{post.image_count === 1 ? "" : "s"}
+                        {post.image_alts.filter(Boolean).length > 0 && (
+                          <span className="cur-post-images-alt">
+                            {" — "}
+                            {post.image_alts.filter(Boolean).join(" · ")}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {showDebug && (
+                      <div className="cur-post-debug cur-post-debug-card">
+                        <span className="cur-post-debug-row">
+                          <span className="cur-post-debug-label">vec</span>
+                          <span>{(post.score * 100).toFixed(1)}%</span>
+                          {typeof post.rerank_score === "number" && (
+                            <>
+                              <span className="cur-post-debug-label">rr</span>
+                              <span>{post.rerank_score}</span>
+                            </>
+                          )}
+                        </span>
+                        {post.rerank_reason && (
+                          <span className="cur-post-debug-reason">
+                            &ldquo;{post.rerank_reason}&rdquo;
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <footer className="cur-post-stats">
+                      <span className="cur-post-stat" title="Replies">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                        </svg>
+                        {formatCount(post.reply_count)}
+                      </span>
+                      <span className="cur-post-stat" title="Reposts">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <polyline points="17 1 21 5 17 9" />
+                          <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                          <polyline points="7 23 3 19 7 15" />
+                          <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                        </svg>
+                        {formatCount(post.repost_count)}
+                      </span>
+                      <span className="cur-post-stat" title="Likes">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                        </svg>
+                        {formatCount(post.like_count)}
+                      </span>
+                      <span className="cur-post-stat" title="Quotes">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M3 21c3 0 5-2 5-5V7H3v8h4" />
+                          <path d="M14 21c3 0 5-2 5-5V7h-5v8h4" />
+                        </svg>
+                        {formatCount(post.quote_count)}
+                      </span>
+                      {bskyUrl && (
+                        <a
+                          href={bskyUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="cur-post-open"
+                          title="Open in Bluesky"
+                        >
+                          Open ↗
+                        </a>
+                      )}
+                    </footer>
+                  </article>
                 );
               })
             )}
@@ -1084,31 +1056,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               })}
               {(loading || chatLoading) && (
                 <div className="cur-dots"><span /><span /><span /></div>
-              )}
-
-              {showVoices && (
-                <VoiceCards
-                  onAddVoices={(voices) => {
-                    setAddedVoices(voices);
-                    setShowVoices(false);
-                    const names = voices.map(v => v.name).join(", ");
-                    send(`Add these voices to my feed: ${names}`);
-                  }}
-                  onDismiss={() => {
-                    setShowVoices(false);
-                    setMobileTab("feed");
-                  }}
-                />
-              )}
-
-              {addedVoices.length > 0 && !showVoices && (
-                <div className="cur-msg">
-                  <div className="cur-msg-assistant">
-                    <p style={{ fontSize: 13, color: "var(--aurora)" }}>
-                      Added {addedVoices.length} voice{addedVoices.length !== 1 ? "s" : ""} to your feed: {addedVoices.map(v => v.name).join(", ")}
-                    </p>
-                  </div>
-                </div>
               )}
 
               <div ref={endRef} />
@@ -1237,13 +1184,19 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         {/* TUNE PANEL (right, when rightPane === "tune") */}
         <FilterPanel
           mechanicalFilters={mechanicalFilters || ({} as MechanicalFilters)}
-          semanticConfig={semanticConfig || ({} as SemanticConfig)}
+          subqueries={subqueries}
+          candidateBudget={candidateBudget}
+          rerankPrompt={rerankPrompt}
+          rerankModel={rerankModel}
+          rerankThinkingEnabled={rerankThinkingEnabled}
           onMechanicalChange={saveMechanicalFilters}
-          onSemanticChange={saveSemanticConfig}
+          onSubqueriesChange={saveSubqueries}
+          onCandidateBudgetChange={saveCandidateBudget}
+          onRerankModelChange={saveRerankModel}
+          onRerankThinkingChange={saveRerankThinkingEnabled}
           postCount={postCount}
           rightPane={rightPane}
           onRightPaneChange={setRightPane}
-          rerankPrompt={rerankPromptText}
           style={{ ["--cur-right-w" as string]: `${rightWidth}px` }}
         />
       </div>

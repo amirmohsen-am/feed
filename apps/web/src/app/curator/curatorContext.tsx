@@ -3,19 +3,11 @@
 import { createContext, useContext } from "react";
 import type { UserProfile } from "@/components/Onboarding";
 
-export interface FeedCriteria {
-  topics: string[];
-  keywords: string[];
-  exclude_topics: string[];
-  exclude_keywords: string[];
-  vibes: string;
-}
-
 export interface SavedFeed {
   id: string;
   name: string;
   color: string;
-  criteria: FeedCriteria;
+  subqueries: string[];
   createdAt: string;
 }
 
@@ -43,9 +35,6 @@ export function useCurator(): CuratorContextValue {
   return v;
 }
 
-export function feedIsComplete(feed: { criteria: FeedCriteria }): boolean {
-  return (
-    (feed.criteria.topics?.length ?? 0) > 0 ||
-    (feed.criteria.keywords?.length ?? 0) > 0
-  );
+export function feedIsComplete(feed: { subqueries: string[] }): boolean {
+  return (feed.subqueries?.length ?? 0) > 0;
 }

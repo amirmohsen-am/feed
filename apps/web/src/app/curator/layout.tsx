@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import "./curator.css";
 import "./onboarding.css";
-import "./voices.css";
 import "./onboarding-flow.css";
 import {
   Dialog,
@@ -29,13 +28,11 @@ import Onboarding, { useAuth, type UserProfile } from "@/components/Onboarding";
 import ImportMemoryModal from "@/components/ImportMemoryModal";
 import ShaderLogo from "@/components/ShaderLogo";
 import { authedFetch } from "@/lib/authed-fetch";
-import type { SemanticConfig } from "@/lib/types";
 import { useResizable } from "./useResizable";
 import {
   CuratorProvider,
   feedIsComplete,
   type SavedFeed,
-  type FeedCriteria,
   type MobileTab,
 } from "./curatorContext";
 
@@ -93,20 +90,14 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
       const serverFeeds: {
         id: number;
         name: string;
-        semantic_config: SemanticConfig;
+        subqueries?: string[];
         created_at: string;
       }[] = data.feeds || [];
       const mapped: SavedFeed[] = serverFeeds.map((f, i) => ({
         id: String(f.id),
         name: f.name,
         color: FEED_COLORS[i % FEED_COLORS.length],
-        criteria: {
-          topics: f.semantic_config?.topics ?? [],
-          keywords: f.semantic_config?.keywords ?? [],
-          exclude_topics: f.semantic_config?.exclude_topics ?? [],
-          exclude_keywords: f.semantic_config?.exclude_keywords ?? [],
-          vibes: f.semantic_config?.vibes ?? "",
-        },
+        subqueries: f.subqueries ?? [],
         createdAt: f.created_at,
       }));
       setFeeds(mapped);
@@ -200,14 +191,7 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
     }
   }
 
-  function handleMemoryImported(importedFeed: {
-    id: number;
-    name: string;
-    retrieval_query: string;
-    criteria: FeedCriteria;
-    created_at: string;
-    updated_at: string;
-  }) {
+  function handleMemoryImported(importedFeed: { id: number }) {
     setShowImportMemory(false);
     reloadFeeds();
     router.push(`/curator/${importedFeed.id}`);

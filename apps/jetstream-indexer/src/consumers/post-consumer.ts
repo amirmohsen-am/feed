@@ -18,6 +18,7 @@ import {
   recordEngagementApplied,
   recordEventsConsumed,
   recordEventsFlushed,
+  recordFlushDropped,
   recordFlushFailed,
   recordPostsIndexed,
   registerCursorLagUs,
@@ -77,6 +78,14 @@ export const startPostConsumer = async (cfg: Config, store: VertexStore, workerI
     flushMs: cfg.postFlushMs,
     queueMax: 20_000,
     onDrop: (n) => log('queue_drop', { dropped: n }),
+    onFailure: (batch, err) => {
+      recordFlushFailed(1, { kind: 'posts', worker: workerId })
+      log('flush_failed', { n: batch.length, error: String(err) })
+    },
+    onPoison: (batch, err) => {
+      recordFlushDropped(batch.length, { kind: 'posts', worker: workerId })
+      log('flush_poison_dropped', { n: batch.length, error: String(err) })
+    },
     flush: async (batch) => {
       const t0 = Date.now()
       const posts = batch.map((b) => b.post)
@@ -150,15 +159,6 @@ export const startPostConsumer = async (cfg: Config, store: VertexStore, workerI
     },
   })
 
-  // Wrap flush to record failures.
-  const origFlushNow = harness.flushNow
-  harness.flushNow = async () => {
-    try { await origFlushNow() } catch (err) {
-      recordFlushFailed(1, { kind: 'posts', worker: workerId })
-      log('flush_failed', { error: String(err) })
-    }
-  }
-
   // Separate batched delete queue keeps the firehose's delete bursts from
   // opening one PG connection per event.
   const deleteHarness = makeQueueHarness<string>({
@@ -166,18 +166,20 @@ export const startPostConsumer = async (cfg: Config, store: VertexStore, workerI
     flushMs: cfg.postFlushMs,
     queueMax: 20_000,
     onDrop: (n) => log('delete_queue_drop', { dropped: n }),
+    onFailure: (batch, err) => {
+      recordFlushFailed(1, { kind: 'post_deletes', worker: workerId })
+      log('delete_flush_failed', { n: batch.length, error: String(err) })
+    },
+    onPoison: (batch, err) => {
+      recordFlushDropped(batch.length, { kind: 'post_deletes', worker: workerId })
+      log('delete_flush_poison_dropped', { n: batch.length, error: String(err) })
+    },
     flush: async (uris) => {
       const t0 = Date.now()
-      try {
-        await deletePostsBatch(uris)
-        const ids = await Promise.all(uris.map((u) => uriToPointId(u)))
-        await store.remove(ids)
-        log('delete_flush', { n: uris.length, ms: Date.now() - t0 })
-      } catch (err) {
-        recordFlushFailed(1, { kind: 'post_deletes', worker: workerId })
-        log('delete_flush_failed', { error: String(err) })
-        throw err
-      }
+      await deletePostsBatch(uris)
+      const ids = await Promise.all(uris.map((u) => uriToPointId(u)))
+      await store.remove(ids)
+      log('delete_flush', { n: uris.length, ms: Date.now() - t0 })
     },
   })
 

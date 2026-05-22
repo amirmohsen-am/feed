@@ -71,6 +71,12 @@ export const recordEventsFlushed = (n: number, attrs: { kind: string; worker?: s
 export const recordFlushFailed = (n: number, attrs: { kind: string; worker?: string }) =>
   counter('happy_feed_flush_failed_total', 'Flush failures by consumer kind.').add(n, attrs)
 
+export const recordFlushDropped = (n: number, attrs: { kind: string; worker?: string }) =>
+  counter(
+    'happy_feed_flush_dropped_total',
+    'Records dropped after exhausting flush retries (poison batch). Each unit = one record (post / like / repost / profile / identity / delete URI) that did not reach Postgres.',
+  ).add(n, attrs)
+
 export const recordEngagementApplied = (n: number, attrs: { kind: 'like' | 'repost' | 'reply' | 'quote'; worker?: string }) =>
   counter('happy_feed_engagement_applied_total', 'Engagement counter increments applied to bsky.post_engagement.').add(n, attrs)
 

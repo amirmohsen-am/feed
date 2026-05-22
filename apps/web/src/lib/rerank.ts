@@ -16,8 +16,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { ensureEnvFromSecret } from "./secrets";
 import type { VectorHit } from "./vector-search";
+import { DEFAULT_RERANK_MODEL, MAX_RERANK_IMAGES } from "./defaults";
 
-export const RERANK_MODEL = "claude-sonnet-4-6";
+// Default model name for bulk listwise rerank. Each call can override via
+// `opts.model`; the per-feed setting is read in pg.ts.
+export const RERANK_MODEL = DEFAULT_RERANK_MODEL;
 
 const RERANK_OUTPUT_CONTRACT = `
 
@@ -71,33 +74,114 @@ function safeParseArray(raw: string): unknown {
   return JSON.parse(stripped.slice(start, end + 1));
 }
 
+export interface RerankPhaseInfo {
+  candidates: number;
+  images: number;
+  model: string;
+}
+
 export async function rerank(opts: {
   query: string;
   candidates: VectorHit[];
   topK: number;
   systemPrompt: string;
+  // Override the model for this call. Defaults to RERANK_MODEL.
+  model?: string;
+  // When true, attach `image` content blocks for candidates that have images
+  // (uses `hit.image_urls`). Capped at MAX_RERANK_IMAGES total.
+  withImages?: boolean;
+  // When true, enable Anthropic extended thinking on the call. The model
+  // emits a private reasoning block before the JSON ranking, which can help
+  // on borderline candidates at the cost of latency + tokens.
+  thinkingEnabled?: boolean;
+  // Called once when the Anthropic request is dispatched. Carries the
+  // candidate/image counts so a UI can render "Ranking … 80 candidates · 87 images".
+  onRequestSent?: (info: RerankPhaseInfo) => void;
+  // Called once when the first text delta arrives from the model. With
+  // thinking off this is just TTFT; with thinking on it marks the end of
+  // the reasoning block and the start of the JSON output.
+  onFirstToken?: () => void;
 }): Promise<RerankResult> {
   const { query, candidates, topK, systemPrompt } = opts;
+  const model = opts.model && opts.model.length > 0 ? opts.model : RERANK_MODEL;
   const t0 = performance.now();
 
   const trimmed = candidates.map((h, i) => trimCandidate(h, i));
-  const userMessage =
+  const textBlock =
     `Query: ${JSON.stringify(query)}\n` +
     `N = ${topK}\n` +
     `Candidates (n=${candidates.length}):\n` +
     JSON.stringify(trimmed);
 
+  // Build the user content. When images are enabled, we send one text block
+  // followed by interleaved `Image for candidate N:` markers + image blocks.
+  // Iteration order is candidate-major: candidate 0's images first, then
+  // candidate 1's, etc. — so when the cap is reached we cut off the tail of
+  // the candidate list rather than dropping images uniformly.
+  const content: Anthropic.ContentBlockParam[] = [
+    { type: "text", text: textBlock },
+  ];
+  let imagesAttached = 0;
+  if (opts.withImages) {
+    outer: for (let i = 0; i < candidates.length; i++) {
+      const urls = candidates[i].image_urls ?? [];
+      if (urls.length === 0) continue;
+      content.push({
+        type: "text",
+        text: `Images for candidate ${i}:`,
+      });
+      for (const url of urls) {
+        if (imagesAttached >= MAX_RERANK_IMAGES) break outer;
+        content.push({
+          type: "image",
+          source: { type: "url", url },
+        });
+        imagesAttached++;
+      }
+    }
+  }
+
   const system = systemPrompt + RERANK_OUTPUT_CONTRACT;
 
-  const res = await (await client()).messages.create({
-    model: RERANK_MODEL,
+  const thinkingEnabled = opts.thinkingEnabled === true;
+  // Budget needs headroom under max_tokens. 4096 max with ~1500 thinking
+  // leaves enough room for the JSON ranking output even on long candidate
+  // lists.
+  const THINKING_BUDGET = 1500;
+
+  console.log(
+    `[rerank] model=${model} candidates=${candidates.length} ` +
+      `images=${imagesAttached} topK=${topK} thinking=${thinkingEnabled}`
+  );
+  opts.onRequestSent?.({ candidates: candidates.length, images: imagesAttached, model });
+
+  // Stream so we can detect the "first text delta" moment — that's the
+  // ranking→generating transition we surface to the client loader.
+  const c = await client();
+  const stream = c.messages.stream({
+    model,
     max_tokens: 4096,
     system,
-    messages: [{ role: "user", content: userMessage }],
+    messages: [{ role: "user", content }],
+    ...(thinkingEnabled
+      ? { thinking: { type: "enabled" as const, budget_tokens: THINKING_BUDGET } }
+      : {}),
   });
 
+  let firstTokenFired = false;
+  stream.on("text", () => {
+    if (!firstTokenFired) {
+      firstTokenFired = true;
+      opts.onFirstToken?.();
+    }
+  });
+
+  const finalMessage = await stream.finalMessage();
+  // With thinking enabled the first content block is a ThinkingBlock; the
+  // JSON ranking lives in the first TextBlock that follows.
+  const outputTextBlock = finalMessage.content.find((b) => b.type === "text");
   const text =
-    res.content[0]?.type === "text" ? res.content[0].text : "";
+    outputTextBlock && outputTextBlock.type === "text" ? outputTextBlock.text : "";
   const parsed = safeParseArray(text);
   if (!Array.isArray(parsed)) {
     throw new Error("reranker output was not a JSON array");

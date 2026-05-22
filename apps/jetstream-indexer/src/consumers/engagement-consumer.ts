@@ -14,6 +14,7 @@ import {
   recordEngagementApplied,
   recordEventsConsumed,
   recordEventsFlushed,
+  recordFlushDropped,
   recordFlushFailed,
   registerCursorLagUs,
   registerQueueDepth,
@@ -40,6 +41,14 @@ export const startEngagementConsumer = async (cfg: Config, workerId: string, ini
     flushMs: cfg.engagementFlushMs,
     queueMax: 100_000,
     onDrop: (n) => log('queue_drop', { dropped: n }),
+    onFailure: (batch, err) => {
+      recordFlushFailed(1, { kind: 'engagement', worker: workerId })
+      log('flush_failed', { n: batch.length, error: String(err) })
+    },
+    onPoison: (batch, err) => {
+      recordFlushDropped(batch.length, { kind: 'engagement', worker: workerId })
+      log('flush_poison_dropped', { n: batch.length, error: String(err) })
+    },
     flush: async (batch) => {
       const t0 = Date.now()
       const likes: LikeRecord[] = []
@@ -77,14 +86,6 @@ export const startEngagementConsumer = async (cfg: Config, workerId: string, ini
       })
     },
   })
-
-  const origFlushNow = harness.flushNow
-  harness.flushNow = async () => {
-    try { await origFlushNow() } catch (err) {
-      recordFlushFailed(1, { kind: 'engagement', worker: workerId })
-      log('flush_failed', { error: String(err) })
-    }
-  }
 
   registerQueueDepth(CONSUMER_KEY, () => harness.size())
   registerCursorLagUs(CONSUMER_KEY, () => Date.now() * 1000 - latestCursorUs)

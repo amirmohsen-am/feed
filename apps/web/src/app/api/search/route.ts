@@ -93,7 +93,11 @@ export async function POST(req: NextRequest) {
   let hits: VectorHit[] = [];
   let vectorError: string | null = null;
   try {
-    hits = await searchPosts({ query, k: vectorK, filter: filters });
+    hits = await searchPosts({
+      subqueries: [query],
+      totalBudget: vectorK,
+      filter: filters,
+    });
   } catch (e) {
     vectorError = e instanceof Error ? e.message : String(e);
   }
