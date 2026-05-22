@@ -462,14 +462,35 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
               <Link
                 href="/search"
                 className="cur-topbar-btn ghost"
-                title="Open retrieval search lab"
+                title="Open retrieval search lab (deprecated)"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="11" cy="11" r="7" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                Search
+                Search (deprecated)
               </Link>
+              {profile.blueskyHandle ? (
+                <Link
+                  href={`/introspect/${encodeURIComponent(profile.blueskyHandle.replace(/^@/, "").toLowerCase())}`}
+                  className="cur-topbar-btn ghost"
+                  prefetch={false}
+                  title="Introspect my engagements"
+                >
+                  <span aria-hidden style={{ marginRight: 2 }}>✦</span>
+                  Introspect my engagements
+                </Link>
+              ) : (
+                <Link
+                  href="/introspect"
+                  className="cur-topbar-btn ghost"
+                  prefetch={false}
+                  title="Introspect a Bluesky handle"
+                >
+                  <span aria-hidden style={{ marginRight: 2 }}>✦</span>
+                  Introspect a handle
+                </Link>
+              )}
               <button
                 onClick={() => setShowImportMemory(true)}
                 className="cur-topbar-icon"

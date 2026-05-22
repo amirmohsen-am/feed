@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import FilterPanel from "@/components/FilterPanel";
 import ShaderSendButton from "@/components/ShaderSendButton";
@@ -169,7 +170,26 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // ?prompt=<text> on the URL — set by /introspect's suggested-feed cards.
+  // Consume once, drop it from the URL so a remount doesn't re-seed.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const promptParam = searchParams.get("prompt");
+  const promptConsumedRef = useRef(false);
+  useEffect(() => {
+    if (promptConsumedRef.current) return;
+    if (!promptParam) return;
+    promptConsumedRef.current = true;
+    setInput(promptParam);
+    // Focus on the next tick so the textarea is mounted by then.
+    setTimeout(() => inputRef.current?.focus(), 0);
+    router.replace(pathname);
+  }, [promptParam, pathname, router]);
+
   // Interview mode is a hint to the agent for the *next* request only; the
   // agent picks up the pattern from history after that. Set true by the
   // "Help me build my prompt" button, false by "Cancel questions".
@@ -1128,6 +1148,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               }}
             >
               <textarea
+                ref={inputRef}
                 className="cur-input"
                 rows={1}
                 value={input}

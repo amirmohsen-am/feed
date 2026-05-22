@@ -46,6 +46,9 @@ yarn-error.log*
 *.db-wal
 *.db-shm
 
+# /introspect demo storage — per-handle JSON snapshots + image cache
+.local-data/
+
 # python
 data/
 .venv/

@@ -88,3 +88,9 @@ Cloud Monitoring dashboard for the indexer (flush rate, cursor lag, embed cost, 
 Source JSON lives at `apps/jetstream-indexer/monitoring/dashboard.json` — re-import with `gcloud monitoring dashboards create --config-from-file=...` if it gets blown away.
 
 See `AGENTS.md` for the full architecture, env vars, and the list of things this repo intentionally does **not** do.
+
+## TODO
+
+- **`/introspect` storage + auth.** The Bluesky engagement self-portrait at `/introspect/<handle>` currently writes per-handle snapshots and a shared image cache to `apps/web/.local-data/introspect/` on disk. That's fine for a single-instance demo but breaks the moment Cloud Run autoscales or redeploys (per-container, ephemeral). It is also signed-out — anyone can introspect any public handle. Two things to figure out before this graduates from demo:
+  - **Storage:** decide between Postgres (consistent with the rest of the app, but adds a schema and a write-amplification per-click), GCS-backed JSON blobs (cheap, matches the current shape — swap `lib/introspect/storage.ts` and keep the type), or Firestore (cheap and indexed by handle, but new infra). Image cache likely wants its own bucket either way.
+  - **Auth:** at minimum gate `/introspect` behind Firebase sign-in like the curator. Open question whether to require Bluesky ownership proof (AT Proto OAuth) before letting someone introspect a given handle, or keep it "introspect any public handle once signed in".

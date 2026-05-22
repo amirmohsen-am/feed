@@ -31,7 +31,10 @@ export default function AuthGate({
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isPublic = pathname === "/" || pathname?.startsWith("/api");
+  const isPublic =
+    pathname === "/" ||
+    pathname?.startsWith("/api") ||
+    pathname?.startsWith("/introspect");
 
   useEffect(() => {
     if (isPublic) {
