@@ -34,11 +34,16 @@ import {
   feedIsComplete,
   type SavedFeed,
   type MobileTab,
+  type ViewMode,
 } from "./curatorContext";
 
 const SIDEBAR_W_KEY = "curator:sidebarWidth";
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 480;
+
+const VIEW_MODE_KEY = "curator:viewMode";
+const HIDE_UNAVAIL_KEY = "curator:hideUnavailable";
+const SHOW_DEBUG_KEY = "curator:showDebug";
 
 const FEED_COLORS = [
   "var(--aurora)",
@@ -82,6 +87,34 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
   const [activePostCount, setActivePostCount] = useState(0);
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
   const [optionsUnread, setOptionsUnread] = useState(false);
+
+  // Display settings (persisted to localStorage), surfaced in the top-bar
+  // settings dialog and consumed by the posts pane in CuratorWorkbench.
+  const [viewMode, setViewModeState] = useState<ViewMode>(() => {
+    if (typeof window === "undefined") return "card";
+    return window.localStorage.getItem(VIEW_MODE_KEY) === "embed" ? "embed" : "card";
+  });
+  const setViewMode = useCallback((next: ViewMode) => {
+    setViewModeState(next);
+    try { window.localStorage.setItem(VIEW_MODE_KEY, next); } catch { /* ignore */ }
+  }, []);
+  const [showDebug, setShowDebugState] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem(SHOW_DEBUG_KEY) !== "false";
+  });
+  const setShowDebug = useCallback((next: boolean) => {
+    setShowDebugState(next);
+    try { window.localStorage.setItem(SHOW_DEBUG_KEY, String(next)); } catch { /* ignore */ }
+  }, []);
+  const [hideUnavailable, setHideUnavailableState] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem(HIDE_UNAVAIL_KEY) !== "false";
+  });
+  const setHideUnavailable = useCallback((next: boolean) => {
+    setHideUnavailableState(next);
+    try { window.localStorage.setItem(HIDE_UNAVAIL_KEY, String(next)); } catch { /* ignore */ }
+  }, []);
+  const [unavailableCount, setUnavailableCount] = useState(0);
 
   const reloadFeeds = useCallback(async () => {
     try {
@@ -212,6 +245,14 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
         setMobileTab,
         optionsUnread,
         setOptionsUnread,
+        viewMode,
+        setViewMode,
+        showDebug,
+        setShowDebug,
+        hideUnavailable,
+        setHideUnavailable,
+        unavailableCount,
+        setUnavailableCount,
       }}
     >
       <div className="curator-shell">
@@ -500,6 +541,85 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
                   <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
                 </svg>
               </button>
+              <Dialog>
+                <DialogTrigger
+                  className={`cur-topbar-icon${viewMode === "embed" ? " active" : ""}`}
+                  title="Display settings"
+                  aria-label="Display settings"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                </DialogTrigger>
+                <DialogContent className="settings-dialog">
+                  <DialogHeader>
+                    <DialogTitle style={{ fontFamily: "var(--rf-display)", fontSize: 22, fontWeight: 400 }}>
+                      Display settings
+                    </DialogTitle>
+                  </DialogHeader>
+                  <Separator />
+                  <div className="settings-section">
+                    <div className="settings-label">Post view</div>
+                    <div className="cur-view-toggle" role="tablist" aria-label="Post view">
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={viewMode === "card"}
+                        className={`cur-view-seg${viewMode === "card" ? " active" : ""}`}
+                        onClick={() => setViewMode("card")}
+                      >
+                        Cards
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={viewMode === "embed"}
+                        className={`cur-view-seg${viewMode === "embed" ? " active" : ""}`}
+                        onClick={() => setViewMode("embed")}
+                      >
+                        Bluesky embed
+                      </button>
+                    </div>
+                    <p className="settings-hint">
+                      Bluesky embed renders each post with Bluesky&rsquo;s own embed card.
+                    </p>
+                  </div>
+                  <Separator />
+                  <div className="settings-section">
+                    <div className="settings-label">Options</div>
+                    <label className="settings-toggle-row">
+                      <span>
+                        Debug scores
+                        <span className="settings-toggle-sub">vector similarity, reranker score &amp; reason</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        className="settings-switch"
+                        checked={showDebug}
+                        onChange={(e) => setShowDebug(e.target.checked)}
+                      />
+                    </label>
+                    {viewMode === "embed" && (
+                      <label className="settings-toggle-row">
+                        <span>
+                          Hide unavailable
+                          {unavailableCount > 0 && (
+                            <span className="cur-unavail-count"> ({unavailableCount})</span>
+                          )}
+                          <span className="settings-toggle-sub">skip deleted or login-only posts</span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          className="settings-switch"
+                          checked={hideUnavailable}
+                          onChange={(e) => setHideUnavailable(e.target.checked)}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
 
