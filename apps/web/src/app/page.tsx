@@ -401,7 +401,7 @@ export default function LandingPage() {
         <div className="wrap hero-content">
           <span className="hero-eyebrow mono">
             <span className="dot" />
-            WillowNet &nbsp;:&nbsp; built on AT Protocol
+            Willow &nbsp;:&nbsp; built on AT Protocol
           </span>
           <h1>
             A feed you <span className="it">actually</span><br/>choose.
@@ -490,7 +490,7 @@ export default function LandingPage() {
               </ul>
             </div>
             <div className="plate curated reveal">
-              <div className="plate-label"><span className="marker" />A WillowNet feed</div>
+              <div className="plate-label"><span className="marker" />A Willow feed</div>
               <h3>Engineered to <em>nourish</em> you.</h3>
               <ul className="plate-items">
                 <li>Long essays you&apos;d save <span className="tag">chosen</span></li>
@@ -570,7 +570,7 @@ export default function LandingPage() {
           <div className="section-head reveal">
             <span className="idx">IV.</span>
             <span className="hair" />
-            <span className="title">Inside WillowNet</span>
+            <span className="title">Inside Willow</span>
           </div>
           <div className="preview-head reveal">
             <h2>What a feed you <em>chose</em> looks like.</h2>

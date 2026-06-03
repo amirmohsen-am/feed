@@ -149,7 +149,7 @@ function Wordmark({ height = 32, shimmer = true }: { height?: number; shimmer?: 
         textLength="150"
         lengthAdjust="spacingAndGlyphs"
       >
-        WillowNet
+        Willow
       </text>
     </motion.svg>
   );

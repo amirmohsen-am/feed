@@ -8,7 +8,7 @@ import AuthGate from "@/components/AuthGate";
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
-  title: "WillowNet — A quieter, more intentional feed.",
+  title: "Willow — A quieter, more intentional feed.",
   description: "Curate your Bluesky feed with AI. In the same way you curate what you eat, now curate what you read.",
 };
 

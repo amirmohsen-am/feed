@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  turbopack: {
+    root: __dirname,
+  },
   // Don't bundle Google Cloud SDKs / grpc — Turbopack mangles their native
   // bits and gRPC calls fail with empty Metadata at runtime.
   serverExternalPackages: [

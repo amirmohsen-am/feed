@@ -30,7 +30,7 @@ export default function ShaderLogo({ height = 200, color = "#e8b988" }: ShaderLo
         textLength={width}
         lengthAdjust="spacingAndGlyphs"
       >
-        WillowNet
+        Willow
       </text>
     </svg>
   );
