@@ -8,7 +8,7 @@ import AuthGate from "@/components/AuthGate";
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
-  title: "Ripple Feed — A quieter, more intentional feed.",
+  title: "Willow — A quieter, more intentional feed.",
   description: "Curate your Bluesky feed with AI. In the same way you curate what you eat, now curate what you read.",
 };
 
@@ -23,7 +23,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=JetBrains+Mono:wght@300;400;500&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400;1,6..72,700;1,6..72,800&family=Playfair+Display:ital,wght@1,700;1,800;1,900&family=Merriweather:ital,wght@1,900&family=JetBrains+Mono:wght@300;400;500&display=swap"
           rel="stylesheet"
         />
       </head>

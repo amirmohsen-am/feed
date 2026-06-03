@@ -163,7 +163,7 @@ export default function Onboarding({ onComplete }: { onComplete: (profile: UserP
                 <circle cx="20" cy="20" r="19" stroke="currentColor" strokeWidth="0.5" opacity="0.22" />
               </svg>
             </div>
-            <h2>Welcome to Ripple Feed</h2>
+            <h2>Welcome to Willow</h2>
             <p>A quieter, more intentional feed — built on Bluesky. Let&apos;s get you set up in under a minute.</p>
 
             <button

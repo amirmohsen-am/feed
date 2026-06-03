@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import Script from "next/script";
 import FilterPanel from "@/components/FilterPanel";
 import ShaderSendButton from "@/components/ShaderSendButton";
 import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
@@ -93,7 +94,11 @@ function externalHost(url: string | null): string | null {
   }
 }
 
-const SHOW_DEBUG_KEY = "curator:showDebug";
+declare global {
+  interface Window {
+    bluesky?: { scan: (root?: Element | Document) => void };
+  }
+}
 
 const HASHTAG_RE = /(#[\w\u00C0-\u024F]+)/g;
 
@@ -144,6 +149,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     setActivePostCount,
     mobileTab,
     setOptionsUnread,
+    viewMode,
+    showDebug,
+    hideUnavailable,
+    setUnavailableCount,
   } = useCurator();
 
   const [rightPane, setRightPane] = useState<"chat" | "tune">("chat");
@@ -151,14 +160,19 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     RIGHT_W_KEY, 380, RIGHT_MIN, RIGHT_MAX, "right"
   );
 
-  const [showDebug, setShowDebugState] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    return window.localStorage.getItem(SHOW_DEBUG_KEY) !== "false";
-  });
-  function setShowDebug(next: boolean) {
-    setShowDebugState(next);
-    try { window.localStorage.setItem(SHOW_DEBUG_KEY, String(next)); } catch { /* ignore */ }
-  }
+  // Per-feed: unavailable URIs from the Bluesky availability probe. Lives
+  // inside the workbench so it resets atomically when the feedId-keyed
+  // component remounts on URL change. The count is mirrored up to the curator
+  // context so the top-bar settings dialog can show it.
+  const [unavailableUris, setUnavailableUris] = useState<Set<string>>(() => new Set());
+  const bskyAvailabilityCache = useRef<Map<string, boolean>>(new Map());
+  useEffect(() => {
+    setUnavailableCount(unavailableUris.size);
+  }, [unavailableUris, setUnavailableCount]);
+  useEffect(() => {
+    return () => setUnavailableCount(0);
+  }, [setUnavailableCount]);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -417,6 +431,78 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
+  // Re-scan Bluesky embeds when the visible post set changes.
+  useEffect(() => {
+    if (viewMode !== "embed") return;
+    const scan = () => window.bluesky?.scan?.();
+    scan();
+    const t = setTimeout(scan, 300);
+    return () => clearTimeout(t);
+  }, [viewMode, posts, hideUnavailable, unavailableUris]);
+
+  // Detect unavailable posts via the public AT Proto API.
+  useEffect(() => {
+    if (viewMode !== "embed") return;
+    if (posts.length === 0) return;
+
+    const ac = new AbortController();
+    const cache = bskyAvailabilityCache.current;
+
+    async function check(uri: string) {
+      const cached = cache.get(uri);
+      if (cached !== undefined) {
+        if (cached === false) {
+          setUnavailableUris((prev) =>
+            prev.has(uri) ? prev : new Set(prev).add(uri)
+          );
+        }
+        return;
+      }
+      try {
+        const res = await fetch(
+          `https://public.api.bsky.app/xrpc/app.bsky.feed.getPostThread?uri=${encodeURIComponent(
+            uri
+          )}&depth=0&parentHeight=0`,
+          { signal: ac.signal }
+        );
+        if (!res.ok) {
+          cache.set(uri, false);
+          setUnavailableUris((prev) =>
+            prev.has(uri) ? prev : new Set(prev).add(uri)
+          );
+          return;
+        }
+        const data = (await res.json()) as {
+          thread?: {
+            post?: {
+              labels?: { val?: string }[];
+              author?: { labels?: { val?: string }[] };
+            };
+          };
+        };
+        const post = data.thread?.post;
+        const hasNoUnauth =
+          post?.labels?.some((l) => l.val === "!no-unauthenticated") ||
+          post?.author?.labels?.some((l) => l.val === "!no-unauthenticated") ||
+          false;
+        if (!post || hasNoUnauth) {
+          cache.set(uri, false);
+          setUnavailableUris((prev) =>
+            prev.has(uri) ? prev : new Set(prev).add(uri)
+          );
+        } else {
+          cache.set(uri, true);
+        }
+      } catch (e) {
+        if ((e as { name?: string }).name === "AbortError") return;
+      }
+    }
+
+    posts.forEach((p) => { check(p.uri); });
+
+    return () => ac.abort();
+  }, [viewMode, posts]);
+
   async function send(text: string) {
     if (!text.trim() || loading) return;
     setInput("");
@@ -530,6 +616,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   return (
     <>
+      <Script
+        src="https://embed.bsky.app/static/embed.js"
+        strategy="afterInteractive"
+        onLoad={() => window.bluesky?.scan?.()}
+      />
       <div className="cur-workbench" data-right-pane={rightPane}>
         {/* POSTS PANE (middle) */}
         <div className="cur-feed-posts">
@@ -551,17 +642,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               {posts.length > 0 && `${posts.length} post${posts.length === 1 ? "" : "s"}`}
             </span>
             <div className="cur-toolbar">
-              <button
-                type="button"
-                className={`cur-toolbar-btn${showDebug ? " active" : ""}`}
-                onClick={() => setShowDebug(!showDebug)}
-                title="Toggle debug scores"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                </svg>
-                Debug
-              </button>
               <button
                 type="button"
                 className="cur-toolbar-btn"
@@ -594,6 +674,95 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                   </>
                 )}
               </div>
+            ) : viewMode === "embed" ? (
+              posts.map((post) => {
+                const bskyUrl = (() => {
+                  const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+                  return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
+                })();
+                const replyParentUrl = (() => {
+                  if (!post.reply_parent_uri) return null;
+                  const m = post.reply_parent_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+                  return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
+                })();
+                if (hideUnavailable && unavailableUris.has(post.uri)) {
+                  return null;
+                }
+                return (
+                  <div
+                    key={post.uri}
+                    className="cur-post-embed-wrap"
+                    data-bsky-uri={post.uri}
+                  >
+                    <div className="cur-post-embed-frame">
+                      {post.is_reply && (
+                        <div className="cur-post-reply-banner cur-post-reply-banner-embed">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <polyline points="9 17 4 12 9 7" />
+                            <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+                          </svg>
+                          {replyParentUrl ? (
+                            <a href={replyParentUrl} target="_blank" rel="noopener noreferrer">
+                              Replying to a post
+                            </a>
+                          ) : (
+                            <span>Reply</span>
+                          )}
+                        </div>
+                      )}
+                      <div className="cur-post-embed-meta">
+                        {bskyUrl && (
+                          <a
+                            href={bskyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="cur-post-open"
+                            title="Open in Bluesky"
+                          >
+                            Open ↗
+                          </a>
+                        )}
+                      </div>
+                      {showDebug && (
+                        <div className="cur-post-debug">
+                          <span className="cur-post-debug-row">
+                            <span className="cur-post-debug-label">vec</span>
+                            <span>{(post.score * 100).toFixed(1)}%</span>
+                            {typeof post.rerank_score === "number" && (
+                              <>
+                                <span className="cur-post-debug-label">rr</span>
+                                <span>{post.rerank_score}</span>
+                              </>
+                            )}
+                            {post.like_nsfw && (
+                              <span className="cur-post-debug-flag">nsfw?</span>
+                            )}
+                          </span>
+                          {post.rerank_reason && (
+                            <span className="cur-post-debug-reason">
+                              &ldquo;{post.rerank_reason}&rdquo;
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      className="bluesky-embed"
+                      data-bluesky-uri={post.uri}
+                      data-bluesky-embed-color-mode="light"
+                    >
+                      <p>{post.text}</p>
+                      {bskyUrl && (
+                        <p>
+                          <a href={bskyUrl} target="_blank" rel="noopener noreferrer">
+                            View on Bluesky
+                          </a>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               posts.map((post) => {
                 const bskyUrl = (() => {

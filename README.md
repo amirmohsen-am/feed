@@ -43,7 +43,7 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:3000>. Sign in with Google, click **Try demo (feed curation)**, chat with the agent.
+Open <http://localhost:3000>. Sign in with Google, click **Try demo**, chat with the agent.
 
 ## Run the worker
 

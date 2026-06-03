@@ -3,6 +3,8 @@
    Palette: jade + aurora + amber (dreamy green twilight)
    ───────────────────────────────────────────────── */
 
+html{ scroll-behavior: smooth; }
+
 :root{
   --void:        #060f0b;
   --midnight:    #0b1814;
@@ -213,12 +215,20 @@
 .btn-primary:hover{ background: var(--amber); transform: translateY(-1px); }
 .btn-primary .arrow{ transition: transform 0.3s; }
 .btn-primary:hover .arrow{ transform: translateX(4px); }
+.btn-secondary{
+  background: transparent;
+  color: var(--cream);
+  border: 1px solid var(--cream);
+}
+.btn-secondary:hover{ background: var(--cream); color: var(--void); transform: translateY(-1px); }
+.btn-secondary .arrow{ transition: transform 0.3s; }
+.btn-secondary:hover .arrow{ transform: translateX(4px); }
 .btn-ghost{
   color: var(--parchment);
   border: 1px solid var(--hair-strong);
   background: transparent;
 }
-.btn-ghost:hover{ border-color: var(--parchment); color: var(--cream); }
+.btn-ghost:hover{ background: var(--cream); border-color: var(--cream); color: var(--void); transform: translateY(-1px); }
 
 .hero-meta{
   position: absolute;
@@ -287,7 +297,7 @@
 }
 
 /* ── MANIFESTO ────────────────────────────────── */
-.manifesto{
+.mission{
   padding: 180px 0;
   background:
     radial-gradient(ellipse 60% 50% at 20% 30%, rgba(62,138,108,0.22), transparent 60%),
@@ -307,30 +317,30 @@
   letter-spacing: 0.16em; color: var(--parchment-dim);
   text-transform: uppercase;
 }
-.manifesto-grid{
+.mission-grid{
   display: grid; grid-template-columns: 1fr 1.2fr;
   gap: 100px; align-items: start;
 }
-.manifesto-left{ position: sticky; top: 140px; }
-.manifesto h2{
+.mission-left{ position: sticky; top: 140px; }
+.mission h2{
   font-size: clamp(44px, 5.5vw, 78px);
   line-height: 1.02; letter-spacing: -0.015em;
   margin-bottom: 40px;
 }
-.manifesto h2 em{ color: var(--ember); }
-.manifesto-body{
+.mission h2 em{ color: var(--ember); }
+.mission-body{
   font-family: var(--rf-body); font-size: 19px;
   line-height: 1.7; color: var(--parchment);
   font-weight: 300;
 }
-.manifesto-body p{ margin-bottom: 26px; }
-.manifesto-body p:first-child::first-letter{
+.mission-body p{ margin-bottom: 26px; }
+.mission-body p:first-child::first-letter{
   font-family: var(--rf-display); font-size: 86px;
   line-height: 0.8; float: left;
   padding: 8px 14px 0 0;
   color: var(--amber); font-style: italic;
 }
-.manifesto-body em{ color: var(--amber); }
+.mission-body em{ color: var(--amber); }
 .pullquote{
   margin-top: 72px;
   padding: 48px 0;
@@ -348,8 +358,8 @@
   margin-top: 20px;
 }
 @media (max-width: 960px){
-  .manifesto-grid{ grid-template-columns: 1fr; gap: 48px; }
-  .manifesto-left{ position: static; }
+  .mission-grid{ grid-template-columns: 1fr; gap: 48px; }
+  .mission-left{ position: static; }
 }
 
 /* ── DIET ─────────────────────────────────────── */
@@ -973,3 +983,97 @@
   transition: all 0.3s;
 }
 .snitch-claim:hover{ background: var(--amber); }
+
+/* ── ABOUT ─────────────────────────────────────────── */
+.about-section{
+  padding: 140px 0 120px;
+}
+.about-grid{
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 48px;
+  margin-top: 72px;
+}
+.about-card{
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.about-photo{
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid var(--hair-strong);
+  background: var(--twilight);
+  max-width: 180px;
+}
+.about-photo img{
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: grayscale(20%);
+  transition: filter 0.4s;
+}
+.about-card:hover .about-photo img{ filter: grayscale(0%); }
+.about-info{ display: flex; flex-direction: column; gap: 10px; }
+.about-name{
+  font-family: var(--rf-display);
+  font-size: 22px;
+  color: var(--cream);
+  font-style: italic;
+  margin: 0;
+}
+.about-role{
+  font-family: var(--rf-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin: 0;
+}
+.about-bio{
+  font-family: var(--rf-body);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--parchment);
+  margin: 4px 0 0;
+}
+.about-links{
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.about-link{
+  font-family: var(--rf-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--parchment-dim);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.about-link:hover{ color: var(--cream); }
+
+@media (max-width: 900px){
+  .about-grid{ grid-template-columns: 1fr; gap: 56px; }
+  .about-photo{ max-width: 140px; }
+}
+
+/* ── WAITLIST ──────────────────────────────────────── */
+.waitlist-section{
+  padding: 80px 0 72px;
+  border-top: 1px solid var(--hair);
+}
+.waitlist-inner{
+  max-width: 560px;
+}
+.waitlist-label{
+  font-family: var(--rf-mono);
+  font-size: 11px; letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--parchment-dim);
+  margin-bottom: 20px;
+  line-height: 1.6;
+}

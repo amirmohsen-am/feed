@@ -13,6 +13,8 @@ export interface SavedFeed {
 
 export type MobileTab = "chat" | "feed" | "tune";
 
+export type ViewMode = "card" | "embed";
+
 export interface CuratorContextValue {
   profile: UserProfile;
   feeds: SavedFeed[];
@@ -23,6 +25,18 @@ export interface CuratorContextValue {
   setMobileTab: (t: MobileTab) => void;
   optionsUnread: boolean;
   setOptionsUnread: (b: boolean) => void;
+  // Display settings, surfaced in the top-bar settings dialog and consumed by
+  // the posts pane in CuratorWorkbench.
+  viewMode: ViewMode;
+  setViewMode: (m: ViewMode) => void;
+  showDebug: boolean;
+  setShowDebug: (b: boolean) => void;
+  hideUnavailable: boolean;
+  setHideUnavailable: (b: boolean) => void;
+  // Count of posts the Bluesky availability probe flagged as unavailable,
+  // mirrored up from the workbench so the settings dialog can show it.
+  unavailableCount: number;
+  setUnavailableCount: (n: number) => void;
 }
 
 const CuratorContext = createContext<CuratorContextValue | null>(null);

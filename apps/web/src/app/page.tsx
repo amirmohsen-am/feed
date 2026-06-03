@@ -282,8 +282,7 @@ function SubscribeForm() {
           className="btn btn-primary subscribe-submit"
           disabled={status === "loading" || email.trim().length === 0}
         >
-          {status === "loading" ? "Sending…" : "Notify me"}
-          <span className="arrow">→</span>
+          {status === "loading" ? "Sending…" : "Register"}
         </button>
       </div>
       {status === "error" && message && (
@@ -386,10 +385,10 @@ export default function LandingPage() {
       {/* NAV */}
       <nav className="rf-nav" id="rf-nav">
         <a href="#" className="brand">
-          <ShaderLogo height={42} />
+          <ShaderLogo height={50} />
         </a>
         <div className="nav-links">
-          <a href="#manifesto">Manifesto</a>
+          <a href="#mission">Mission</a>
           <a href="#how">How it works</a>
           <a href="#about">About</a>
           <Link href="/curator" className="nav-cta">Begin →</Link>
@@ -402,68 +401,65 @@ export default function LandingPage() {
         <div className="wrap hero-content">
           <span className="hero-eyebrow mono">
             <span className="dot" />
-            Ripple Feed &nbsp;/&nbsp; built on bluesky
+            Willow &nbsp;:&nbsp; built on AT Protocol
           </span>
           <h1>
-            A feed you <span className="it">actually</span><br />chose.
+            A feed you <span className="it">actually</span><br/>choose.
           </h1>
           <p className="hero-sub">
-            In the same way you <em>curate what you eat</em>, now curate what you read.
-            A small, quiet experiment in returning the feed to the reader.
+            In the same way you <em>curate what you eat</em>, you must curate what you consume online to stay healthy.
+            We're trying to build tools to help you do that.
           </p>
-          <div className="hero-subscribe">
-            <p className="hero-subscribe-label">
-              Leave your email — we&apos;ll write the day there&apos;s something worth your time.
-            </p>
-            <SubscribeForm />
-          </div>
           <div className="hero-actions">
-            <Link href="/curator" className="btn btn-primary">
-              Try demo (feed curation) <span className="arrow">→</span>
+            <a href="#waitlist" className="btn btn-primary">Join Waitlist</a>
+            <Link href="/curator" className="btn btn-secondary">
+              Try demo <span className="arrow">→</span>
             </Link>
-            <a href="#manifesto" className="btn btn-ghost">Read the manifesto</a>
+            <a href="#mission" className="btn btn-ghost">Read the mission</a>
           </div>
         </div>
 
       </section>
 
       {/* MANIFESTO */}
-      <section className="manifesto" id="manifesto">
+      <section className="mission" id="mission">
         <div className="wrap">
           <div className="section-head reveal">
             <span className="idx">I.</span>
             <span className="hair" />
-            <span className="title">The Manifesto</span>
+            <span className="title">The Mission</span>
           </div>
-          <div className="manifesto-grid">
-            <div className="manifesto-left reveal">
+          <div className="mission-grid">
+            <div className="mission-left reveal">
               <h2>Your feed <em>is not</em><br />yours.</h2>
               <div className="img-slot is-tall" style={{ maxWidth: 380 }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/images/manifesto.jpg" alt="The overwhelming default feed" />
               </div>
             </div>
-            <div className="manifesto-body reveal">
+            <div className="mission-body reveal">
               <p>
-                Modern social feeds were not built to inform you — they were built to
-                <em> hold</em> you. Each scroll, each tap, each returning flick of the thumb is a
-                small transaction: your attention traded for engagement, your time converted
-                into revenue for a system that has never met you.
+                Modern social feeds are built to maximize a single metric: <em>engagement</em>.
+                This is not a novel insight. However, as algorithms have gotten better,
+                the problem has become more acute. At
+                the same time, new technologies have made fake users, content and interactions
+                indistinguishable from real ones.
               </p>
               <p>
-                The result is familiar. Hours go by. The feed churns. And at the end,
-                little remains — no clearer sense of the world, no deeper understanding
-                of the subjects you actually care about. Only the fatigue of having been <em>consumed</em>.
+                The old solution was "just stop using social media." But as our lives have moved online more
+                and more, the lines around what is and isn't social media have blurred. Avoidance is both
+                more difficult and more restrictive to our own growth and goals. New technologies that create new
+                problems require better technology, not avoidance. The solution to fatal car crashes
+                is <em>seatbelts</em>, not ditching cars for horses.
               </p>
               <p>
-                We believe feeds can be something else. A feed can be chosen. A feed can
-                be shaped by what you actually want to know, the way a good meal is
-                shaped by what you actually want to eat. A feed can be quiet.
+                So <em>why now</em>? Multiple
+                things are converging to change the way we engage with content online.
+                New open protocols eliminate walled gardens and bake transparency into algorithms and
+                platforms. Authentication technologies make fake content explicit. LLMs give users more
+                fine grained control of their information stream. Together these can make our digital 
+                experiences radically healthier.
               </p>
-              <div className="pullquote">
-                &ldquo;The only radical act left in the attention economy is to&nbsp;<em>choose</em>.&rdquo;
-                <span className="attr">— Ripple Feed, first principle</span>
-              </div>
             </div>
           </div>
         </div>
@@ -494,7 +490,7 @@ export default function LandingPage() {
               </ul>
             </div>
             <div className="plate curated reveal">
-              <div className="plate-label"><span className="marker" />A Ripple feed</div>
+              <div className="plate-label"><span className="marker" />A Willow feed</div>
               <h3>Engineered to <em>nourish</em> you.</h3>
               <ul className="plate-items">
                 <li>Long essays you&apos;d save <span className="tag">chosen</span></li>
@@ -574,13 +570,75 @@ export default function LandingPage() {
           <div className="section-head reveal">
             <span className="idx">IV.</span>
             <span className="hair" />
-            <span className="title">Inside Ripple Feed</span>
+            <span className="title">Inside Willow</span>
           </div>
           <div className="preview-head reveal">
             <h2>What a feed you <em>chose</em> looks like.</h2>
             <p>Your library, on the left. The feed, on the right. That&apos;s it.</p>
           </div>
           <MockupSection />
+        </div>
+      </section>
+
+      {/* ABOUT */}
+      <section className="about-section" id="about">
+        <div className="wrap">
+          <div className="section-head reveal">
+            <span className="idx">V.</span>
+            <span className="hair" />
+            <span className="title">The Team</span>
+          </div>
+          <div className="about-grid">
+
+            <div className="about-card reveal" style={{ transitionDelay: "0ms" }}>
+              <div className="about-photo">
+                <img src="/images/christian.jpg" alt="Person one" />
+              </div>
+              <div className="about-info">
+                <h3 className="about-name">Christian Neizonek</h3>
+                <p className="about-role">Engineer, Father</p>
+                <p className="about-bio">
+                  Worked in robotics for 10 years. Pivoting to the most important problems in our world today. My goal: to build online spaces that make people their best selves.
+                </p>
+                <div className="about-links">
+                  <a href="https://bsky.app/profile/wawrio.bsky.social" className="about-link" target="_blank" rel="noopener noreferrer">Bluesky</a>
+                </div>
+              </div>
+            </div>
+
+            <div className="about-card reveal" style={{ transitionDelay: "120ms" }}>
+              <div className="about-photo">
+                <img src="/images/ohm.jpg" alt="Person two" />
+              </div>
+              <div className="about-info">
+                <h3 className="about-name">Ohm Patel</h3>
+                <p className="about-role">Engineer</p>
+                <p className="about-bio">
+                  Short bio goes here. What you care about, what you&apos;ve built, why this project matters to you personally.
+                </p>
+                <div className="about-links">
+                  <a href="#" className="about-link" target="_blank" rel="noopener noreferrer">Bluesky</a>
+                </div>
+              </div>
+            </div>
+
+            <div className="about-card reveal" style={{ transitionDelay: "240ms" }}>
+              <div className="about-photo">
+                <img src="/images/amir.jpg" alt="Person three" />
+              </div>
+              <div className="about-info">
+                <h3 className="about-name">Amir Ahanchi</h3>
+                <p className="about-role">Engineer</p>
+                <p className="about-bio">
+                  Short bio goes here. What you care about, what you&apos;ve built, why this project matters to you personally.
+                </p>
+                <div className="about-links">
+                  <a href="https://bsky.app/profile/ahanchi.bsky.social" className="about-link" target="_blank" rel="noopener noreferrer">Bluesky</a>
+                </div>
+              </div>
+            </div>
+
+          </div>
         </div>
       </section>
 
@@ -597,12 +655,20 @@ export default function LandingPage() {
         </div>
         <div className="wrap final-content">
           <h2 className="reveal">Return to a feed that<br />is <em>genuinely</em> yours.</h2>
-          <p className="reveal">Start curating your feed now. No waitlist.</p>
+          <p className="reveal">See what we're trying to build.</p>
           <div className="reveal">
             <Link href="/curator" className="btn btn-primary" style={{ fontSize: 14 }}>
-              Try demo (feed curation) <span className="arrow">→</span>
+              Try demo<span className="arrow">→</span>
             </Link>
           </div>
+        </div>
+      </section>
+
+      {/* WAITLIST */}
+      <section className="waitlist-section" id="waitlist">
+        <div className="wrap waitlist-inner">
+          <p className="waitlist-label">Leave your email — we&apos;ll write the day there&apos;s something worth your time.</p>
+          <SubscribeForm />
         </div>
       </section>
 
@@ -613,7 +679,7 @@ export default function LandingPage() {
             <Logo variant="wordmark" height={32} shimmer={false} />
           </div>
           <div className="foot-links">
-            <a href="#manifesto">Manifesto</a>
+            <a href="#mission">Mission</a>
             <a href="#how">How</a>
             <a href="#about">Team</a>
           </div>
