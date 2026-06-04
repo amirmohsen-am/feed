@@ -24,7 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import Onboarding, { useAuth, type UserProfile } from "@/components/Onboarding";
+import Onboarding, { useAuth, type UserProfile, type OnboardingResult } from "@/components/Onboarding";
 import ImportMemoryModal from "@/components/ImportMemoryModal";
 import FeedbackModal from "@/components/FeedbackModal";
 import ShaderLogo from "@/components/ShaderLogo";
@@ -56,6 +56,7 @@ const FEED_COLORS = [
 ];
 
 export default function CuratorLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const { profile, setProfile, isOnboarded, loading: authLoading } = useAuth();
 
   if (authLoading) {
@@ -67,7 +68,16 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
   }
 
   if (!isOnboarded) {
-    return <Onboarding onComplete={setProfile} />;
+    return (
+      <Onboarding
+        onComplete={(result: OnboardingResult) => {
+          setProfile(result);
+          if (result.feedId) {
+            router.push(`/curator/${result.feedId}`);
+          }
+        }}
+      />
+    );
   }
 
   return <CuratorShell profile={profile!}>{children}</CuratorShell>;

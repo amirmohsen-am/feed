@@ -116,7 +116,7 @@ export default function AuthGate({
               letterSpacing: "-0.01em",
             }}
           >
-            Sign in to Ripple Feed
+            Sign in to Willow
           </div>
           <p
             style={{

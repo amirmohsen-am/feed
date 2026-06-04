@@ -190,9 +190,17 @@ export default function LandingPageV2() {
     <div className="rf-page">
       <div className="grain" />
       <div className="vignette" />
-      <Link href="/curator" style={{ position: "fixed", top: 24, right: 32, zIndex: 50, fontFamily: "var(--rf-mono)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#000", textDecoration: "none", padding: "8px 18px", borderRadius: 999, background: "#fff", fontWeight: 700 }}>
-        Try Demo &rarr;
-      </Link>
+      <div style={{ position: "fixed", top: 24, left: 32, zIndex: 50, fontFamily: "var(--rf-display), 'Instrument Serif', serif", fontSize: 22, color: "var(--cream, #f3ecdd)", letterSpacing: "-0.02em" }}>
+        willow
+      </div>
+      <nav style={{ position: "fixed", top: 24, right: 32, zIndex: 50, display: "flex", alignItems: "center", gap: 24 }}>
+        <a href="#mission" style={{ fontFamily: "var(--rf-mono)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--parchment-dim, #a8a090)", textDecoration: "none", transition: "color 0.2s" }}>Mission</a>
+        <a href="#how" style={{ fontFamily: "var(--rf-mono)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--parchment-dim, #a8a090)", textDecoration: "none", transition: "color 0.2s" }}>How it Works</a>
+        <a href="#about" style={{ fontFamily: "var(--rf-mono)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--parchment-dim, #a8a090)", textDecoration: "none", transition: "color 0.2s" }}>Team</a>
+        <Link href="/curator" style={{ fontFamily: "var(--rf-mono)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#000", textDecoration: "none", padding: "8px 18px", borderRadius: 999, background: "#fff", fontWeight: 700 }}>
+          Try Demo &rarr;
+        </Link>
+      </nav>
 
 
 
@@ -237,10 +245,6 @@ export default function LandingPageV2() {
           <div className="mission-grid">
             <div className="mission-left reveal">
               <h2>Your feed <em>is not</em><br />yours.</h2>
-              <div className="img-slot is-tall" style={{ maxWidth: 380 }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/images/manifesto.jpg" alt="The overwhelming default feed" />
-              </div>
             </div>
             <div className="mission-body reveal">
               <p>
@@ -331,7 +335,7 @@ export default function LandingPageV2() {
               </div>
               <h3>Make a new feed &mdash; by <em>talking</em>.</h3>
               <p>
-                A single, quiet conversation with our agent. Tell it what you
+                A single conversation with our agent. Tell it what you
                 want to pay attention to, and what you&apos;d like to leave behind.
                 It shapes a feed from that conversation alone.
               </p>
@@ -391,7 +395,7 @@ export default function LandingPageV2() {
                 <h3 className="about-name">Ohm Patel</h3>
                 <p className="about-role">Engineer</p>
                 <p className="about-bio">
-                  Short bio goes here. What you care about, what you&apos;ve built, why this project matters to you personally.
+                  Former content creator turned engineer. Building better incentive systems for social media &mdash; feeds that serve people, not platforms.
                 </p>
                 <div className="about-links">
                   <a href="#" className="about-link" target="_blank" rel="noopener noreferrer">Bluesky</a>
@@ -423,8 +427,8 @@ export default function LandingPageV2() {
       {/* FOOTER */}
       <footer className="rf-footer">
         <div className="wrap footer-row">
-          <div className="foot-brand">
-            <Logo variant="wordmark" height={32} shimmer={false} />
+          <div className="foot-brand" style={{ fontFamily: "var(--rf-display), 'Instrument Serif', serif", fontSize: 22, color: "var(--cream, #f3ecdd)", letterSpacing: "-0.02em" }}>
+            willow
           </div>
           <div className="foot-links">
             <a href="#mission">Mission</a>
