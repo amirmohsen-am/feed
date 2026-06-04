@@ -394,7 +394,7 @@ export default function LandingPageV2() {
                   Former content creator turned engineer. Building better incentive systems for social media &mdash; feeds that serve people, not platforms.
                 </p>
                 <div className="about-links">
-                  <a href="#" className="about-link" target="_blank" rel="noopener noreferrer">Bluesky</a>
+                  <a href="https://bsky.app/profile/ohmcpatel.bsky.social" className="about-link" target="_blank" rel="noopener noreferrer">Bluesky</a>
                 </div>
               </div>
             </div>
