@@ -53,8 +53,10 @@ export function HoverBorderGradient({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hovered]);
 
+  const Component = Tag as React.ComponentType<Record<string, unknown>>;
+
   return (
-    <Tag
+    <Component
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       className={cn(
@@ -83,6 +85,6 @@ export function HoverBorderGradient({
         transition={{ ease: "linear", duration: duration }}
       />
       <div className="absolute z-1 flex-none inset-[2px] rounded-[100px]" style={{ background: "rgba(125,203,165,0.1)" }} />
-    </Tag>
+    </Component>
   );
 }

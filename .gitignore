@@ -51,6 +51,9 @@ yarn-error.log*
 
 # python
 data/
+# landing-page 3D globe country-polygon GeoJSON (committed, see apps/web/src/components/ui/globe.tsx)
+!apps/web/data/
+!apps/web/data/globe.js
 .venv/
 __pycache__/
 .pytest_cache/
