@@ -9,60 +9,7 @@
         "width": 3,
         "height": 4,
         "widget": {
-          "title": "Vertex datapoints upserted (window)",
-          "scorecard": {
-            "timeSeriesQuery": {
-              "timeSeriesFilter": {
-                "filter": "metric.type=\"aiplatform.googleapis.com/matching_engine/stream_update/datapoint_count\" resource.type=\"aiplatform.googleapis.com/Index\"",
-                "aggregation": {
-                  "alignmentPeriod": "60s",
-                  "perSeriesAligner": "ALIGN_DELTA",
-                  "crossSeriesReducer": "REDUCE_SUM"
-                }
-              }
-            },
-            "sparkChartView": {
-              "sparkChartType": "SPARK_LINE"
-            }
-          }
-        }
-      },
-      {
-        "xPos": 3,
-        "yPos": 0,
-        "width": 3,
-        "height": 4,
-        "widget": {
-          "title": "Vertex datapoints upserted / min",
-          "xyChart": {
-            "dataSets": [
-              {
-                "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "filter": "metric.type=\"aiplatform.googleapis.com/matching_engine/stream_update/datapoint_count\" resource.type=\"aiplatform.googleapis.com/Index\"",
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "perSeriesAligner": "ALIGN_DELTA",
-                      "crossSeriesReducer": "REDUCE_SUM"
-                    }
-                  }
-                },
-                "plotType": "LINE"
-              }
-            ],
-            "yAxis": {
-              "scale": "LINEAR"
-            }
-          }
-        }
-      },
-      {
-        "xPos": 6,
-        "yPos": 0,
-        "width": 3,
-        "height": 4,
-        "widget": {
-          "title": "Embedding cost (window) \u2014 calculated*",
+          "title": "Embedding cost (window) — calculated*",
           "scorecard": {
             "timeSeriesQuery": {
               "timeSeriesFilter": {
@@ -80,12 +27,12 @@
         }
       },
       {
-        "xPos": 9,
+        "xPos": 3,
         "yPos": 0,
         "width": 3,
         "height": 4,
         "widget": {
-          "title": "Embedding cost / min \u2014 calculated*",
+          "title": "Embedding cost / min — calculated*",
           "xyChart": {
             "dataSets": [
               {
@@ -116,7 +63,7 @@
         "widget": {
           "title": "About the cost numbers",
           "text": {
-            "content": "**Embedding cost is calculated, not billed.** Estimated as `ceil(chars / 4)` tokens \u00d7 **$0.00015 / 1K tokens** (Vertex Gemini embeddings online tier, gemini-embedding-001).\n\nNot included in this dashboard:\n- **Vertex AI Vector Search deployed index** \u2014 flat **~$220/mo** (1\u00d7 e2-standard-2 replica)\n- **Cloud Run worker** \u2014 **~$70/mo** with 2 vCPU + 2 GiB always-on (`--no-cpu-throttling`, `--min-instances=1`)\n- **Cloud Run server** \u2014 **<$5/mo** at <10 users\n- **Cloud SQL feed-db** \u2014 billed per instance type\n- **GCS storage** \u2014 **<$5/mo** (parquets + cursors)\n\nFor actual billing (24\u201348h lag), see [Cloud Billing console](https://console.cloud.google.com/billing).",
+            "content": "**Embedding cost is calculated, not billed.** Estimated as `ceil(chars / 4)` tokens × **$0.00015 / 1K tokens** (Vertex Gemini embeddings online tier, gemini-embedding-001).\n\nNot included in this dashboard:\n- **Cloud SQL bsky-db** (pgvector HNSW index + posts) — db-custom-1-3840 dedicated CPU, billed per instance type\n- **Cloud Run worker** — **~$70/mo** with 2 vCPU + 2 GiB always-on (`--no-cpu-throttling`, `--min-instances=1`)\n- **Cloud Run server** — **<$5/mo** at <10 users\n- **Cloud SQL feed-db** — billed per instance type\n- **GCS storage** — **<$5/mo** (parquets + cursors)\n\nFor actual billing (24–48h lag), see [Cloud Billing console](https://console.cloud.google.com/billing).",
             "format": "MARKDOWN"
           }
         }
@@ -127,7 +74,7 @@
         "width": 12,
         "height": 1,
         "widget": {
-          "title": "Consumers (postConsumer / engagementConsumer / profileConsumer / reconciler)",
+          "title": "Consumers (postConsumer / engagementConsumer / profileConsumer)",
           "text": {
             "content": "Per-consumer queue depth, cursor lag, throughput, and failure rates.",
             "format": "MARKDOWN"
@@ -368,68 +315,10 @@
       {
         "xPos": 0,
         "yPos": 23,
-        "width": 6,
-        "height": 4,
-        "widget": {
-          "title": "Reconciler: posts pushed / min",
-          "xyChart": {
-            "dataSets": [
-              {
-                "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "filter": "metric.type=\"workload.googleapis.com/happy_feed_reconciler_pushed_total\" resource.type=\"generic_node\"",
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "perSeriesAligner": "ALIGN_DELTA",
-                      "crossSeriesReducer": "REDUCE_SUM"
-                    }
-                  }
-                },
-                "plotType": "LINE"
-              }
-            ],
-            "yAxis": {
-              "scale": "LINEAR"
-            }
-          }
-        }
-      },
-      {
-        "xPos": 6,
-        "yPos": 23,
-        "width": 6,
-        "height": 4,
-        "widget": {
-          "title": "Reconciler: oldest unflushed engagement row (seconds)",
-          "xyChart": {
-            "dataSets": [
-              {
-                "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "filter": "metric.type=\"workload.googleapis.com/happy_feed_reconciler_oldest_dirty_s\" resource.type=\"generic_node\"",
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "perSeriesAligner": "ALIGN_MEAN",
-                      "crossSeriesReducer": "REDUCE_MEAN"
-                    }
-                  }
-                },
-                "plotType": "LINE"
-              }
-            ],
-            "yAxis": {
-              "scale": "LINEAR"
-            }
-          }
-        }
-      },
-      {
-        "xPos": 0,
-        "yPos": 27,
         "width": 12,
         "height": 1,
         "widget": {
-          "title": "Cloud Run \u2014 jetstream-indexer container",
+          "title": "Cloud Run — jetstream-indexer container",
           "text": {
             "content": "Memory / CPU / instances / startup count for the worker container.",
             "format": "MARKDOWN"
@@ -438,7 +327,7 @@
       },
       {
         "xPos": 0,
-        "yPos": 28,
+        "yPos": 24,
         "width": 3,
         "height": 4,
         "widget": {
@@ -466,7 +355,7 @@
       },
       {
         "xPos": 3,
-        "yPos": 28,
+        "yPos": 24,
         "width": 3,
         "height": 4,
         "widget": {
@@ -494,7 +383,7 @@
       },
       {
         "xPos": 6,
-        "yPos": 28,
+        "yPos": 24,
         "width": 3,
         "height": 4,
         "widget": {
@@ -526,7 +415,7 @@
       },
       {
         "xPos": 9,
-        "yPos": 28,
+        "yPos": 24,
         "width": 3,
         "height": 4,
         "widget": {
@@ -554,7 +443,7 @@
       },
       {
         "xPos": 0,
-        "yPos": 32,
+        "yPos": 28,
         "width": 6,
         "height": 4,
         "widget": {
@@ -583,7 +472,7 @@
       },
       {
         "xPos": 6,
-        "yPos": 32,
+        "yPos": 28,
         "width": 6,
         "height": 4,
         "widget": {
@@ -612,11 +501,11 @@
       },
       {
         "xPos": 0,
-        "yPos": 36,
+        "yPos": 32,
         "width": 12,
         "height": 1,
         "widget": {
-          "title": "Cloud SQL \u2014 feed-db (postgres)",
+          "title": "Cloud SQL — feed-db (postgres)",
           "text": {
             "content": "CPU / memory / disk / connections for the shared Postgres instance. The bsky database lives here.",
             "format": "MARKDOWN"
@@ -625,7 +514,7 @@
       },
       {
         "xPos": 0,
-        "yPos": 37,
+        "yPos": 33,
         "width": 3,
         "height": 4,
         "widget": {
@@ -653,7 +542,7 @@
       },
       {
         "xPos": 3,
-        "yPos": 37,
+        "yPos": 33,
         "width": 3,
         "height": 4,
         "widget": {
@@ -681,7 +570,7 @@
       },
       {
         "xPos": 6,
-        "yPos": 37,
+        "yPos": 33,
         "width": 3,
         "height": 4,
         "widget": {
@@ -709,7 +598,7 @@
       },
       {
         "xPos": 9,
-        "yPos": 37,
+        "yPos": 33,
         "width": 3,
         "height": 4,
         "widget": {
@@ -737,7 +626,7 @@
       },
       {
         "xPos": 0,
-        "yPos": 41,
+        "yPos": 37,
         "width": 4,
         "height": 4,
         "widget": {
@@ -765,7 +654,7 @@
       },
       {
         "xPos": 4,
-        "yPos": 41,
+        "yPos": 37,
         "width": 4,
         "height": 4,
         "widget": {
@@ -795,7 +684,7 @@
       },
       {
         "xPos": 8,
-        "yPos": 41,
+        "yPos": 37,
         "width": 4,
         "height": 4,
         "widget": {
@@ -839,7 +728,7 @@
       },
       {
         "xPos": 0,
-        "yPos": 45,
+        "yPos": 41,
         "width": 6,
         "height": 4,
         "widget": {
@@ -883,7 +772,7 @@
       },
       {
         "xPos": 6,
-        "yPos": 45,
+        "yPos": 41,
         "width": 6,
         "height": 4,
         "widget": {
@@ -901,77 +790,6 @@
                       "groupByFields": [
                         "metric.label.application"
                       ]
-                    }
-                  }
-                },
-                "plotType": "LINE"
-              }
-            ],
-            "yAxis": {
-              "scale": "LINEAR"
-            }
-          }
-        }
-      },
-      {
-        "xPos": 0,
-        "yPos": 49,
-        "width": 12,
-        "height": 1,
-        "widget": {
-          "title": "Vertex Vector Search \u2014 query path",
-          "text": {
-            "content": "Query QPS + latency on the deployed index endpoint.",
-            "format": "MARKDOWN"
-          }
-        }
-      },
-      {
-        "xPos": 0,
-        "yPos": 50,
-        "width": 6,
-        "height": 4,
-        "widget": {
-          "title": "Vertex query QPS",
-          "xyChart": {
-            "dataSets": [
-              {
-                "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "filter": "metric.type=\"aiplatform.googleapis.com/matching_engine/query/request_count\" resource.type=\"aiplatform.googleapis.com/IndexEndpoint\"",
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "perSeriesAligner": "ALIGN_RATE",
-                      "crossSeriesReducer": "REDUCE_SUM"
-                    }
-                  }
-                },
-                "plotType": "LINE"
-              }
-            ],
-            "yAxis": {
-              "scale": "LINEAR"
-            }
-          }
-        }
-      },
-      {
-        "xPos": 6,
-        "yPos": 50,
-        "width": 6,
-        "height": 4,
-        "widget": {
-          "title": "Vertex query latency p95 (ms)",
-          "xyChart": {
-            "dataSets": [
-              {
-                "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "filter": "metric.type=\"aiplatform.googleapis.com/matching_engine/query/latencies\" resource.type=\"aiplatform.googleapis.com/IndexEndpoint\"",
-                    "aggregation": {
-                      "alignmentPeriod": "60s",
-                      "perSeriesAligner": "ALIGN_PERCENTILE_95",
-                      "crossSeriesReducer": "REDUCE_MEAN"
                     }
                   }
                 },

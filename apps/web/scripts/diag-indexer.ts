@@ -49,15 +49,12 @@ import { bskyQuery } from "../src/lib/bsky-pg";
     }
   }
 
-  console.log("\n=== engagement push lag ===");
+  console.log("\n=== engagement rows ===");
   const eng = await bskyQuery(
-    `SELECT MAX(last_pushed_to_vertex_at) AS max_pushed,
-            now() - MAX(last_pushed_to_vertex_at) AS lag,
-            COUNT(*) AS total_rows,
-            SUM(CASE WHEN updated_at > last_pushed_to_vertex_at THEN 1 ELSE 0 END) AS dirty
+    `SELECT COUNT(*) AS total_rows, MAX(updated_at) AS last_updated
        FROM bsky.post_engagement`
   );
-  console.log(`  max_pushed=${eng.rows[0].max_pushed}  lag=${eng.rows[0].lag}  total=${eng.rows[0].total_rows}  dirty=${eng.rows[0].dirty}`);
+  console.log(`  total=${eng.rows[0].total_rows}  last_updated=${eng.rows[0].last_updated}`);
 
   process.exit(0);
 })().catch((e) => {

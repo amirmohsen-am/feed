@@ -80,29 +80,7 @@ export const recordFlushDropped = (n: number, attrs: { kind: string; worker?: st
 export const recordEngagementApplied = (n: number, attrs: { kind: 'like' | 'repost' | 'reply' | 'quote'; worker?: string }) =>
   counter('happy_feed_engagement_applied_total', 'Engagement counter increments applied to bsky.post_engagement.').add(n, attrs)
 
-export const recordReconcilerPushed = (n: number, attrs: Record<string, string> = {}) =>
-  counter('happy_feed_reconciler_pushed_total', 'Posts whose engagement restricts were pushed to Vertex by reconciler.').add(n, attrs)
-
 // ----- Observable gauges (sampled at export time) -----
-
-const gauges = new Map<string, { gauge: ObservableGauge; getter: () => { value: number; attrs?: Record<string, string> } | null }>()
-let gaugesInitialized = false
-
-export const registerGauge = (
-  name: string,
-  description: string,
-  getter: () => { value: number; attrs?: Record<string, string> } | null,
-): void => {
-  if (gauges.has(name)) return
-  const g = getMeter().createObservableGauge(name, { description, valueType: 1 })
-  gauges.set(name, { gauge: g, getter })
-  g.addCallback((result) => {
-    const snap = getter()
-    if (snap == null) return
-    result.observe(snap.value, snap.attrs ?? {})
-  })
-  gaugesInitialized = true
-}
 
 // Per-consumer gauges share a single metric name + a `kind` label so the
 // dashboard can plot them on one panel (Cloud Monitoring doesn't support
@@ -138,19 +116,6 @@ export const registerCursorLagUs = (kind: string, getLagUs: () => number) => {
     })
   }
 }
-
-export const registerOldestDirtyAgeSeconds = (getter: () => number | null) => {
-  registerGauge(
-    'happy_feed_reconciler_oldest_dirty_s',
-    'Age in seconds of the oldest unflushed engagement row.',
-    () => {
-      const v = getter()
-      return v == null ? null : { value: v }
-    },
-  )
-}
-
-void gaugesInitialized
 
 export const shutdownMetrics = async (): Promise<void> => {
   if (_provider) await _provider.shutdown()
