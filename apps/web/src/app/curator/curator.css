@@ -300,6 +300,11 @@
   border: 1px solid var(--hair-strong);
 }
 .cur-topbar-btn.ghost:hover{ border-color: var(--ink); color: var(--ink); }
+.cur-topbar-btn.publish{
+  background: var(--aurora-deep); color: #fff;
+  border: none; font-weight: 600;
+}
+.cur-topbar-btn.publish:hover{ background: var(--ink); }
 .cur-topbar-icon{
   width: 32px; height: 32px;
   border-radius: 8px;
