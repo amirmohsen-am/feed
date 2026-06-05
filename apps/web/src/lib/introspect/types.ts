@@ -97,6 +97,8 @@ export interface CallTelemetry {
 export interface BatchNote {
   batchIndex: number;
   hash: string; // matches BatchInfo.hash; invalidate if drifts
+  /** ≤10-word title the Extractor emits on its first line; used as the collapsed-row summary. */
+  headline?: string;
   text: string;
   telemetry: CallTelemetry;
   imagesAttached: number;

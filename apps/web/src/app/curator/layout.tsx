@@ -575,10 +575,10 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
                   href={`/introspect/${encodeURIComponent(profile.blueskyHandle.replace(/^@/, "").toLowerCase())}`}
                   className="cur-topbar-btn ghost"
                   prefetch={false}
-                  title="Introspect my engagements"
+                  title="Introspection"
                 >
                   <span aria-hidden style={{ marginRight: 2 }}>✦</span>
-                  Introspect my engagements
+                  Introspection
                 </Link>
               ) : (
                 <Link

@@ -55,7 +55,7 @@ async function client(): Promise<Anthropic> {
 
 const EXTRACTOR_INSTRUCTIONS = `Based on this batch of engagements, write a summary of what this batch reveals about the user's interests, voice, and preferences. Be specific — name concrete topics, not abstract categories. Note what recurs across multiple engagements and what stands out as different from the rest of this batch.
 
-Write a single paragraph of ~200 words. Do not quote third-party post text. Verbatim quoting of the user's own words (from their quotes and replies) is allowed when characteristic.`;
+Begin your response with a single line in the exact form \`HEADLINE: <title>\`, where <title> is a specific ≤10-word phrase capturing this batch's dominant theme (no trailing period). Then a blank line, then a single paragraph of ~200 words. Do not quote third-party post text. Verbatim quoting of the user's own words (from their quotes and replies) is allowed when characteristic.`;
 
 const EXTRACTOR_PREAMBLE = `The following are recent Bluesky engagements by a single user — likes, reposts, quotes, original posts, and replies, in chronological order. The user wrote no text in their likes or reposts; what they wrote (on quotes, posts, replies) is included alongside the third-party content. Images, external link cards, and the post being quoted or replied to are attached where applicable.`;
 
@@ -205,6 +205,58 @@ function computeCost(usage: {
   );
 }
 
+// ── Streaming helper ───────────────────────────────────────────────────────
+
+/** Callback fired with each incremental text delta as the model writes. */
+export type OnDelta = (textDelta: string) => void;
+
+type StreamArgs = Anthropic.Messages.MessageCreateParamsNonStreaming;
+
+/**
+ * Run one streaming Claude call. Forwards each text delta to `onDelta` (when
+ * provided) and returns the assembled text + usage + latency once the stream
+ * finishes. Used by the Extractor and Aggregator so the route can surface
+ * live progress; pass no `onDelta` to behave like a buffered call.
+ */
+async function streamCall(
+  args: StreamArgs,
+  onDelta?: OnDelta
+): Promise<{ text: string; telemetry: CallTelemetry }> {
+  const t0 = Date.now();
+  const stream = (await client()).messages.stream(args);
+  if (onDelta) stream.on("text", (delta) => onDelta(delta));
+  const resp = await stream.finalMessage();
+  const latencyMs = Date.now() - t0;
+
+  const text =
+    resp.content[0]?.type === "text" ? resp.content[0].text.trim() : "";
+
+  const telemetry: CallTelemetry = {
+    modelId: MODEL_ID,
+    inputTokens: resp.usage.input_tokens,
+    outputTokens: resp.usage.output_tokens,
+    cacheReadTokens: resp.usage.cache_read_input_tokens ?? undefined,
+    cacheCreationTokens: resp.usage.cache_creation_input_tokens ?? undefined,
+    costUsd: computeCost(resp.usage),
+    latencyMs,
+    processedAt: new Date().toISOString(),
+  };
+  return { text, telemetry };
+}
+
+/**
+ * Split the Extractor's `HEADLINE: …` first line off the prose body. Tolerant
+ * of a missing headline (older notes, or a model that ignored the instruction)
+ * — returns an empty headline and the text unchanged in that case.
+ */
+function splitHeadline(raw: string): { headline: string; body: string } {
+  const m = raw.match(/^\s*HEADLINE:\s*(.+?)\s*(?:\n|$)/i);
+  if (!m) return { headline: "", body: raw.trim() };
+  const headline = m[1].replace(/\.$/, "").trim();
+  const body = raw.slice(m[0].length).trim();
+  return { headline, body };
+}
+
 // ── Extractor ────────────────────────────────────────────────────────────
 
 export interface ExtractorResult {
@@ -214,7 +266,8 @@ export interface ExtractorResult {
 export async function runExtractor(
   batchIndex: number,
   batchHash: string,
-  engagements: Engagement[]
+  engagements: Engagement[],
+  onDelta?: OnDelta
 ): Promise<ExtractorResult> {
   // ── Fetch images for vision attachment ─────────────────────────────
   const refs = collectImageRefs(engagements);
@@ -259,34 +312,24 @@ export async function runExtractor(
   });
   blocks.push({ type: "text", text: EXTRACTOR_INSTRUCTIONS });
 
-  // ── Call Claude ───────────────────────────────────────────────────
-  const t0 = Date.now();
-  const resp = await (await client()).messages.create({
-    model: MODEL_ID,
-    max_tokens: MAX_OUTPUT_EXTRACTOR,
-    messages: [{ role: "user", content: blocks }],
-  });
-  const latencyMs = Date.now() - t0;
+  // ── Call Claude (streaming) ───────────────────────────────────────
+  const { text: raw, telemetry } = await streamCall(
+    {
+      model: MODEL_ID,
+      max_tokens: MAX_OUTPUT_EXTRACTOR,
+      messages: [{ role: "user", content: blocks }],
+    },
+    onDelta
+  );
 
-  const text =
-    resp.content[0]?.type === "text" ? resp.content[0].text.trim() : "";
-
-  const telemetry: CallTelemetry = {
-    modelId: MODEL_ID,
-    inputTokens: resp.usage.input_tokens,
-    outputTokens: resp.usage.output_tokens,
-    cacheReadTokens: resp.usage.cache_read_input_tokens ?? undefined,
-    cacheCreationTokens: resp.usage.cache_creation_input_tokens ?? undefined,
-    costUsd: computeCost(resp.usage),
-    latencyMs,
-    processedAt: new Date().toISOString(),
-  };
+  const { headline, body } = splitHeadline(raw);
 
   return {
     note: {
       batchIndex,
       hash: batchHash,
-      text,
+      headline,
+      text: body,
       telemetry,
       imagesAttached: n,
       imagesFailed: refs.length - n,
@@ -298,7 +341,8 @@ export async function runExtractor(
 
 export async function runAggregator(
   batchNotes: BatchNote[],
-  anchorEngagements: Engagement[]
+  anchorEngagements: Engagement[],
+  onDelta?: OnDelta
 ): Promise<Profile> {
   // Aggregator sees batches oldest → newest so synthesis reads as an
   // evolution (design §3 Option D step 3).
@@ -325,27 +369,14 @@ export async function runAggregator(
     `For grounding, here are ${anchorEngagements.length} randomly-selected raw engagement records drawn across the batches:\n\n${anchorBlock}\n\n` +
     AGGREGATOR_INSTRUCTIONS;
 
-  const t0 = Date.now();
-  const resp = await (await client()).messages.create({
-    model: MODEL_ID,
-    max_tokens: MAX_OUTPUT_AGGREGATOR,
-    messages: [{ role: "user", content: userText }],
-  });
-  const latencyMs = Date.now() - t0;
-
-  const text =
-    resp.content[0]?.type === "text" ? resp.content[0].text.trim() : "";
-
-  const telemetry: CallTelemetry = {
-    modelId: MODEL_ID,
-    inputTokens: resp.usage.input_tokens,
-    outputTokens: resp.usage.output_tokens,
-    cacheReadTokens: resp.usage.cache_read_input_tokens ?? undefined,
-    cacheCreationTokens: resp.usage.cache_creation_input_tokens ?? undefined,
-    costUsd: computeCost(resp.usage),
-    latencyMs,
-    processedAt: new Date().toISOString(),
-  };
+  const { text, telemetry } = await streamCall(
+    {
+      model: MODEL_ID,
+      max_tokens: MAX_OUTPUT_AGGREGATOR,
+      messages: [{ role: "user", content: userText }],
+    },
+    onDelta
+  );
 
   return {
     text,

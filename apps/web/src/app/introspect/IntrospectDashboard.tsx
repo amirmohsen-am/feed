@@ -3,11 +3,17 @@
 /**
  * Dashboard view for /introspect/<handle>. Loads the snapshot on mount
  * (creating it via the fetch route if it doesn't exist yet), then surfaces:
- *   1. Deterministic engagement stats (UI-only, never sent to the LLM)
- *   2. Per-batch Extractor notes — one card each, rendered as markdown
- *   3. Unified Aggregator profile, regenerated after every "Process next batch"
+ *   1. Deterministic engagement stats — a sticky left rail (UI-only, never
+ *      sent to the LLM)
+ *   2. The unified Aggregator profile — the hero of the page
+ *   3. The process control + a live streaming progress rail
+ *   4. Suggested feeds — built from the profile, the page's primary payoff
+ *   5. Per-batch Extractor notes — collapsed rows (newest auto-expanded);
+ *      each row opens a Details drawer with the deterministic breakdown
  *
- * Every LLM action is user-triggered. No auto-polling.
+ * "Process next batch" streams NDJSON from /api/introspect/process-batch:
+ * phase events drive the rail, text deltas live-type the extractor note and
+ * the profile. Every LLM action is user-triggered; no auto-polling.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -17,14 +23,18 @@ import type {
   BatchInfo,
   BatchNote,
   CallTelemetry,
+  Engagement,
   FeedSeedPrompts,
   SignalType,
   Snapshot,
+  Subject,
 } from "@/lib/introspect/types";
 
+// ── Accent (teal) ──────────────────────────────────────────────────────
+const ACCENT = "#0f766e";
+const ACCENT_SOFT = "#e3f1ef";
+
 // ── Cost / latency estimates for the inline Process-button preview ─────
-// Sonnet 4.6 standard tier ballpark from design §6.3. The actual telemetry
-// shown on each batch card and on the profile is from live API usage.
 const EST_EXTRACTOR_USD = 0.21;
 const EST_AGGREGATOR_USD = 0.03;
 const EST_PER_CLICK_S = 18;
@@ -38,6 +48,27 @@ const SIGNAL_LABELS: Record<SignalType, string> = {
   reply: "own replies",
 };
 
+// ── Streaming state ────────────────────────────────────────────────────
+type StreamPhase = "extract" | "aggregate" | "seeds" | null;
+interface StreamState {
+  phase: StreamPhase;
+  batchIndex: number | null;
+  extractText: string;
+  aggregateText: string;
+}
+const EMPTY_STREAM: StreamState = {
+  phase: null,
+  batchIndex: null,
+  extractText: "",
+  aggregateText: "",
+};
+
+type StreamEvent =
+  | { t: "phase"; phase: Exclude<StreamPhase, null>; batchIndex?: number }
+  | { t: "delta"; phase: "extract" | "aggregate"; text: string }
+  | { t: "done"; snapshot: Snapshot }
+  | { t: "error"; error: string; snapshot?: Snapshot; batchIndex?: number };
+
 export default function IntrospectDashboard({ handle }: { handle: string }) {
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -45,6 +76,7 @@ export default function IntrospectDashboard({ handle }: { handle: string }) {
   // view) before the auto-fetch effect kicks in.
   const [fetching, setFetching] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [stream, setStream] = useState<StreamState>(EMPTY_STREAM);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
@@ -80,9 +112,7 @@ export default function IntrospectDashboard({ handle }: { handle: string }) {
   );
 
   // Auto-fetch on mount. The /fetch endpoint returns the cached snapshot
-  // when present, so this is a no-op for revisits. setState inside the
-  // async callFetch resolves outside the synchronous effect body, but the
-  // lint can't see that — disable for this call.
+  // when present, so this is a no-op for revisits.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     callFetch(false);
@@ -93,23 +123,68 @@ export default function IntrospectDashboard({ handle }: { handle: string }) {
     setError(null);
     setInfo(null);
     setProcessing(true);
+    setStream(EMPTY_STREAM);
+
+    const apply = (ev: StreamEvent) => {
+      switch (ev.t) {
+        case "phase":
+          setStream((s) => ({
+            ...s,
+            phase: ev.phase,
+            batchIndex: ev.batchIndex ?? s.batchIndex,
+            // reset the buffer for the phase that's about to stream
+            extractText: ev.phase === "extract" ? "" : s.extractText,
+            aggregateText: ev.phase === "aggregate" ? "" : s.aggregateText,
+          }));
+          break;
+        case "delta":
+          setStream((s) =>
+            ev.phase === "extract"
+              ? { ...s, extractText: s.extractText + ev.text }
+              : { ...s, aggregateText: s.aggregateText + ev.text }
+          );
+          break;
+        case "done":
+          setSnapshot(ev.snapshot);
+          break;
+        case "error":
+          if (ev.snapshot) setSnapshot(ev.snapshot);
+          setError(ev.error);
+          break;
+      }
+    };
+
     try {
       const res = await fetch("/api/introspect/process-batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ handle: snapshot.handle }),
       });
-      const data = await res.json();
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
         if (data.snapshot) setSnapshot(data.snapshot as Snapshot);
         setError(data.error || `process failed (${res.status})`);
         return;
       }
-      setSnapshot(data.snapshot as Snapshot);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (line) apply(JSON.parse(line) as StreamEvent);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "process failed");
     } finally {
       setProcessing(false);
+      setStream(EMPTY_STREAM);
     }
   }, [snapshot]);
 
@@ -186,6 +261,7 @@ export default function IntrospectDashboard({ handle }: { handle: string }) {
       snapshot={snapshot}
       processing={processing}
       fetching={fetching}
+      stream={stream}
       info={info}
       error={error}
       onProcess={onProcess}
@@ -201,6 +277,7 @@ function IntrospectLoaded({
   snapshot,
   processing,
   fetching,
+  stream,
   info,
   error,
   onProcess,
@@ -210,41 +287,32 @@ function IntrospectLoaded({
   snapshot: Snapshot;
   processing: boolean;
   fetching: boolean;
+  stream: StreamState;
   info: string | null;
   error: string | null;
   onProcess: () => void;
   onReset: () => void;
   onRefresh: () => void;
 }) {
-  const { batches, batchNotes, profile, callHistory } = snapshot;
+  const { batches, batchNotes, profile } = snapshot;
+  const [drawerBatch, setDrawerBatch] = useState<number | null>(null);
+
   const processedCount = Object.keys(batchNotes).length;
   const totalBatches = batches.length;
-  const remaining = totalBatches - processedCount;
-  const allDone = remaining === 0;
-
-  const sessionSpend = useMemo(
-    () => callHistory.reduce((sum, t) => sum + t.costUsd, 0),
-    [callHistory]
-  );
-  const estimateToFinish = useMemo(
-    () => remaining * (EST_EXTRACTOR_USD + EST_AGGREGATOR_USD),
-    [remaining]
-  );
-  const perClickCost = EST_EXTRACTOR_USD + EST_AGGREGATOR_USD;
 
   return (
     <main className="min-h-screen bg-[#fafafa] text-[#1a1a1a]">
-      <div className="mx-auto max-w-4xl px-6 py-10">
-        <header className="border-b border-[#1a1a1a] pb-4 mb-6 flex justify-between items-baseline gap-4 flex-wrap">
-          <div>
-            <h1 className="text-3xl font-serif tracking-tight">introspect</h1>
-            <p className="text-[#444] mt-1">
-              <span className="font-mono">@{snapshot.handle}</span>
-              <span className="text-[#888] text-sm ml-3">
-                last refreshed {relativeTime(snapshot.fetchedAt)}
-              </span>
-            </p>
-          </div>
+      <div className="mx-auto max-w-[1120px] px-6 py-8 pb-24">
+        <header className="border-b border-[#1a1a1a] pb-4 mb-7 flex justify-between items-baseline gap-4 flex-wrap">
+          <h1 className="text-[28px] font-serif tracking-tight">
+            introspect{" "}
+            <span className="font-mono text-sm text-[#666] font-normal ml-1">
+              @{snapshot.handle}
+            </span>
+            <span className="text-[#888] text-xs ml-3 font-normal">
+              refreshed {relativeTime(snapshot.fetchedAt)}
+            </span>
+          </h1>
           <div className="flex gap-2 text-sm">
             <button
               type="button"
@@ -252,7 +320,7 @@ function IntrospectLoaded({
               disabled={fetching || processing}
               className="px-3 py-1.5 border border-[#1a1a1a] rounded hover:bg-[#1a1a1a] hover:text-white disabled:opacity-50"
             >
-              {fetching ? "Refreshing…" : "Refresh from PDS"}
+              {fetching ? "Refreshing…" : "Refresh"}
             </button>
             <button
               type="button"
@@ -280,443 +348,833 @@ function IntrospectLoaded({
           </div>
         )}
 
-        <StatsPanel snapshot={snapshot} />
+        <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-8 items-start">
+          {/* ── Left rail: deterministic stats ─────────────── */}
+          <div className="md:sticky md:top-6 flex flex-col gap-4">
+            <StatsRail snapshot={snapshot} />
+          </div>
 
-        {totalBatches > 0 && (
-          <section className="my-8">
-            <div className="border-t border-[#ddd] pt-6 flex flex-col items-stretch gap-3">
-              <div className="flex items-baseline justify-between text-sm text-[#444] flex-wrap gap-2">
-                <span>
-                  <strong className="text-[#1a1a1a]">Batch notes:</strong>{" "}
-                  {processedCount} of {totalBatches} processed (newest-first)
-                </span>
-                <span className="text-[#666]">
-                  Spent this session:{" "}
-                  <span className="font-mono">${sessionSpend.toFixed(2)}</span>
-                  {!allDone && (
-                    <>
-                      {" "}· est. to finish all:{" "}
-                      <span className="font-mono">
-                        ~${estimateToFinish.toFixed(2)}
-                      </span>
-                    </>
-                  )}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={onProcess}
-                disabled={
-                  processing || fetching || (allDone && profile !== null)
-                }
-                className="w-full py-3 bg-[#1a1a1a] text-white rounded-lg text-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#000]"
-              >
-                {processing
-                  ? "Processing… (Extractor + Aggregator)"
-                  : allDone && profile !== null
-                    ? "All batches processed"
-                    : allDone && profile === null
-                      ? `Retry Aggregator only (~$${EST_AGGREGATOR_USD.toFixed(2)}, ~5s)`
-                      : `Process next batch (${remaining} remaining · ~$${perClickCost.toFixed(2)} · ~${EST_PER_CLICK_S}s)`}
-              </button>
-            </div>
-          </section>
-        )}
+          {/* ── Main column ────────────────────────────────── */}
+          <div className="flex flex-col gap-6 min-w-0">
+            {snapshot.feedSeedPrompts &&
+              snapshot.feedSeedPrompts.prompts.length > 0 && (
+                <SuggestedFeeds seeds={snapshot.feedSeedPrompts} />
+              )}
 
-        {totalBatches > 0 && (
-          <section className="my-8">
-            <h2 className="text-xl font-serif mb-4 border-b border-[#ddd] pb-2">
-              Batch notes
-            </h2>
-            <div className="space-y-4">
-              {batches.map((b) => (
-                <BatchCard key={b.index} batch={b} note={batchNotes[b.index]} />
-              ))}
-            </div>
-          </section>
-        )}
-
-        <section className="my-8">
-          <h2 className="text-xl font-serif mb-4 border-b border-[#ddd] pb-2">
-            Unified profile
-          </h2>
-          {profile ? (
-            <ProfilePanel
-              profile={profile}
+            <ProfileHero
+              snapshot={snapshot}
+              stream={stream}
               processedCount={processedCount}
               totalBatches={totalBatches}
             />
-          ) : (
-            <p className="text-[#666] italic">
-              Process at least one batch to generate the unified profile.
-            </p>
-          )}
-        </section>
 
-        {snapshot.feedSeedPrompts && snapshot.feedSeedPrompts.prompts.length > 0 && (
-          <SuggestedFeeds seeds={snapshot.feedSeedPrompts} />
-        )}
+            {totalBatches > 0 && (
+              <ProcessStrip
+                snapshot={snapshot}
+                processing={processing}
+                fetching={fetching}
+                stream={stream}
+                onProcess={onProcess}
+              />
+            )}
+
+            {totalBatches > 0 && (
+              <BatchNotes
+                batches={batches}
+                batchNotes={batchNotes}
+                stream={stream}
+                processedCount={processedCount}
+                onOpenDetails={setDrawerBatch}
+              />
+            )}
+
+            {!profile && (
+              <p className="text-[#666] italic text-sm">
+                Process at least one batch to generate the unified profile and
+                suggested feeds.
+              </p>
+            )}
+          </div>
+        </div>
       </div>
+
+      {drawerBatch !== null && (
+        <DetailDrawer
+          batch={batches.find((b) => b.index === drawerBatch)!}
+          note={batchNotes[drawerBatch]}
+          engagements={snapshot.engagements}
+          onClose={() => setDrawerBatch(null)}
+        />
+      )}
     </main>
   );
 }
 
-// ── Suggested feeds ────────────────────────────────────────────────────
+// ── Stats rail ─────────────────────────────────────────────────────────
+
+function StatsRail({ snapshot }: { snapshot: Snapshot }) {
+  const { stats } = snapshot;
+  if (stats.total === 0) {
+    return (
+      <div className="p-4 bg-amber-50 border-l-2 border-amber-500 text-sm rounded">
+        No engagements found for this handle yet — come back after more
+        activity.
+      </div>
+    );
+  }
+  const maxPct = Math.max(...SIGNAL_ORDER.map((s) => stats.byType[s].pct));
+  return (
+    <>
+      <Panel title="Engagement" tag="local · no LLM">
+        <KV label="total" value={stats.total.toLocaleString()} />
+        <KV label="span" value={`${stats.spanDays} d`} />
+        <KV label="avg / day" value={String(stats.avgPerDay)} />
+        {stats.recent30d.pctChange !== null && (
+          <KV
+            label="last 30 d"
+            value={`${stats.recent30d.pctChange >= 0 ? "↑" : "↓"} ${Math.abs(
+              stats.recent30d.pctChange
+            )}%`}
+            valueClass={
+              stats.recent30d.pctChange >= 0
+                ? "text-[#0f766e]"
+                : "text-amber-700"
+            }
+          />
+        )}
+        <div className="flex flex-col gap-1.5 mt-3">
+          {SIGNAL_ORDER.map((t) => {
+            const row = stats.byType[t];
+            if (row.count === 0) return null;
+            return (
+              <div
+                key={t}
+                className="grid grid-cols-[58px_1fr_auto] gap-2 items-center text-xs"
+              >
+                <span className="text-[#444]">{SIGNAL_LABELS[t]}</span>
+                <div className="h-3.5 bg-[#f0f0f0] rounded-sm overflow-hidden relative">
+                  <div
+                    className="absolute inset-y-0 left-0"
+                    style={{
+                      width: `${maxPct > 0 ? (row.pct / maxPct) * 100 : 0}%`,
+                      background: ACCENT,
+                    }}
+                  />
+                </div>
+                <span className="font-mono text-[10px] text-[#888]">
+                  {row.pct}%
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </Panel>
+
+      <Panel title="Ratios">
+        <KV
+          label="repost : like"
+          value={fmtRatio(stats.ratios.repostToLike)}
+          title={ratioHint("repostToLike", stats.ratios.repostToLike)}
+        />
+        <KV
+          label="quote : repost"
+          value={fmtRatio(stats.ratios.quoteToRepost)}
+          title={ratioHint("quoteToRepost", stats.ratios.quoteToRepost)}
+        />
+        <KV
+          label="own : consumed"
+          value={fmtRatio(stats.ratios.ownToConsumed)}
+          title={ratioHint("ownToConsumed", stats.ratios.ownToConsumed)}
+        />
+      </Panel>
+
+      {stats.topAccounts.length > 0 && (
+        <Panel title="Top accounts">
+          {stats.topAccounts.map((a) => (
+            <div
+              key={a.handle}
+              className="flex justify-between text-xs py-1"
+              title={(["like", "repost", "quote", "reply"] as SignalType[])
+                .map((t) => {
+                  const n = a.byType[t] ?? 0;
+                  return n ? `${n} ${SIGNAL_LABELS[t]}` : null;
+                })
+                .filter(Boolean)
+                .join(" · ")}
+            >
+              <span className="font-mono text-[#1a1a1a]">{a.handle}</span>
+              <span className="font-mono text-[10px] text-[#888]">
+                {a.total} total
+              </span>
+            </div>
+          ))}
+        </Panel>
+      )}
+    </>
+  );
+}
+
+function Panel({
+  title,
+  tag,
+  children,
+}: {
+  title: string;
+  tag?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="bg-white border border-[#e8e8e8] rounded-[10px] p-[18px]">
+      <h3 className="font-serif text-[15px] mb-3 flex items-center gap-2">
+        {title}
+        {tag && (
+          <span className="font-mono text-[9px] uppercase tracking-wide text-[#888] bg-[#f4f4f4] px-1.5 py-0.5 rounded">
+            {tag}
+          </span>
+        )}
+      </h3>
+      {children}
+    </div>
+  );
+}
+
+function KV({
+  label,
+  value,
+  valueClass = "",
+  title,
+}: {
+  label: string;
+  value: string;
+  valueClass?: string;
+  title?: string;
+}) {
+  return (
+    <div
+      className="flex justify-between text-[13px] py-1.5 border-b border-[#eee] last:border-0"
+      title={title}
+    >
+      <span>{label}</span>
+      <span className={`font-mono ${valueClass}`}>{value}</span>
+    </div>
+  );
+}
+
+// ── Profile hero ───────────────────────────────────────────────────────
+
+function ProfileHero({
+  snapshot,
+  stream,
+  processedCount,
+  totalBatches,
+}: {
+  snapshot: Snapshot;
+  stream: StreamState;
+  processedCount: number;
+  totalBatches: number;
+}) {
+  const { profile } = snapshot;
+  const aggregating = stream.phase === "aggregate";
+  const liveText = aggregating ? stream.aggregateText : profile?.text ?? "";
+
+  return (
+    <div
+      className="bg-white rounded-xl p-7"
+      style={{
+        border: `1px solid ${ACCENT}`,
+        boxShadow: `0 1px 0 ${ACCENT_SOFT}, 0 8px 24px -18px ${ACCENT}`,
+      }}
+    >
+      <div
+        className="font-mono text-[10px] tracking-[1.5px] uppercase mb-2.5 flex items-center gap-2"
+        style={{ color: ACCENT }}
+      >
+        <span className="inline-block w-[18px] h-0.5" style={{ background: ACCENT }} />
+        Unified profile
+      </div>
+
+      {liveText ? (
+        <div className="text-[15px]">
+          <MarkdownBody text={liveText} hero />
+          {aggregating && <Cursor />}
+        </div>
+      ) : (
+        <p className="text-[#888] italic">
+          Process at least one batch to generate the unified profile.
+        </p>
+      )}
+
+      {profile && !aggregating && (
+        <div className="font-mono text-[10px] text-[#bbb] mt-4 pt-3.5 border-t border-[#eee]">
+          {processedCount < totalBatches && (
+            <span className="text-amber-700 mr-2">
+              partial — {processedCount} of {totalBatches} batches
+            </span>
+          )}
+          {processedCount} of {totalBatches} batches ·{" "}
+          <span
+            className="cursor-help border-b border-dotted border-[#ccc]"
+            title={telemetryTitle(profile.telemetry)}
+          >
+            aggregator ⓘ
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Process strip + streaming rail ─────────────────────────────────────
+
+function ProcessStrip({
+  snapshot,
+  processing,
+  fetching,
+  stream,
+  onProcess,
+}: {
+  snapshot: Snapshot;
+  processing: boolean;
+  fetching: boolean;
+  stream: StreamState;
+  onProcess: () => void;
+}) {
+  const { batches, batchNotes, profile, callHistory } = snapshot;
+  const processedCount = Object.keys(batchNotes).length;
+  const totalBatches = batches.length;
+  const remaining = totalBatches - processedCount;
+  const allDone = remaining === 0;
+  const perClickCost = EST_EXTRACTOR_USD + EST_AGGREGATOR_USD;
+
+  const sessionSpend = useMemo(
+    () => callHistory.reduce((sum, t) => sum + t.costUsd, 0),
+    [callHistory]
+  );
+  const estimateToFinish = remaining * perClickCost;
+
+  const label = processing
+    ? stream.phase === "extract"
+      ? `Processing… extracting batch ${stream.batchIndex ?? ""}`.trim()
+      : stream.phase === "aggregate"
+        ? "Processing… aggregating profile"
+        : stream.phase === "seeds"
+          ? "Processing… suggesting feeds"
+          : "Processing…"
+    : allDone && profile !== null
+      ? "All batches processed"
+      : allDone && profile === null
+        ? `Retry Aggregator only (~$${EST_AGGREGATOR_USD.toFixed(2)}, ~5s)`
+        : `Process next batch (${remaining} remaining · ~$${perClickCost.toFixed(
+            2
+          )} · ~${EST_PER_CLICK_S}s)`;
+
+  return (
+    <div className="bg-white border border-[#e0e0e0] rounded-xl p-5">
+      <div className="flex justify-between text-[13px] text-[#666] mb-1 flex-wrap gap-2">
+        <span>
+          {processing ? (
+            <>Processing — streaming…</>
+          ) : allDone ? (
+            <>All {totalBatches} batches processed</>
+          ) : (
+            <>
+              <strong className="text-[#1a1a1a]">{processedCount}</strong> of{" "}
+              {totalBatches} batches processed
+            </>
+          )}
+        </span>
+        <span>
+          session{" "}
+          <strong className="text-[#1a1a1a] font-mono">
+            ${sessionSpend.toFixed(2)}
+          </strong>
+          {!allDone && (
+            <>
+              {" "}· est. to finish{" "}
+              <strong className="text-[#1a1a1a] font-mono">
+                ~${estimateToFinish.toFixed(2)}
+              </strong>
+            </>
+          )}
+        </span>
+      </div>
+
+      {processing && <StreamRail stream={stream} />}
+
+      <button
+        type="button"
+        onClick={onProcess}
+        disabled={processing || fetching || (allDone && profile !== null)}
+        className="w-full py-3 rounded-[10px] text-[15px] font-semibold text-white disabled:opacity-55 disabled:cursor-default mt-2"
+        style={{ background: ACCENT }}
+      >
+        {label}
+      </button>
+    </div>
+  );
+}
+
+function StreamRail({ stream }: { stream: StreamState }) {
+  // step order: extract → aggregate → seeds. A step is "done" once a later
+  // phase is active; "active" while it is the current phase.
+  const order: Array<Exclude<StreamPhase, null>> = [
+    "extract",
+    "aggregate",
+    "seeds",
+  ];
+  const current = stream.phase ? order.indexOf(stream.phase) : -1;
+  const labels = { extract: "Extract", aggregate: "Aggregate", seeds: "Feed seeds" };
+
+  return (
+    <div className="flex items-center my-3.5">
+      {order.map((p, i) => {
+        const done = current > i;
+        const active = current === i;
+        return (
+          <div key={p} className="flex items-center flex-1 last:flex-none">
+            <div
+              className="flex items-center gap-2 text-xs whitespace-nowrap"
+              style={{
+                color: active ? ACCENT : done ? "#444" : "#888",
+                fontWeight: active ? 600 : 400,
+              }}
+            >
+              <span
+                className="w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center text-[10px]"
+                style={{
+                  background: done ? ACCENT : "#fff",
+                  borderColor: done || active ? ACCENT : "#e0e0e0",
+                  color: done ? "#fff" : ACCENT,
+                }}
+              >
+                {done ? "✓" : active ? <Spinner /> : ""}
+              </span>
+              {labels[p]}
+            </div>
+            {i < order.length - 1 && (
+              <div
+                className="flex-1 h-0.5 mx-2.5 min-w-5"
+                style={{ background: done ? ACCENT : "#e0e0e0" }}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Spinner() {
+  return (
+    <span
+      className="inline-block w-2 h-2 rounded-full border-2 animate-spin"
+      style={{ borderColor: ACCENT, borderTopColor: "transparent" }}
+    />
+  );
+}
+
+function Cursor() {
+  return (
+    <span
+      className="inline-block w-[7px] h-4 ml-0.5 align-[-2px] animate-pulse"
+      style={{ background: ACCENT }}
+    />
+  );
+}
+
+// ── Suggested feeds (callout) ──────────────────────────────────────────
 
 function SuggestedFeeds({ seeds }: { seeds: FeedSeedPrompts }) {
   const router = useRouter();
   return (
-    <section className="my-8">
-      <h2 className="text-xl font-serif mb-1 border-b border-[#ddd] pb-2">
-        Suggested feeds
-      </h2>
-      <p className="text-xs text-[#888] mb-4 mt-2 flex items-center gap-2">
-        <span>
-          Click one to open the curator on a fresh feed with this prompt
-          pre-filled. You still hit send.
+    <section>
+      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+        <h3 className="font-serif text-lg">Suggested feeds</h3>
+      </div>
+      <p className="text-xs text-[#888] mt-1.5 mb-4">
+        Built from your profile. Click one to open the curator with the prompt
+        pre-filled.{" "}
+        <span className="font-mono text-[#888]">
+          · generator: ${seeds.telemetry.costUsd.toFixed(3)}
         </span>
-        <CallChip telemetry={seeds.telemetry} />
       </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {seeds.prompts.map((prompt, i) => (
-          <button
-            key={i}
-            type="button"
-            onClick={() => {
-              router.push(
-                `/curator?new=1&prompt=${encodeURIComponent(prompt)}`
-              );
-            }}
-            className="text-left p-4 border border-[#e0e0e0] rounded bg-white hover:border-[#1a1a1a] hover:bg-[#fafafa] transition-colors"
-          >
-            <p className="text-[15px] leading-relaxed text-[#1a1a1a]">
-              {prompt}
-            </p>
-            <p className="text-[11px] text-[#888] font-mono mt-2">
-              Open curator →
-            </p>
-          </button>
+      <div
+        className="rounded-[14px] p-[22px]"
+        style={{ background: ACCENT_SOFT, border: `1px solid ${ACCENT}` }}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {seeds.prompts.map((prompt, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() =>
+                router.push(`/curator?new=1&prompt=${encodeURIComponent(prompt)}`)
+              }
+              className="text-left bg-white border border-white rounded-[10px] p-4 hover:-translate-y-px transition-all"
+              style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }}
+            >
+              <p className="text-[15px] leading-relaxed text-[#1a1a1a]">
+                {prompt}
+              </p>
+              <p
+                className="font-mono text-[11px] mt-2.5"
+                style={{ color: ACCENT }}
+              >
+                Open curator →
+              </p>
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Batch notes ────────────────────────────────────────────────────────
+
+function BatchNotes({
+  batches,
+  batchNotes,
+  stream,
+  processedCount,
+  onOpenDetails,
+}: {
+  batches: BatchInfo[];
+  batchNotes: Record<number, BatchNote>;
+  stream: StreamState;
+  processedCount: number;
+  onOpenDetails: (index: number) => void;
+}) {
+  // Newest batch with a note auto-expands; everything else collapsed.
+  const newestProcessed = batches.find((b) => batchNotes[b.index])?.index ?? null;
+  const [open, setOpen] = useState<Record<number, boolean>>(
+    newestProcessed !== null ? { [newestProcessed]: true } : {}
+  );
+  const toggle = (i: number) => setOpen((o) => ({ ...o, [i]: !o[i] }));
+
+  return (
+    <section>
+      <h3 className="font-serif text-[17px] border-b border-[#e0e0e0] pb-2 mb-1">
+        Batch notes
+      </h3>
+      <p className="text-xs text-[#888] my-2">
+        Processed newest first ·{" "}
+        <strong className="text-[#1a1a1a]">
+          each batch = 100 engagement records.
+        </strong>{" "}
+        {processedCount} of {batches.length} processed. Click a row to read the
+        note, or <strong className="text-[#1a1a1a]">Details</strong> for the
+        breakdown.
+      </p>
+      <div>
+        {batches.map((b) => (
+          <BatchRow
+            key={b.index}
+            batch={b}
+            note={batchNotes[b.index]}
+            isStreaming={
+              stream.phase === "extract" && stream.batchIndex === b.index
+            }
+            streamText={stream.extractText}
+            open={!!open[b.index]}
+            onToggle={() => toggle(b.index)}
+            onOpenDetails={() => onOpenDetails(b.index)}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-// ── Stats panel ────────────────────────────────────────────────────────
+function BatchRow({
+  batch,
+  note,
+  isStreaming,
+  streamText,
+  open,
+  onToggle,
+  onOpenDetails,
+}: {
+  batch: BatchInfo;
+  note: BatchNote | undefined;
+  isStreaming: boolean;
+  streamText: string;
+  open: boolean;
+  onToggle: () => void;
+  onOpenDetails: () => void;
+}) {
+  const live = isStreaming ? splitHeadline(streamText) : null;
+  const headline =
+    live?.headline ||
+    note?.headline ||
+    (isStreaming ? "Extracting…" : note ? firstSentence(note.text) : "Not yet processed");
+  const expanded = open || isStreaming;
 
-function StatsPanel({ snapshot }: { snapshot: Snapshot }) {
-  const { stats } = snapshot;
-  if (stats.total === 0) {
-    return (
-      <section className="my-6 p-4 bg-amber-50 border-l-2 border-amber-500 text-sm">
-        No engagements found for this handle yet — come back after more activity.
-      </section>
-    );
-  }
   return (
-    <section className="my-6 p-5 bg-white border border-[#e8e8e8] rounded">
-      <h2 className="text-lg font-serif mb-1">Engagement stats</h2>
-      <p className="text-xs text-[#888] mb-4">
-        Deterministic — computed locally, never sent to the LLM.
-      </p>
-      <p className="text-sm mb-4">
-        <strong>{stats.total.toLocaleString()}</strong> engagements over{" "}
-        <strong>{stats.spanDays}</strong> days · {stats.avgPerDay}/day average ·{" "}
-        <span className="text-[#666]">
-          {fmtDate(stats.rangeStart)} → {fmtDate(stats.rangeEnd)}
-        </span>
-      </p>
-
-      <div className="space-y-1.5 mb-5">
-        {SIGNAL_ORDER.map((t) => {
-          const row = stats.byType[t];
-          if (row.count === 0) return null;
-          const imgPct = stats.imagePctByType[t];
-          const linkPct = stats.linkCardPctByType[t];
-          return (
-            <SignalBar
-              key={t}
-              label={SIGNAL_LABELS[t]}
-              count={row.count}
-              pct={row.pct}
-              max={Math.max(...SIGNAL_ORDER.map((s) => stats.byType[s].pct))}
-              extras={
-                t === "like"
-                  ? `${imgPct ?? 0}% w/ images · ${linkPct ?? 0}% w/ link cards`
-                  : t === "quote"
-                    ? `avg commentary: ${stats.avgQuoteWords} words`
-                    : t === "reply"
-                      ? `avg length: ${stats.avgReplyWords} words`
-                      : ""
-              }
-            />
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 text-xs">
-        <RatioCard
-          name="repost : like"
-          value={stats.ratios.repostToLike}
-          hint={ratioHint("repostToLike", stats.ratios.repostToLike)}
-        />
-        <RatioCard
-          name="quote : repost"
-          value={stats.ratios.quoteToRepost}
-          hint={ratioHint("quoteToRepost", stats.ratios.quoteToRepost)}
-        />
-        <RatioCard
-          name="own : consumed"
-          value={stats.ratios.ownToConsumed}
-          hint={ratioHint("ownToConsumed", stats.ratios.ownToConsumed)}
-        />
-      </div>
-
-      <p className="text-sm mb-4">
-        <strong>Last 30 days:</strong> {stats.recent30d.count} engagements
-        {stats.recent30d.pctChange !== null && (
+    <div className="border-b border-[#eee]">
+      <div className="flex gap-3 items-center py-3.5 px-1 hover:bg-[#fcfcfc]">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex gap-3 items-center flex-1 min-w-0 text-left"
+        >
           <span
-            className={
-              stats.recent30d.pctChange >= 0
-                ? "text-emerald-700"
-                : "text-amber-700"
-            }
+            className="text-[11px] transition-transform"
+            style={{
+              color: "#888",
+              transform: expanded ? "rotate(90deg)" : "none",
+            }}
           >
-            {" "}({stats.recent30d.pctChange >= 0 ? "↑" : "↓"}
-            {Math.abs(stats.recent30d.pctChange)}% vs prior trailing avg of{" "}
-            {stats.recent30d.priorAvg30d})
+            ▸
           </span>
+          <span
+            className="font-mono text-[11px] font-semibold flex-none"
+            style={{ color: ACCENT }}
+          >
+            Batch {batch.index}
+          </span>
+          <span className="text-sm text-[#1a1a1a] flex-1 truncate">
+            {headline}
+          </span>
+        </button>
+        <span className="font-mono text-[11px] text-[#888] flex-none">
+          {fmtDate(batch.startTs)} → {fmtDate(batch.endTs)}
+        </span>
+        {note && (
+          <button
+            type="button"
+            onClick={onOpenDetails}
+            className="font-mono text-[10px] text-[#666] bg-[#f4f4f4] border border-[#eee] px-2.5 py-1 rounded-md hover:border-[#0f766e] hover:text-[#0f766e] flex-none"
+          >
+            Details
+          </button>
         )}
-      </p>
+      </div>
 
-      {stats.topAccounts.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold mb-2">
-            Top engaged-with accounts
-          </h3>
-          <table className="w-full text-xs font-mono">
-            <tbody>
-              {stats.topAccounts.map((a) => (
-                <tr key={a.handle}>
-                  <td className="py-1 pr-3">{a.handle}</td>
-                  <td className="py-1 pr-3 text-right">{a.total}</td>
-                  <td className="py-1 text-[#666]">
-                    {(["like", "repost", "quote", "reply"] as SignalType[])
-                      .map((t) => {
-                        const n = a.byType[t] ?? 0;
-                        if (n === 0) return null;
-                        const letter =
-                          t === "like"
-                            ? "L"
-                            : t === "repost"
-                              ? "R"
-                              : t === "quote"
-                                ? "Q"
-                                : "Rp";
-                        return `${n}${letter}`;
-                      })
-                      .filter(Boolean)
-                      .join("  ")}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="text-[10px] text-[#999] mt-2">
-            L=like  R=repost  Q=quote  Rp=reply-to
-          </p>
+      {expanded && (
+        <div className="pt-0.5 pb-5 pl-[30px] pr-1">
+          {isStreaming ? (
+            <div className="text-[15px]">
+              <MarkdownBody text={live?.body ?? ""} />
+              <Cursor />
+            </div>
+          ) : note ? (
+            <MarkdownBody text={note.text} />
+          ) : (
+            <p className="text-[#999] italic text-sm">
+              Not yet processed. Click <em>Process next batch</em> above.
+            </p>
+          )}
         </div>
       )}
+    </div>
+  );
+}
 
-      {stats.unavailableCount > 0 && (
-        <p className="text-xs text-[#888] mt-3 italic">
-          {stats.unavailableCount} engaged-with subjects unavailable (deleted,
-          blocked, or 404).
-        </p>
-      )}
+// ── Detail drawer (right sidebar) ──────────────────────────────────────
+
+function DetailDrawer({
+  batch,
+  note,
+  engagements,
+  onClose,
+}: {
+  batch: BatchInfo;
+  note: BatchNote | undefined;
+  engagements: Engagement[];
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const detail = useMemo(
+    () => deriveBatchDetail(batch, engagements),
+    [batch, engagements]
+  );
+  const maxMix = Math.max(...SIGNAL_ORDER.map((t) => batch.mix[t]), 1);
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 bg-[#1a1a1a]/30 z-[70]"
+        onClick={onClose}
+        aria-hidden
+      />
+      <aside className="fixed top-0 right-0 h-screen w-[380px] max-w-[90vw] bg-white shadow-2xl z-[80] flex flex-col">
+        <div className="flex justify-between items-baseline px-6 pt-5 pb-4 border-b border-[#e0e0e0]">
+          <div>
+            <div className="font-serif text-xl">Batch {batch.index}</div>
+            <div className="font-mono text-[11px] text-[#888] mt-1">
+              100 engagement records · {fmtDate(batch.startTs)} →{" "}
+              {fmtDate(batch.endTs)} · spans {detail.spanDays}d
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-[22px] text-[#666] leading-none hover:text-[#1a1a1a]"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="px-6 py-5 overflow-y-auto">
+          <DrawerSection title="Signal mix">
+            {SIGNAL_ORDER.map((t) => {
+              const n = batch.mix[t];
+              if (n === 0) return null;
+              return (
+                <div
+                  key={t}
+                  className="grid grid-cols-[80px_1fr_32px] gap-2.5 items-center text-[13px] mb-1.5"
+                >
+                  <span className="text-[#333] capitalize">
+                    {SIGNAL_LABELS[t]}
+                  </span>
+                  <div className="h-3.5 bg-[#f0f0f0] rounded-sm overflow-hidden relative">
+                    <div
+                      className="absolute inset-y-0 left-0"
+                      style={{ width: `${(n / maxMix) * 100}%`, background: ACCENT }}
+                    />
+                  </div>
+                  <span className="font-mono text-xs text-right text-[#333]">
+                    {n}
+                  </span>
+                </div>
+              );
+            })}
+          </DrawerSection>
+
+          {detail.topAccounts.length > 0 && (
+            <DrawerSection title="Top accounts in this batch">
+              {detail.topAccounts.map((a) => (
+                <div
+                  key={a.handle}
+                  className="flex justify-between text-[13px] py-1.5 border-b border-[#eee] last:border-0"
+                >
+                  <span className="font-mono text-[#1a1a1a]">{a.handle}</span>
+                  <span className="font-mono text-[11px] text-[#888]">
+                    {a.count} engagements
+                  </span>
+                </div>
+              ))}
+            </DrawerSection>
+          )}
+
+          <DrawerSection title="Media">
+            <div className="grid grid-cols-2 gap-2.5">
+              <Factbox n={`${detail.imagePct}%`} l="with images" />
+              <Factbox n={`${detail.linkPct}%`} l="with link cards" />
+            </div>
+          </DrawerSection>
+
+          {note && (
+            <DrawerSection title="Extractor run">
+              <div className="font-mono text-[11px] text-[#666] leading-relaxed">
+                cost ${note.telemetry.costUsd.toFixed(3)} ·{" "}
+                {(note.telemetry.latencyMs / 1000).toFixed(1)}s
+                <br />
+                {note.telemetry.inputTokens.toLocaleString()} →{" "}
+                {note.telemetry.outputTokens.toLocaleString()} tokens
+                <br />
+                {note.imagesAttached} images attached
+                {note.imagesFailed > 0 && (
+                  <span className="text-amber-700">
+                    {" "}· {note.imagesFailed} failed
+                  </span>
+                )}
+                <br />
+                {note.telemetry.modelId}
+              </div>
+            </DrawerSection>
+          )}
+        </div>
+      </aside>
+    </>
+  );
+}
+
+function DrawerSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="mb-6">
+      <h5 className="font-mono text-[10px] tracking-wide uppercase text-[#888] mb-2.5">
+        {title}
+      </h5>
+      {children}
     </section>
   );
 }
 
-function SignalBar({
-  label,
-  count,
-  pct,
-  max,
-  extras,
-}: {
-  label: string;
-  count: number;
-  pct: number;
-  max: number;
-  extras: string;
-}) {
-  const widthPct = max > 0 ? (pct / max) * 100 : 0;
+function Factbox({ n, l }: { n: string; l: string }) {
   return (
-    <div className="grid grid-cols-[120px_1fr_auto] gap-2 items-center text-sm">
-      <span className="text-[#444]">{label}</span>
-      <div className="relative h-5 bg-[#f0f0f0] rounded-sm overflow-hidden">
-        <div
-          className="absolute inset-y-0 left-0 bg-[#1a1a1a]"
-          style={{ width: `${widthPct}%` }}
-        />
-      </div>
-      <span className="text-xs font-mono text-[#444] whitespace-nowrap">
-        {count.toLocaleString()} ({pct}%)
-        {extras && <span className="text-[#888] ml-2">· {extras}</span>}
-      </span>
-    </div>
-  );
-}
-
-function RatioCard({
-  name,
-  value,
-  hint,
-}: {
-  name: string;
-  value: number | null;
-  hint: string;
-}) {
-  return (
-    <div className="border border-[#eee] rounded p-2.5 bg-[#fafafa]">
-      <div className="font-mono text-[10px] text-[#666]">{name}</div>
-      <div className="font-mono text-base text-[#1a1a1a] mt-0.5">
-        {value === null ? "—" : value.toFixed(2)}
-      </div>
-      <div className="text-[10px] text-[#888] leading-tight mt-1">{hint}</div>
-    </div>
-  );
-}
-
-function ratioHint(
-  kind: "repostToLike" | "quoteToRepost" | "ownToConsumed",
-  v: number | null
-): string {
-  if (v === null) return "insufficient data";
-  if (kind === "repostToLike") {
-    if (v < 0.1) return "reposts look very selective";
-    if (v < 0.25) return "selective amplification";
-    return "reposts ≈ louder likes";
-  }
-  if (kind === "quoteToRepost") {
-    if (v < 0.15) return "rarely adds commentary";
-    if (v < 0.35) return "commentary on ~1-in-3 reposts";
-    return "commentary-heavy";
-  }
-  if (kind === "ownToConsumed") {
-    if (v < 0.2) return "consumer-leaning";
-    if (v < 0.6) return "balanced";
-    return "producer-leaning";
-  }
-  return "";
-}
-
-// ── Batch card ─────────────────────────────────────────────────────────
-
-function BatchCard({
-  batch,
-  note,
-}: {
-  batch: BatchInfo;
-  note: BatchNote | undefined;
-}) {
-  return (
-    <div className="border border-[#e0e0e0] rounded bg-white">
-      <div className="border-b border-[#eee] px-4 py-2 text-xs text-[#666] font-mono">
-        <span className="font-semibold text-[#1a1a1a]">Batch {batch.index}</span>
-        <span className="mx-2">·</span>
-        covers {fmtDate(batch.startTs)} → {fmtDate(batch.endTs)}
-        <span className="mx-2">·</span>
-        {batch.engagementIds.length} records
-        <div className="mt-1 text-[#888]">
-          Mix:{" "}
-          {SIGNAL_ORDER.map((t) => {
-            const n = batch.mix[t];
-            if (n === 0) return null;
-            return `${n} ${SIGNAL_LABELS[t]}`;
-          })
-            .filter(Boolean)
-            .join(" · ")}
-          {note && (
-            <>
-              {" — Extractor: "}
-              <CallChip telemetry={note.telemetry} />
-              {note.imagesAttached > 0 && (
-                <span> · {note.imagesAttached} images</span>
-              )}
-              {note.imagesFailed > 0 && (
-                <span className="text-amber-700">
-                  {" "}· {note.imagesFailed} failed
-                </span>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-      <div className="px-4 py-3 text-[#1a1a1a]">
-        {note ? (
-          <MarkdownBody text={note.text} />
-        ) : (
-          <p className="text-[#999] italic text-sm">
-            Not yet processed. Click <em>Process next batch</em> above to
-            extract this one.
-          </p>
-        )}
+    <div className="bg-[#fafafa] border border-[#eee] rounded-lg px-3 py-2.5">
+      <div className="font-serif text-lg">{n}</div>
+      <div className="text-[10px] uppercase tracking-wide text-[#888] mt-0.5">
+        {l}
       </div>
     </div>
   );
 }
 
-function ProfilePanel({
-  profile,
-  processedCount,
-  totalBatches,
-}: {
-  profile: {
-    text: string;
-    telemetry: CallTelemetry;
-    fromBatchIndices: number[];
+/** Deterministic per-batch breakdown for the drawer (no LLM). */
+function deriveBatchDetail(batch: BatchInfo, engagements: Engagement[]) {
+  const inBatch = engagements.filter((e) => batch.engagementIds.includes(e.id));
+  const counts = new Map<string, number>();
+  let withImages = 0;
+  let withLinks = 0;
+  for (const e of inBatch) {
+    const author = e.subject.author;
+    if (author) counts.set(author, (counts.get(author) ?? 0) + 1);
+    if (hasImages(e.subject)) withImages++;
+    if (e.subject.linkCard) withLinks++;
+  }
+  const topAccounts = [...counts.entries()]
+    .map(([handle, count]) => ({ handle, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+  const n = inBatch.length || 1;
+  const spanMs = Date.parse(batch.endTs) - Date.parse(batch.startTs);
+  return {
+    topAccounts,
+    imagePct: Math.round((withImages / n) * 100),
+    linkPct: Math.round((withLinks / n) * 100),
+    spanDays: Number.isFinite(spanMs)
+      ? Math.max(1, Math.round(spanMs / 86_400_000))
+      : 0,
   };
-  processedCount: number;
-  totalBatches: number;
-}) {
-  return (
-    <div className="border border-[#1a1a1a] rounded bg-white p-5">
-      <div className="text-xs text-[#666] font-mono mb-3 flex justify-between flex-wrap gap-2">
-        <span>
-          {processedCount < totalBatches && (
-            <span className="text-amber-700 mr-2">
-              partial — {processedCount} of {totalBatches} batches
-            </span>
-          )}
-          Aggregator: <CallChip telemetry={profile.telemetry} />
-        </span>
-      </div>
-      <MarkdownBody text={profile.text} />
-    </div>
-  );
 }
 
-function CallChip({ telemetry }: { telemetry: CallTelemetry }) {
-  return (
-    <span className="text-[#1a1a1a]">
-      ${telemetry.costUsd.toFixed(3)} ·{" "}
-      {(telemetry.latencyMs / 1000).toFixed(1)}s ·{" "}
-      {telemetry.inputTokens.toLocaleString()}→
-      {telemetry.outputTokens.toLocaleString()} tok
-    </span>
-  );
+function hasImages(s: Subject | null | undefined): boolean {
+  if (!s) return false;
+  if (s.imageCids && s.imageCids.length > 0) return true;
+  return hasImages(s.quoting) || hasImages(s.replyingTo);
 }
+
+// ── Markdown renderer ──────────────────────────────────────────────────
 
 /**
  * Renders the model's prose output. Both Extractor and Aggregator return
- * markdown — headers, bold, italics, lists — so plain text wrapping would
- * lose structure. Tailwind classes restyle each element for the page look.
+ * markdown — headers, bold, italics, lists. Tailwind classes restyle each
+ * element. `hero` bumps the body size for the profile card.
  */
-function MarkdownBody({ text }: { text: string }) {
+function MarkdownBody({ text, hero = false }: { text: string; hero?: boolean }) {
   return (
-    <div className="prose-introspect text-[15px] leading-relaxed text-[#1a1a1a]">
+    <div
+      className={`prose-introspect ${
+        hero ? "text-base" : "text-[14px]"
+      } leading-relaxed text-[#1a1a1a]`}
+    >
       <ReactMarkdown
         components={{
           h1: (props) => (
@@ -751,7 +1209,7 @@ function MarkdownBody({ text }: { text: string }) {
           strong: (props) => (
             <strong className="font-semibold text-[#1a1a1a]" {...props} />
           ),
-          em: (props) => <em className="italic text-[#333]" {...props} />,
+          em: (props) => <em className="italic text-[#0a5249]" {...props} />,
           code: (props) => (
             <code
               className="bg-[#f4f4f4] text-[#333] px-1.5 py-0.5 rounded text-[0.9em] font-mono"
@@ -767,7 +1225,7 @@ function MarkdownBody({ text }: { text: string }) {
           hr: () => <hr className="my-4 border-[#eee]" />,
           a: (props) => (
             <a
-              className="text-[#1a1a1a] underline decoration-[#bbb] hover:decoration-[#1a1a1a]"
+              className="text-[#0a5249] underline decoration-[#bbb] hover:decoration-[#0a5249]"
               target="_blank"
               rel="noreferrer"
               {...props}
@@ -782,6 +1240,54 @@ function MarkdownBody({ text }: { text: string }) {
 }
 
 // ── Small utilities ────────────────────────────────────────────────────
+
+/** Client-side mirror of the server's HEADLINE: parser, for live streaming. */
+function splitHeadline(raw: string): { headline: string; body: string } {
+  const m = raw.match(/^\s*HEADLINE:\s*([^\n]*)\n?([\s\S]*)$/i);
+  if (!m) return { headline: "", body: raw };
+  return { headline: m[1].replace(/\.$/, "").trim(), body: (m[2] ?? "").trim() };
+}
+
+function firstSentence(text: string): string {
+  const clean = text.replace(/[#*_`>]/g, "").trim();
+  const m = clean.match(/^.{0,90}?[.!?](\s|$)/);
+  return (m ? m[0] : clean.slice(0, 90)).trim() || "Processed";
+}
+
+function fmtRatio(v: number | null): string {
+  return v === null ? "—" : v.toFixed(2);
+}
+
+function telemetryTitle(t: CallTelemetry): string {
+  return `$${t.costUsd.toFixed(3)} · ${(t.latencyMs / 1000).toFixed(
+    1
+  )}s · ${t.inputTokens.toLocaleString()}→${t.outputTokens.toLocaleString()} tok · ${
+    t.modelId
+  }`;
+}
+
+function ratioHint(
+  kind: "repostToLike" | "quoteToRepost" | "ownToConsumed",
+  v: number | null
+): string {
+  if (v === null) return "insufficient data";
+  if (kind === "repostToLike") {
+    if (v < 0.1) return "reposts look very selective";
+    if (v < 0.25) return "selective amplification";
+    return "reposts ≈ louder likes";
+  }
+  if (kind === "quoteToRepost") {
+    if (v < 0.15) return "rarely adds commentary";
+    if (v < 0.35) return "commentary on ~1-in-3 reposts";
+    return "commentary-heavy";
+  }
+  if (kind === "ownToConsumed") {
+    if (v < 0.2) return "consumer-leaning";
+    if (v < 0.6) return "balanced";
+    return "producer-leaning";
+  }
+  return "";
+}
 
 function fmtDate(iso: string): string {
   if (!iso) return "—";
