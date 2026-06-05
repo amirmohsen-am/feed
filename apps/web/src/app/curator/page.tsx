@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authedFetch } from "@/lib/authed-fetch";
 import { useCurator } from "./curatorContext";
@@ -15,6 +15,14 @@ import { useCurator } from "./curatorContext";
 //                     (used by suggestion cards in /introspect)
 //   ?prompt=<text>    forwarded to the workbench so it can seed the chat input
 export default function CuratorLanding() {
+  return (
+    <Suspense fallback={null}>
+      <CuratorLandingInner />
+    </Suspense>
+  );
+}
+
+function CuratorLandingInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { feeds, reloadFeeds } = useCurator();
