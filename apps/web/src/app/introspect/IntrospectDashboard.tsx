@@ -21,6 +21,7 @@ import type {
   SignalType,
   Snapshot,
 } from "@/lib/introspect/types";
+import IntrospectBackLink from "./IntrospectBackLink";
 
 // ── Cost / latency estimates for the inline Process-button preview ─────
 // Sonnet 4.6 standard tier ballpark from design §6.3. The actual telemetry
@@ -136,10 +137,11 @@ export default function IntrospectDashboard({ handle }: { handle: string }) {
 
   if (fetching && !snapshot) {
     return (
-      <main className="min-h-screen bg-[#fafafa] text-[#1a1a1a]">
-        <div className="mx-auto max-w-2xl px-6 py-24">
-          <h1 className="text-3xl font-serif mb-3">introspect</h1>
-          <p className="font-mono text-sm text-[#444] mb-2">@{handle}</p>
+      <main className="min-h-screen overflow-x-hidden bg-[#fafafa] text-[#1a1a1a]">
+        <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6 sm:py-24">
+          <IntrospectBackLink />
+          <h1 className="mb-3 font-serif text-3xl">introspect</h1>
+          <p className="mb-2 font-mono text-sm text-[#444]">@{handle}</p>
           <p className="text-[#666]">
             Resolving handle → PDS → listing records → hydrating posts. Takes
             ~10–20s on first run.
@@ -151,27 +153,28 @@ export default function IntrospectDashboard({ handle }: { handle: string }) {
 
   if (!snapshot) {
     return (
-      <main className="min-h-screen bg-[#fafafa] text-[#1a1a1a]">
-        <div className="mx-auto max-w-2xl px-6 py-24">
-          <h1 className="text-3xl font-serif mb-3">introspect</h1>
-          <p className="font-mono text-sm text-[#444] mb-4">@{handle}</p>
+      <main className="min-h-screen overflow-x-hidden bg-[#fafafa] text-[#1a1a1a]">
+        <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6 sm:py-24">
+          <IntrospectBackLink />
+          <h1 className="mb-3 font-serif text-3xl">introspect</h1>
+          <p className="mb-4 font-mono text-sm text-[#444]">@{handle}</p>
           {error && (
-            <p className="text-sm text-red-700 bg-red-50 border-l-2 border-red-700 px-3 py-2 mb-4">
+            <p className="mb-4 border-l-2 border-red-700 bg-red-50 px-3 py-2 text-sm text-red-700">
               {error}
             </p>
           )}
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <button
               type="button"
               onClick={() => callFetch(false)}
-              className="px-4 py-2 bg-[#1a1a1a] text-white rounded"
+              className="min-h-11 rounded bg-[#1a1a1a] px-4 py-2 text-white sm:min-h-0"
             >
               Retry
             </button>
             <button
               type="button"
               onClick={() => router.push("/introspect")}
-              className="px-4 py-2 border border-[#ddd] rounded"
+              className="min-h-11 rounded border border-[#ddd] px-4 py-2 sm:min-h-0"
             >
               Try a different handle
             </button>
@@ -233,24 +236,25 @@ function IntrospectLoaded({
   const perClickCost = EST_EXTRACTOR_USD + EST_AGGREGATOR_USD;
 
   return (
-    <main className="min-h-screen bg-[#fafafa] text-[#1a1a1a]">
-      <div className="mx-auto max-w-4xl px-6 py-10">
-        <header className="border-b border-[#1a1a1a] pb-4 mb-6 flex justify-between items-baseline gap-4 flex-wrap">
-          <div>
-            <h1 className="text-3xl font-serif tracking-tight">introspect</h1>
-            <p className="text-[#444] mt-1">
-              <span className="font-mono">@{snapshot.handle}</span>
-              <span className="text-[#888] text-sm ml-3">
+    <main className="min-h-screen overflow-x-hidden bg-[#fafafa] text-[#1a1a1a]">
+      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
+        <IntrospectBackLink />
+        <header className="mb-6 flex flex-col gap-4 border-b border-[#1a1a1a] pb-4 sm:flex-row sm:items-baseline sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="font-serif text-3xl tracking-tight">introspect</h1>
+            <p className="mt-1 text-[#444]">
+              <span className="font-mono break-all">@{snapshot.handle}</span>
+              <span className="mt-1 block text-sm text-[#888] sm:mt-0 sm:ml-3 sm:inline">
                 last refreshed {relativeTime(snapshot.fetchedAt)}
               </span>
             </p>
           </div>
-          <div className="flex gap-2 text-sm">
+          <div className="flex shrink-0 flex-col gap-2 text-sm sm:flex-row">
             <button
               type="button"
               onClick={onRefresh}
               disabled={fetching || processing}
-              className="px-3 py-1.5 border border-[#1a1a1a] rounded hover:bg-[#1a1a1a] hover:text-white disabled:opacity-50"
+              className="min-h-10 rounded border border-[#1a1a1a] px-3 py-2 hover:bg-[#1a1a1a] hover:text-white disabled:opacity-50 sm:min-h-0 sm:py-1.5"
             >
               {fetching ? "Refreshing…" : "Refresh from PDS"}
             </button>
@@ -258,7 +262,7 @@ function IntrospectLoaded({
               type="button"
               onClick={onReset}
               disabled={fetching || processing}
-              className="px-3 py-1.5 border border-[#ddd] text-[#666] rounded hover:border-red-700 hover:text-red-700 disabled:opacity-50"
+              className="min-h-10 rounded border border-[#ddd] px-3 py-2 text-[#666] hover:border-red-700 hover:text-red-700 disabled:opacity-50 sm:min-h-0 sm:py-1.5"
             >
               Reset
             </button>
@@ -284,8 +288,8 @@ function IntrospectLoaded({
 
         {totalBatches > 0 && (
           <section className="my-8">
-            <div className="border-t border-[#ddd] pt-6 flex flex-col items-stretch gap-3">
-              <div className="flex items-baseline justify-between text-sm text-[#444] flex-wrap gap-2">
+            <div className="flex flex-col items-stretch gap-3 border-t border-[#ddd] pt-6">
+              <div className="flex flex-col gap-2 text-sm text-[#444] sm:flex-row sm:items-baseline sm:justify-between">
                 <span>
                   <strong className="text-[#1a1a1a]">Batch notes:</strong>{" "}
                   {processedCount} of {totalBatches} processed (newest-first)
@@ -309,7 +313,7 @@ function IntrospectLoaded({
                 disabled={
                   processing || fetching || (allDone && profile !== null)
                 }
-                className="w-full py-3 bg-[#1a1a1a] text-white rounded-lg text-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#000]"
+                className="w-full rounded-lg bg-[#1a1a1a] px-3 py-3 text-base font-medium leading-snug text-white hover:bg-[#000] disabled:cursor-not-allowed disabled:opacity-50 sm:text-lg"
               >
                 {processing
                   ? "Processing… (Extractor + Aggregator)"
@@ -370,7 +374,7 @@ function SuggestedFeeds({ seeds }: { seeds: FeedSeedPrompts }) {
       <h2 className="text-xl font-serif mb-1 border-b border-[#ddd] pb-2">
         Suggested feeds
       </h2>
-      <p className="text-xs text-[#888] mb-4 mt-2 flex items-center gap-2">
+      <p className="mb-4 mt-2 flex flex-col gap-2 text-xs text-[#888] sm:flex-row sm:items-center">
         <span>
           Click one to open the curator on a fresh feed with this prompt
           pre-filled. You still hit send.
@@ -387,7 +391,7 @@ function SuggestedFeeds({ seeds }: { seeds: FeedSeedPrompts }) {
                 `/curator?new=1&prompt=${encodeURIComponent(prompt)}`
               );
             }}
-            className="text-left p-4 border border-[#e0e0e0] rounded bg-white hover:border-[#1a1a1a] hover:bg-[#fafafa] transition-colors"
+            className="rounded border border-[#e0e0e0] bg-white p-4 text-left transition-colors hover:border-[#1a1a1a] hover:bg-[#fafafa]"
           >
             <p className="text-[15px] leading-relaxed text-[#1a1a1a]">
               {prompt}
@@ -414,12 +418,12 @@ function StatsPanel({ snapshot }: { snapshot: Snapshot }) {
     );
   }
   return (
-    <section className="my-6 p-5 bg-white border border-[#e8e8e8] rounded">
-      <h2 className="text-lg font-serif mb-1">Engagement stats</h2>
+    <section className="my-6 rounded border border-[#e8e8e8] bg-white p-4 sm:p-5">
+      <h2 className="mb-1 font-serif text-lg">Engagement stats</h2>
       <p className="text-xs text-[#888] mb-4">
         Deterministic — computed locally, never sent to the LLM.
       </p>
-      <p className="text-sm mb-4">
+      <p className="mb-4 text-sm leading-relaxed">
         <strong>{stats.total.toLocaleString()}</strong> engagements over{" "}
         <strong>{stats.spanDays}</strong> days · {stats.avgPerDay}/day average ·{" "}
         <span className="text-[#666]">
@@ -491,16 +495,17 @@ function StatsPanel({ snapshot }: { snapshot: Snapshot }) {
 
       {stats.topAccounts.length > 0 && (
         <div>
-          <h3 className="text-sm font-semibold mb-2">
+          <h3 className="mb-2 text-sm font-semibold">
             Top engaged-with accounts
           </h3>
-          <table className="w-full text-xs font-mono">
+          <div className="-mx-1 overflow-x-auto px-1">
+          <table className="w-full min-w-[280px] text-xs font-mono">
             <tbody>
               {stats.topAccounts.map((a) => (
                 <tr key={a.handle}>
-                  <td className="py-1 pr-3">{a.handle}</td>
-                  <td className="py-1 pr-3 text-right">{a.total}</td>
-                  <td className="py-1 text-[#666]">
+                  <td className="max-w-[9rem] truncate py-1 pr-3 sm:max-w-none">{a.handle}</td>
+                  <td className="py-1 pr-3 text-right whitespace-nowrap">{a.total}</td>
+                  <td className="py-1 text-[#666] whitespace-nowrap">
                     {(["like", "repost", "quote", "reply"] as SignalType[])
                       .map((t) => {
                         const n = a.byType[t] ?? 0;
@@ -522,7 +527,8 @@ function StatsPanel({ snapshot }: { snapshot: Snapshot }) {
               ))}
             </tbody>
           </table>
-          <p className="text-[10px] text-[#999] mt-2">
+          </div>
+          <p className="mt-2 text-[10px] text-[#999]">
             L=like  R=repost  Q=quote  Rp=reply-to
           </p>
         </div>
@@ -553,18 +559,22 @@ function SignalBar({
 }) {
   const widthPct = max > 0 ? (pct / max) * 100 : 0;
   return (
-    <div className="grid grid-cols-[120px_1fr_auto] gap-2 items-center text-sm">
-      <span className="text-[#444]">{label}</span>
-      <div className="relative h-5 bg-[#f0f0f0] rounded-sm overflow-hidden">
+    <div className="space-y-1 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[#444]">{label}</span>
+        <span className="shrink-0 text-xs font-mono text-[#444]">
+          {count.toLocaleString()} ({pct}%)
+        </span>
+      </div>
+      <div className="relative h-5 overflow-hidden rounded-sm bg-[#f0f0f0]">
         <div
           className="absolute inset-y-0 left-0 bg-[#1a1a1a]"
           style={{ width: `${widthPct}%` }}
         />
       </div>
-      <span className="text-xs font-mono text-[#444] whitespace-nowrap">
-        {count.toLocaleString()} ({pct}%)
-        {extras && <span className="text-[#888] ml-2">· {extras}</span>}
-      </span>
+      {extras && (
+        <p className="text-[11px] leading-snug text-[#888]">{extras}</p>
+      )}
     </div>
   );
 }
@@ -622,15 +632,19 @@ function BatchCard({
   note: BatchNote | undefined;
 }) {
   return (
-    <div className="border border-[#e0e0e0] rounded bg-white">
-      <div className="border-b border-[#eee] px-4 py-2 text-xs text-[#666] font-mono">
-        <span className="font-semibold text-[#1a1a1a]">Batch {batch.index}</span>
-        <span className="mx-2">·</span>
-        covers {fmtDate(batch.startTs)} → {fmtDate(batch.endTs)}
-        <span className="mx-2">·</span>
-        {batch.engagementIds.length} records
-        <div className="mt-1 text-[#888]">
-          Mix:{" "}
+    <div className="rounded border border-[#e0e0e0] bg-white">
+      <div className="space-y-1.5 border-b border-[#eee] px-3 py-2.5 font-mono text-xs text-[#666] sm:px-4">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="font-semibold text-[#1a1a1a]">Batch {batch.index}</span>
+          <span className="hidden text-[#ccc] sm:inline">·</span>
+          <span>
+            covers {fmtDate(batch.startTs)} → {fmtDate(batch.endTs)}
+          </span>
+          <span className="hidden text-[#ccc] sm:inline">·</span>
+          <span>{batch.engagementIds.length} records</span>
+        </div>
+        <div className="break-words leading-relaxed text-[#888]">
+          <span>Mix: </span>
           {SIGNAL_ORDER.map((t) => {
             const n = batch.mix[t];
             if (n === 0) return null;
@@ -640,8 +654,10 @@ function BatchCard({
             .join(" · ")}
           {note && (
             <>
-              {" — Extractor: "}
-              <CallChip telemetry={note.telemetry} />
+              <span className="mt-1 block sm:mt-0 sm:inline">
+                {" — Extractor: "}
+                <CallChip telemetry={note.telemetry} />
+              </span>
               {note.imagesAttached > 0 && (
                 <span> · {note.imagesAttached} images</span>
               )}
@@ -654,7 +670,7 @@ function BatchCard({
           )}
         </div>
       </div>
-      <div className="px-4 py-3 text-[#1a1a1a]">
+      <div className="px-3 py-3 text-[#1a1a1a] sm:px-4">
         {note ? (
           <MarkdownBody text={note.text} />
         ) : (
@@ -682,8 +698,8 @@ function ProfilePanel({
   totalBatches: number;
 }) {
   return (
-    <div className="border border-[#1a1a1a] rounded bg-white p-5">
-      <div className="text-xs text-[#666] font-mono mb-3 flex justify-between flex-wrap gap-2">
+    <div className="rounded border border-[#1a1a1a] bg-white p-4 sm:p-5">
+      <div className="mb-3 flex flex-col gap-2 font-mono text-xs text-[#666] sm:flex-row sm:justify-between">
         <span>
           {processedCount < totalBatches && (
             <span className="text-amber-700 mr-2">
@@ -700,7 +716,7 @@ function ProfilePanel({
 
 function CallChip({ telemetry }: { telemetry: CallTelemetry }) {
   return (
-    <span className="text-[#1a1a1a]">
+    <span className="inline break-words text-[10px] text-[#1a1a1a] sm:text-xs">
       ${telemetry.costUsd.toFixed(3)} ·{" "}
       {(telemetry.latencyMs / 1000).toFixed(1)}s ·{" "}
       {telemetry.inputTokens.toLocaleString()}→
@@ -716,7 +732,7 @@ function CallChip({ telemetry }: { telemetry: CallTelemetry }) {
  */
 function MarkdownBody({ text }: { text: string }) {
   return (
-    <div className="prose-introspect text-[15px] leading-relaxed text-[#1a1a1a]">
+    <div className="prose-introspect break-words text-[15px] leading-relaxed text-[#1a1a1a] [overflow-wrap:anywhere]">
       <ReactMarkdown
         components={{
           h1: (props) => (
@@ -754,7 +770,7 @@ function MarkdownBody({ text }: { text: string }) {
           em: (props) => <em className="italic text-[#333]" {...props} />,
           code: (props) => (
             <code
-              className="bg-[#f4f4f4] text-[#333] px-1.5 py-0.5 rounded text-[0.9em] font-mono"
+              className="block max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded bg-[#f4f4f4] px-1.5 py-0.5 font-mono text-[0.9em] text-[#333] sm:inline sm:whitespace-normal"
               {...props}
             />
           ),

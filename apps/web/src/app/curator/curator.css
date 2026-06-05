@@ -512,6 +512,7 @@
 .cur-dots span:nth-child(3){ animation-delay: 0.3s; }
 
 .cur-input-bar{
+  flex-shrink: 0;
   padding: 16px 28px 22px;
   border-top: 1px solid var(--hair);
   background: var(--paper-2);
@@ -2445,6 +2446,15 @@
 @media (max-width: 767px){
   /* Resizers don't make sense on mobile */
   .cur-resizer{ display: none; }
+
+  /* Prevent page-level horizontal scroll */
+  .curator-shell,
+  .cur-main,
+  .cur-workbench{
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+
   /* Sidebar becomes a slide-in drawer */
   .cur-sidebar{
     position: fixed;
@@ -2460,12 +2470,42 @@
   .cur-sidebar-backdrop{ display: block; }
   .cur-topbar-burger{ display: inline-flex; }
 
-  /* Slim the topbar */
-  .cur-topbar{ padding: 12px 16px; }
-  .cur-topbar-left h2{ font-size: 20px; }
+  /* Slim the topbar — icon-only action buttons */
+  .cur-topbar{
+    padding: 10px 12px;
+    gap: 8px;
+    min-width: 0;
+  }
+  .cur-topbar-left h2{ font-size: 18px; }
+  .cur-topbar-right{
+    gap: 6px;
+    min-width: 0;
+    flex-shrink: 0;
+  }
+  .cur-topbar-btn-text{ display: none; }
+  .cur-topbar-btn.ghost,
+  .cur-topbar-btn.publish{
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+  }
+  .cur-topbar-btn.ghost span[aria-hidden]{
+    margin: 0;
+    font-size: 14px;
+    line-height: 1;
+  }
 
   /* Main column fills the viewport (sidebar is overlaid, not in-flow) */
-  .cur-main{ width: 100%; }
+  .cur-main{
+    width: 100%;
+    min-height: 0;
+  }
+  .cur-main > .cur-workbench{
+    flex: 1;
+    min-height: 0;
+  }
 
   /* Workbench shows ONE pane at a time, controlled by data-mobile-tab */
   .cur-workbench{ flex-direction: column; flex: 1; min-height: 0; }
@@ -2473,25 +2513,167 @@
   .cur-feed-posts,
   .ctrl-tower{ display: none; }
   .cur-main[data-mobile-tab="chat"] .cur-chat-pane{
-    display: flex; flex: 1; width: 100%; border-right: none;
+    display: flex;
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    border-right: none;
+    overflow: hidden;
   }
   .cur-main[data-mobile-tab="feed"] .cur-feed-posts{
-    display: block; flex: 1; padding: 16px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    padding: 12px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .cur-main[data-mobile-tab="tune"] .ctrl-tower{
-    display: flex; flex: 1; width: 100%; border-left: none;
+    display: flex;
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    border-left: none;
   }
 
   /* Hide the Chat↔Tune segmented toggle on mobile — the bottom tab nav covers that. */
   .cur-right-toggle{ display: none; }
 
-  /* Tighten chat pane padding on small screens */
-  .cur-chat-area{ padding: 16px; }
-  .cur-input-bar{ padding: 12px 16px; }
-  .cur-pinned-options{ margin-bottom: 8px; }
+  /* Feed pane: contain wide embeds and cards */
+  .cur-feed-posts-inner,
+  .cur-feed-posts-header,
+  .cur-feed-loader{
+    max-width: 100%;
+    width: 100%;
+    min-width: 0;
+  }
+  .cur-feed-posts-inner{
+    overflow-x: clip;
+  }
+  .cur-feed-posts-header{
+    padding: 4px 0 8px;
+    margin-bottom: 0;
+  }
+  .cur-post-card,
+  .cur-post-branch-row,
+  .cur-branch-panel,
+  .cur-post-item-embed{
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+  }
+  .cur-post-card{
+    padding: 12px 14px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+  }
+  .cur-post-handle{ max-width: 42vw; }
+  .cur-post-card-body,
+  .cur-post-embed-desc,
+  .cur-post-embed-title{
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Bluesky embeds: fit column instead of fixed 600px */
+  .cur-post-embed-wrap{
+    --embed-w: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    padding-top: 8px;
+  }
+  .cur-post-embed-wrap .bluesky-embed,
+  .cur-post-embed-wrap iframe{
+    max-width: 100% !important;
+    width: 100% !important;
+    zoom: 1;
+  }
+
+  /* Pipeline loader: stack vertically instead of overflowing horizontally */
+  .cur-pl{
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 0 14px;
+  }
+  .cur-pl-step{
+    min-width: 0;
+    width: 100%;
+  }
+  .cur-pl-sep{ display: none; }
+  .cur-pl-timer{
+    margin: 2px 0 0;
+    padding-top: 4px;
+    border-top: 1px solid var(--hair);
+    align-self: flex-start;
+  }
+
+  /* Chat: keep messages visible above a compact option picker */
+  .cur-chat-area{
+    padding: 12px;
+    min-height: 0;
+  }
+  .cur-chat-inner{ max-width: 100%; }
+  .cur-msg-user{ max-width: 92%; font-size: 13px; }
+  .cur-msg-assistant p{ font-size: 14px; }
+  .cur-empty{ padding: 36px 0; }
+  .cur-input-bar{
+    flex-shrink: 0;
+    padding: 8px 12px 10px;
+    border-top: 1px solid var(--hair);
+    background: var(--paper-2);
+  }
+  .cur-pinned-options{
+    max-height: min(34vh, 200px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 6px;
+    gap: 6px;
+    padding-right: 2px;
+  }
+  .cur-pinned-options .cur-opt{
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 1.35;
+    border-radius: 8px;
+    gap: 8px;
+  }
+  .cur-opt-key{
+    width: 16px;
+    font-size: 9px;
+  }
+  .cur-mode-row,
+  .cur-finalize-row{
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+  .cur-mode-hint,
+  .cur-finalize-hint{ display: none; }
+  .cur-mode-toggle,
+  .cur-finalize{
+    align-self: flex-start;
+    font-size: 11px;
+    padding: 6px 12px;
+  }
+  .cur-input-wrap{ gap: 8px; }
+  .cur-input{
+    font-size: 16px; /* avoid iOS zoom-on-focus */
+    padding: 10px 14px;
+    min-height: 40px;
+    max-height: 120px;
+  }
 
   /* Reveal the bottom tab nav */
-  .cur-mobile-tabs{ display: flex; }
+  .cur-mobile-tabs{ display: flex; flex-shrink: 0; }
 }
 
 /* ── Bluesky auth prompt modal ─────────────── */

@@ -576,9 +576,10 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
                   className="cur-topbar-btn ghost"
                   prefetch={false}
                   title="Introspect my engagements"
+                  aria-label="Introspect my engagements"
                 >
-                  <span aria-hidden style={{ marginRight: 2 }}>✦</span>
-                  Introspect my engagements
+                  <span aria-hidden>✦</span>
+                  <span className="cur-topbar-btn-text">Introspect my engagements</span>
                 </Link>
               ) : (
                 <Link
@@ -586,9 +587,10 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
                   className="cur-topbar-btn ghost"
                   prefetch={false}
                   title="Introspect a Bluesky handle"
+                  aria-label="Introspect a Bluesky handle"
                 >
-                  <span aria-hidden style={{ marginRight: 2 }}>✦</span>
-                  Introspect a handle
+                  <span aria-hidden>✦</span>
+                  <span className="cur-topbar-btn-text">Introspect a handle</span>
                 </Link>
               )}
               {activeFeed && activeHasCriteria && (
@@ -596,13 +598,14 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
                   className="cur-topbar-btn publish"
                   onClick={() => { /* TODO: wire up publish-to-Bluesky flow */ }}
                   title="Publish this feed to Bluesky"
+                  aria-label="Publish this feed to Bluesky"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
                     <polyline points="16 6 12 2 8 6" />
                     <line x1="12" y1="2" x2="12" y2="15" />
                   </svg>
-                  Publish to Bluesky
+                  <span className="cur-topbar-btn-text">Publish to Bluesky</span>
                 </button>
               )}
               <button
