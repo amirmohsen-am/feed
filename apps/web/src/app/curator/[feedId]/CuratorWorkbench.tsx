@@ -320,7 +320,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     }
   }, []);
 
-  const loadPosts = useCallback(async (id: number) => {
+  const loadPosts = useCallback(async (id: number, opts?: { force?: boolean }) => {
     setPostsLoading(true);
     setPipelineStage("searching");
     setPipelineCandidates(undefined);
@@ -329,7 +329,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     setPipelineModel(undefined);
     setPipelineThinkingEnabled(undefined);
     try {
-      const res = await authedFetch(`/api/feed-preview/stream?feedId=${id}`);
+      // force=true (Refresh button) bypasses the 1h backend result cache and
+      // recomputes; all other loads are cache-eligible.
+      const url = `/api/feed-preview/stream?feedId=${id}${opts?.force ? "&refresh=1" : ""}`;
+      const res = await authedFetch(url);
       if (!res.ok || !res.body) {
         setPostsLoading(false);
         setPipelineStage("idle");
@@ -359,6 +362,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               model?: string;
               thinking_enabled?: boolean;
               posts?: Post[];
+              cached?: boolean;
               total_stored?: number;
               mechanical_filters?: MechanicalFilters;
               subqueries?: string[];
@@ -388,7 +392,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 }
               }
             } else if (ev.event === "done") {
-              setPipelineStage("done");
+              // Cache hits ran no pipeline — hide the loader entirely rather
+              // than leaving the "done" summary with empty "queued" steps.
+              setPipelineStage(ev.cached ? "idle" : "done");
               const nextCount = ev.total_stored || (ev.posts?.length ?? 0);
               setPosts(ev.posts || []);
               setPostCount(nextCount);
@@ -646,7 +652,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 type="button"
                 className="cur-toolbar-btn"
                 disabled={postsLoading}
-                onClick={() => loadPosts(feedId)}
+                onClick={() => loadPosts(feedId, { force: true })}
                 title="Refresh posts"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

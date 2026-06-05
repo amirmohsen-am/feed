@@ -71,6 +71,19 @@ CREATE TABLE IF NOT EXISTS subscribers (
   email TEXT UNIQUE NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Cached feed results (one row per feed). The curator preview pipeline
+-- (Gemini embed → pgvector KNN → AppView hydrate → optional Claude rerank) is
+-- slow and token-costly; we cache its final post list and reuse it for up to an
+-- hour. config_hash is a digest of the feed's search-relevant config, so any
+-- config edit (subqueries/filters/rerank) misses the cache and recomputes. See
+-- getFeedPreviewPosts in apps/web/src/lib/pg.ts and DECISIONS.md.
+CREATE TABLE IF NOT EXISTS feed_result_cache (
+  feed_id     INT PRIMARY KEY REFERENCES feeds(id) ON DELETE CASCADE,
+  config_hash TEXT NOT NULL,
+  posts       JSONB NOT NULL,
+  cached_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `;
 
 async function main() {

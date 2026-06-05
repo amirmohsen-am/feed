@@ -31,6 +31,10 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // ?refresh=1 forces a fresh recompute and overwrites the cached result.
+  // Any other load is cache-eligible (served if <1h old, see getFeedPreviewPosts).
+  const forceFresh = req.nextUrl.searchParams.get("refresh") === "1";
+
   const feed = await getFeedForUser(feedId, auth.userId);
   if (!feed) {
     return new Response(
@@ -48,14 +52,25 @@ export async function GET(req: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
       };
 
+      // "cached" is an internal signal (result came from feed_result_cache, no
+      // pipeline ran) — don't forward it as a visible stage; surface it on the
+      // final "done" event so the client can skip the pipeline loader.
+      let servedFromCache = false;
       const onStage = (e: PreviewStageEvent) => {
+        if (e.stage === "cached") {
+          servedFromCache = true;
+          return;
+        }
         send({ event: "stage", ...e });
       };
 
       try {
-        const posts = await getFeedPreviewPosts(feedId, 25, onStage);
+        const posts = await getFeedPreviewPosts(feedId, 25, onStage, {
+          forceFresh,
+        });
         send({
           event: "done",
+          cached: servedFromCache,
           total_stored: posts.length,
           mechanical_filters: feed.mechanical_filters,
           subqueries: feed.subqueries,

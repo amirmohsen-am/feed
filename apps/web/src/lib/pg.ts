@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Pool, type PoolClient, type QueryResult } from "pg";
 import { Connector, IpAddressTypes } from "@google-cloud/cloud-sql-connector";
 import type { MechanicalFilters } from "./types";
@@ -443,6 +444,9 @@ export type PreviewStage =
   | "thinking"
   | "ranking"
   | "done"
+  // Result served from feed_result_cache — no pipeline ran, so the loader
+  // should hide rather than show empty "queued" Thinking/Ranking steps.
+  | "cached"
   | "skipped_rerank";
 
 export interface PreviewStageEvent {
@@ -455,10 +459,50 @@ export interface PreviewStageEvent {
   thinking_enabled?: boolean;
 }
 
+// --- Feed result cache ---
+// The preview pipeline is slow + token-costly, so we cache its final post list
+// per feed in feed-db (`feed_result_cache`) and reuse it while fresh. See
+// DECISIONS.md for the TTL / invalidation rationale.
+const FEED_CACHE_TTL = "1 hour"; // Postgres interval literal.
+
+// Stable JSON: object keys sorted recursively so semantically-equal configs
+// (keys in a different order) hash identically and don't cause false misses.
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys
+    .map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`)
+    .join(",")}}`;
+}
+
+// Digest of only the fields that change search results. Any feed edit that
+// touches these → different hash → cache miss → recompute. `limit` is included
+// so a slice-size change can't serve a wrongly-sized cached list.
+function computeFeedConfigHash(feed: DbFeed, limit: number): string {
+  return createHash("sha256")
+    .update(
+      stableStringify({
+        subqueries: feed.subqueries,
+        candidate_budget: feed.candidate_budget,
+        mechanical_filters: feed.mechanical_filters,
+        rerank_prompt: feed.rerank_prompt,
+        rerank_model: feed.rerank_model,
+        rerank_thinking_enabled: feed.rerank_thinking_enabled,
+        limit,
+      })
+    )
+    .digest("hex");
+}
+
 export async function getFeedPreviewPosts(
   feedId: number,
   limit: number = 25,
-  onStage?: (e: PreviewStageEvent) => void
+  onStage?: (e: PreviewStageEvent) => void,
+  opts?: { forceFresh?: boolean }
 ): Promise<FeedPreviewPost[]> {
   const t0 = performance.now();
   const feedRes = await query("SELECT * FROM feeds WHERE id = $1", [feedId]);
@@ -469,6 +513,38 @@ export async function getFeedPreviewPosts(
   if (feed.subqueries.length === 0) {
     onStage?.({ stage: "done" });
     return [];
+  }
+
+  const configHash = computeFeedConfigHash(feed, limit);
+
+  // Cache read: serve the stored posts when the row is fresh and the config
+  // hasn't changed. Refresh (forceFresh) skips this and recomputes below.
+  if (!opts?.forceFresh) {
+    try {
+      const cached = await query(
+        `SELECT posts FROM feed_result_cache
+         WHERE feed_id = $1 AND config_hash = $2
+           AND cached_at > now() - $3::interval`,
+        [feedId, configHash, FEED_CACHE_TTL]
+      );
+      if (cached.rows.length > 0) {
+        const posts = cached.rows[0].posts as FeedPreviewPost[];
+        onStage?.({ stage: "cached" });
+        console.log(
+          `[cache] hit feedId=${feedId} posts=${posts.length} ` +
+            `feed-lookup=${(tFeed - t0).toFixed(0)}ms ` +
+            `total=${(performance.now() - t0).toFixed(0)}ms`
+        );
+        return posts;
+      }
+    } catch (e) {
+      // A cache read failure must never break the preview — fall through to a
+      // live recompute.
+      console.warn(
+        "[cache] read failed, recomputing:",
+        e instanceof Error ? e.message : String(e)
+      );
+    }
   }
 
   const filter = mechanicalToSearchFilter(feed.mechanical_filters);
@@ -553,7 +629,7 @@ export async function getFeedPreviewPosts(
         (rerankByIndex ? `kept=${rerankByIndex.size} ` : "") +
         `returned=${sliced.length}`
     );
-    return sliced.map((h) => {
+    const result: FeedPreviewPost[] = sliced.map((h) => {
       // Find this hit's original index in the unranked list to look up its
       // reranker fields. orderedHits already maps through r.kept, but we
       // need the original index to read rerankByIndex.
@@ -587,6 +663,27 @@ export async function getFeedPreviewPosts(
         reply_parent_uri: h.reply_parent_uri,
       };
     });
+
+    // Cache write (best-effort): store the fresh result for the next view.
+    // A write failure must never fail the response, so we swallow + log.
+    try {
+      await query(
+        `INSERT INTO feed_result_cache (feed_id, config_hash, posts, cached_at)
+         VALUES ($1, $2, $3::jsonb, now())
+         ON CONFLICT (feed_id) DO UPDATE SET
+           config_hash = EXCLUDED.config_hash,
+           posts = EXCLUDED.posts,
+           cached_at = now()`,
+        [feedId, configHash, JSON.stringify(result)]
+      );
+    } catch (e) {
+      console.warn(
+        "[cache] write failed:",
+        e instanceof Error ? e.message : String(e)
+      );
+    }
+
+    return result;
   } catch (e) {
     console.warn(
       "[vector-search] search failed:",
