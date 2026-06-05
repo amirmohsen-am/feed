@@ -1071,14 +1071,13 @@ html{ scroll-behavior: smooth; }
   margin-top: 4px;
 }
 .about-link{
-  font-family: var(--rf-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
   color: var(--parchment-dim);
   text-decoration: none;
   transition: color 0.2s;
 }
+.about-link svg{ display: block; width: 16px; height: 16px; }
 .about-link:hover{ color: var(--cream); }
 
 @media (max-width: 900px){
