@@ -173,6 +173,10 @@ export interface DbFeed {
   published_rkey: string | null;
   is_active: boolean;
   color: string | null;
+  // Branch lineage. Set when this feed was created by branching off a post;
+  // null for normal feeds. See DECISIONS.md (#3, #6).
+  parent_feed_id: number | null;
+  source_post_uri: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -190,6 +194,8 @@ interface DbFeedRow {
   published_rkey: string | null;
   is_active: boolean;
   color: string | null;
+  parent_feed_id: number | null;
+  source_post_uri: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -225,6 +231,8 @@ function rowToFeed(row: DbFeedRow): DbFeed {
     published_rkey: row.published_rkey,
     is_active: row.is_active,
     color: row.color,
+    parent_feed_id: row.parent_feed_id ?? null,
+    source_post_uri: row.source_post_uri ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -237,6 +245,35 @@ export async function createFeed(
   const res = await query(
     `INSERT INTO feeds (user_id, name) VALUES ($1, $2) RETURNING *`,
     [userId, name]
+  );
+  return rowToFeed(res.rows[0]);
+}
+
+/**
+ * Create a feed by branching off a post. Seeds the picked categories as
+ * subqueries and records lineage (parent_feed_id + source_post_uri). The
+ * rerank_prompt + a polished name are filled later by the seeded chat agent
+ * on its first turn — see /api/chat branch-init. See DECISIONS.md (#4, #8).
+ */
+export async function createBranchedFeed(
+  userId: string,
+  opts: {
+    name: string;
+    subqueries: string[];
+    parentFeedId: number;
+    sourcePostUri: string;
+  }
+): Promise<DbFeed> {
+  const res = await query(
+    `INSERT INTO feeds (user_id, name, subqueries, parent_feed_id, source_post_uri)
+     VALUES ($1, $2, $3::jsonb, $4, $5) RETURNING *`,
+    [
+      userId,
+      opts.name,
+      JSON.stringify(opts.subqueries),
+      opts.parentFeedId,
+      opts.sourcePostUri,
+    ]
   );
   return rowToFeed(res.rows[0]);
 }

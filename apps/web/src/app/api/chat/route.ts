@@ -10,6 +10,8 @@ import {
   clearChat,
 } from "@/lib/pg";
 import { ensureEnvFromSecret } from "@/lib/secrets";
+import { hydratePostByUri, type VectorHit } from "@/lib/vector-search";
+import { composeSourcePostText } from "@/lib/branch";
 import type { MechanicalFilters } from "@/lib/types";
 
 let _client: Anthropic | null = null;
@@ -136,6 +138,29 @@ interface UpdateFeedConfigArgs {
   mechanical_filters?: Partial<MechanicalFilters>;
 }
 
+// Compact source-post payload for the chat UI's embedded card on a branched
+// feed. The Bluesky embed script hydrates the rich card from the URI; text +
+// author are the fallback shown before/if that fails. Returns null for
+// non-branch feeds (no source_post_uri).
+export interface ChatSourcePost {
+  uri: string;
+  bsky_url: string | null;
+  text: string;
+  author_handle: string | null;
+  author_display_name: string | null;
+}
+
+function toChatSourcePost(hit: VectorHit): ChatSourcePost {
+  const m = hit.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+  return {
+    uri: hit.uri,
+    bsky_url: m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null,
+    text: hit.text,
+    author_handle: hit.author_handle,
+    author_display_name: hit.author_display_name,
+  };
+}
+
 export async function POST(req: NextRequest) {
   const t0 = performance.now();
   const auth = await requireAuth(req);
@@ -167,10 +192,19 @@ export async function POST(req: NextRequest) {
     }
 
     const isInit = message === "__init__";
+    const isBranchInit = message === "__branch_init__";
     const history = await getChatMessages(feedId);
 
-    if (isInit && history.length > 0) {
-      return NextResponse.json({ messages: history, feed });
+    // Hydrate the source post once for branched feeds — used to seed the
+    // branch-init turn AND to render the embedded card in every response.
+    let sourcePostHit: VectorHit | null = null;
+    if (feed.source_post_uri) {
+      sourcePostHit = await hydratePostByUri(feed.source_post_uri).catch(() => null);
+    }
+    const sourcePost = sourcePostHit ? toChatSourcePost(sourcePostHit) : null;
+
+    if ((isInit || isBranchInit) && history.length > 0) {
+      return NextResponse.json({ messages: history, feed, sourcePost });
     }
 
     const stateBlock =
@@ -183,7 +217,24 @@ export async function POST(req: NextRequest) {
 
     let apiMessages: { role: "user" | "assistant"; content: string }[];
 
-    if (isInit) {
+    if (isBranchInit) {
+      // Give the agent context, not instructions — the base curator system
+      // prompt already knows how to turn topics into subqueries, write a
+      // rerank prompt, and name the feed. It decides; we just hand it the post
+      // + the chosen topics (pretty-printed so the transcript reads cleanly).
+      const postBlock = sourcePostHit
+        ? composeSourcePostText(sourcePostHit)
+        : "(the source post could not be loaded)";
+      const topics = JSON.stringify(feed.subqueries, null, 2);
+      const branchSeed =
+        `I branched off this Bluesky post and chose these topics:\n${topics}\n\n` +
+        `THE POST:\n${postBlock}\n\n` +
+        `Set it up.`;
+      // Persist the seed so the transcript transparently shows the prompt the
+      // branch was built from (unlike __init__, which hides its kickoff).
+      await addChatMessage(feedId, "user", branchSeed);
+      apiMessages = [{ role: "user", content: branchSeed }];
+    } else if (isInit) {
       apiMessages = [{ role: "user", content: "Hey, help me set up my feed." }];
     } else {
       await addChatMessage(feedId, "user", message);
@@ -290,6 +341,7 @@ export async function POST(req: NextRequest) {
       messages: allMessages,
       feed: updatedFeed,
       done: isDone,
+      sourcePost,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Internal error";
@@ -315,6 +367,11 @@ export async function GET(req: NextRequest) {
   }
   const tFeed = performance.now();
   const messages = await getChatMessages(feedId);
+  let sourcePost: ChatSourcePost | null = null;
+  if (feed.source_post_uri) {
+    const hit = await hydratePostByUri(feed.source_post_uri).catch(() => null);
+    if (hit) sourcePost = toChatSourcePost(hit);
+  }
   const tMessages = performance.now();
   console.log(
     `[timing] GET /api/chat auth=${(tAuth - t0).toFixed(0)}ms ` +
@@ -323,5 +380,5 @@ export async function GET(req: NextRequest) {
       `total=${(tMessages - t0).toFixed(0)}ms feedId=${feedId} count=${messages.length}`
   );
 
-  return NextResponse.json({ messages, feed });
+  return NextResponse.json({ messages, feed, sourcePost });
 }

@@ -290,6 +290,36 @@ async function embedAndKnn(
   return res.rows;
 }
 
+// Hydrate a single post by its at:// URI — same projection as KNN_SQL minus
+// the vector math and the partial-index cutoff (a direct URI lookup must work
+// regardless of the post's age). Used by the branch flow to read the source
+// post (text + image alts + embed cards) for option generation + chat seeding.
+const HYDRATE_BY_URI_SQL = `
+SELECT
+  p.uri, p.did, p.text, p.created_at, p.langs,
+  p.has_images, p.has_video, p.has_quote, p.has_external_link,
+  (p.reply_parent_uri IS NOT NULL) AS is_reply,
+  p.reply_parent_uri, p.reply_root_uri,
+  p.image_count, p.image_alts,
+  p.external_uri, p.external_title, p.external_desc, p.quote_uri,
+  p.hashtags, p.mention_dids, p.domains, p.self_labels,
+  pe.like_count, pe.repost_count, pe.reply_count, pe.quote_count,
+  a.handle       AS author_handle,
+  a.display_name AS author_display_name,
+  a.avatar_cid   AS author_avatar_cid,
+  1.0 AS vector_score
+FROM bsky.posts p
+LEFT JOIN bsky.post_engagement pe ON pe.uri = p.uri
+LEFT JOIN bsky.authors a          ON a.did = p.did
+WHERE p.uri = $1
+LIMIT 1
+`;
+
+export async function hydratePostByUri(uri: string): Promise<VectorHit | null> {
+  const res = await bskyQuery<PgRow>(HYDRATE_BY_URI_SQL, [uri]);
+  return res.rows[0] ? rowToHit(res.rows[0]) : null;
+}
+
 function rowToHit(r: PgRow): VectorHit {
   return {
     uri: r.uri,
