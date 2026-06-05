@@ -5,8 +5,6 @@ import dynamic from "next/dynamic";
 import { motion } from "motion/react";
 import Link from "next/link";
 import "./landing.css";
-import Logo from "@/components/Logo";
-import ShaderLogo from "@/components/ShaderLogo";
 import ShaderSendButton from "@/components/ShaderSendButton";
 
 const World = dynamic(() => import("@/components/ui/globe").then((m) => m.World), { ssr: false });
@@ -206,14 +204,12 @@ export default function LandingPageV2() {
     <div className="rf-page">
       <div className="grain" />
       <div className="vignette" />
-      <div style={{ position: "fixed", top: 24, left: 32, zIndex: 50, fontFamily: "var(--rf-display), 'Instrument Serif', serif", fontSize: 22, color: "var(--cream, #f3ecdd)", letterSpacing: "-0.02em" }}>
-        willow
-      </div>
-      <nav style={{ position: "fixed", top: 24, right: 32, zIndex: 50, display: "flex", alignItems: "center", gap: 24 }}>
-        <a href="#mission" style={{ fontFamily: "var(--rf-mono)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--parchment-dim, #a8a090)", textDecoration: "none", transition: "color 0.2s" }}>Mission</a>
-        <a href="#how" style={{ fontFamily: "var(--rf-mono)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--parchment-dim, #a8a090)", textDecoration: "none", transition: "color 0.2s" }}>How it Works</a>
-        <a href="#about" style={{ fontFamily: "var(--rf-mono)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--parchment-dim, #a8a090)", textDecoration: "none", transition: "color 0.2s" }}>Team</a>
-        <Link href="/curator" style={{ fontFamily: "var(--rf-mono)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#000", textDecoration: "none", padding: "8px 18px", borderRadius: 999, background: "#fff", fontWeight: 700 }}>
+      <div className="landing-wordmark">willow</div>
+      <nav className="landing-nav">
+        <a href="#mission" className="landing-nav-link">Mission</a>
+        <a href="#how" className="landing-nav-link">How it Works</a>
+        <a href="#about" className="landing-nav-link">Team</a>
+        <Link href="/curator" className="landing-nav-cta">
           Try Demo &rarr;
         </Link>
       </nav>
@@ -222,16 +218,16 @@ export default function LandingPageV2() {
 
       {/* HERO with Globe */}
       <section className="hero" style={{ minHeight: "100vh", display: "flex", alignItems: "flex-start", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", width: "100%", bottom: -180, height: "100%", zIndex: 1 }}>
+        <div className="hero-globe">
           <World data={sampleArcs} globeConfig={globeConfig} />
         </div>
-        <div style={{ position: "absolute", width: "100%", bottom: 0, height: 160, background: "linear-gradient(to bottom, transparent, #000000)", zIndex: 2, pointerEvents: "none" }} />
-        <div className="wrap hero-content" style={{ position: "relative", zIndex: 3, textAlign: "center", maxWidth: 720, margin: "0 auto", paddingTop: "8vh" }}>
+        <div className="hero-globe-fade" />
+        <div className="wrap hero-content hero-content--centered">
           <motion.h1
             initial={{ opacity: 0, y: -60 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, ease: "easeOut" }}
-            style={{ fontSize: "clamp(2.4rem, 5vw, 4rem)", lineHeight: 1.15 }}
+            className="hero-title"
           >
             A feed you <span className="it">actually</span> choose.
           </motion.h1>
@@ -239,12 +235,12 @@ export default function LandingPageV2() {
             initial={{ opacity: 0, y: -40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, ease: "easeOut", delay: 0.3 }}
-            className="hero-sub" style={{ maxWidth: 600, margin: "6px auto 2rem", fontSize: "1.25rem", lineHeight: 1.7 }}>
+            className="hero-sub hero-sub--centered">
             In the same way you <em>curate what you eat</em>, you must curate what you consume online to stay healthy.
             We&apos;re building the tools to help you do that.
           </motion.p>
-          <p style={{ fontFamily: "var(--rf-mono)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#ffffff", fontWeight: 700, marginBottom: 10, marginTop: 550, textAlign: "center" }}>Join the Waitlist</p>
-          <div style={{ maxWidth: 420, margin: "0 auto 16px" }}>
+          <p className="hero-waitlist-label">Join the Waitlist</p>
+          <div className="hero-waitlist-form">
             <SubscribeForm />
           </div>
         </div>
@@ -415,6 +411,7 @@ export default function LandingPageV2() {
                   Former content creator turned engineer. Building better incentive systems for social media &mdash; feeds that serve people, not platforms.
                 </p>
                 <div className="about-links">
+                  <a href="https://bsky.app/profile/ohmcpatel.bsky.social" className="about-link" target="_blank" rel="noopener noreferrer" aria-label="Bluesky"><BlueskyIcon /></a>
                   <a href="https://www.linkedin.com/in/ohm-patel-84856223b/" className="about-link" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn"><LinkedInIcon /></a>
                 </div>
               </div>

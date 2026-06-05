@@ -1101,3 +1101,138 @@ html{ scroll-behavior: smooth; }
   margin-bottom: 20px;
   line-height: 1.6;
 }
+
+/* ── LANDING NAV (wordmark + links) ──────────── */
+.landing-wordmark{
+  position: fixed; top: 24px; left: 32px; z-index: 50;
+  font-family: var(--rf-display), 'Instrument Serif', serif;
+  font-size: 22px; color: var(--cream);
+  letter-spacing: -0.02em;
+}
+.landing-nav{
+  position: fixed; top: 24px; right: 32px; z-index: 50;
+  display: flex; align-items: center; gap: 24px;
+}
+.landing-nav-link{
+  font-family: var(--rf-mono); font-size: 10px;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--parchment-dim); text-decoration: none;
+  transition: color 0.2s;
+}
+.landing-nav-link:hover{ color: var(--cream); }
+.landing-nav-cta{
+  font-family: var(--rf-mono); font-size: 11px;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: #000; text-decoration: none;
+  padding: 8px 18px; border-radius: 999px;
+  background: #fff; font-weight: 700;
+  transition: background 0.2s;
+}
+.landing-nav-cta:hover{ background: var(--amber); }
+
+/* ── HERO (globe + centered content) ─────────── */
+.hero-globe{
+  position: absolute; width: 100%; bottom: -180px;
+  height: 100%; z-index: 1;
+}
+.hero-globe-fade{
+  position: absolute; width: 100%; bottom: 0;
+  height: 160px; z-index: 2; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, #000000);
+}
+.hero-content--centered{
+  position: relative; z-index: 3;
+  text-align: center; max-width: 720px;
+  margin: 0 auto; padding-top: 8vh;
+}
+.hero-title{
+  font-size: clamp(2.4rem, 5vw, 4rem);
+  line-height: 1.15;
+}
+.hero-sub--centered{
+  max-width: 600px; margin: 6px auto 2rem;
+  font-size: 1.25rem; line-height: 1.7;
+}
+.hero-waitlist-label{
+  font-family: var(--rf-mono); font-size: 11px;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: #ffffff; font-weight: 700;
+  margin-bottom: 10px; margin-top: 280px;
+  text-align: center;
+}
+.hero-waitlist-form{
+  max-width: 420px; margin: 0 auto 16px;
+}
+
+/* ── COMPREHENSIVE MOBILE ────────────────────── */
+@media (max-width: 780px){
+  /* Nav */
+  .landing-wordmark{ top: 16px; left: 20px; font-size: 20px; }
+  .landing-nav{ top: 16px; right: 16px; gap: 12px; }
+  .landing-nav-link{ display: none; }
+  .landing-nav-cta{ font-size: 10px; padding: 7px 14px; }
+
+  /* Hero */
+  .hero-globe{ bottom: -100px; }
+  .hero-content--centered{ padding-top: 12vh; }
+  .hero-title{ font-size: clamp(1.8rem, 8vw, 2.6rem); }
+  .hero-sub--centered{
+    font-size: 1rem; line-height: 1.6;
+    margin: 4px auto 1.5rem;
+    max-width: 90%;
+  }
+  .hero-waitlist-label{ margin-top: 200px; font-size: 10px; }
+  .hero-waitlist-form{ max-width: 100%; padding: 0 8px; }
+  .subscribe-row{ flex-wrap: nowrap; gap: 8px; }
+  .subscribe-row input{ flex: 1 1 0; min-width: 0; font-size: 14px; padding: 10px 14px; }
+
+  /* Sections: tighten padding */
+  .mission{ padding: 80px 0; }
+  .mission h2{ font-size: clamp(32px, 8vw, 48px); margin-bottom: 24px; }
+  .section-head{ margin-bottom: 40px; }
+  .mission-body{ font-size: 16px; }
+  .mission-body p:first-child::first-letter{ font-size: 56px; padding: 4px 10px 0 0; }
+
+  /* Diet */
+  .diet{ padding: 80px 0; }
+  .diet-intro h2{ font-size: clamp(36px, 8vw, 56px); }
+  .diet-intro p{ font-size: 16px; }
+  .diet-intro{ margin-bottom: 48px; }
+  .plate{ padding: 36px 28px; min-height: auto; }
+  .plate h3{ font-size: 26px; }
+
+  /* How it works */
+  .how{ padding: 80px 0; }
+  .how h2{ font-size: clamp(36px, 8vw, 56px); margin-bottom: 48px; }
+  .step{ padding: 0 28px 28px; }
+  .step-image{ margin: 0 -28px 24px; height: 160px; }
+  .step-num{ font-size: 40px; }
+  .step h3{ font-size: 22px; }
+  .step p{ font-size: 14px; }
+
+  /* About / Team */
+  .about-section{ padding: 80px 0 60px; }
+  .about-grid{ gap: 40px; margin-top: 48px; }
+  .about-card{ flex-direction: row; align-items: flex-start; gap: 20px; }
+  .about-photo{ max-width: 80px; flex-shrink: 0; }
+  .about-name{ font-size: 18px; }
+  .about-bio{ font-size: 14px; }
+
+  /* Footer */
+  .rf-footer{ padding: 40px 0 32px; }
+  .footer-row{ flex-direction: column; align-items: flex-start; gap: 16px; }
+
+  /* Pullquote */
+  .pullquote{ font-size: 24px; padding: 32px 0; margin-top: 48px; }
+}
+
+/* Small phones */
+@media (max-width: 420px){
+  .wrap{ padding: 0 16px; }
+  .landing-wordmark{ left: 16px; }
+  .landing-nav{ right: 12px; }
+  .hero-title{ font-size: 1.7rem; }
+  .hero-waitlist-label{ margin-top: 200px; }
+  .plate h3{ font-size: 22px; }
+  .how h2{ font-size: 32px; }
+}

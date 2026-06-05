@@ -8,6 +8,7 @@ RUN npm ci
 
 # Copy source
 COPY src/ src/
+COPY data/ data/
 COPY next.config.ts tsconfig.json postcss.config.mjs eslint.config.mjs ./
 COPY public/ public/
 
