@@ -59,7 +59,7 @@ const TOOLS: Anthropic.Tool[] = [
 
 export async function POST(req: NextRequest) {
   const t0 = performance.now();
-  const auth = await requireAuth(req);
+  const auth = await requireAuth();
   if (isAuthError(auth)) return auth;
 
   try {

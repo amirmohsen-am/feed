@@ -8,7 +8,7 @@ import { MAX_BRANCH_TOPICS } from "@/lib/branch";
 // The rerank_prompt + a polished name are written by the seeded chat agent on
 // the new feed's first turn (see /api/chat branch-init). See BRANCHING_PRD.md.
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth(req);
+  const auth = await requireAuth();
   if (isAuthError(auth)) return auth;
 
   try {
