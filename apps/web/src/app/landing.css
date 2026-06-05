@@ -1018,6 +1018,7 @@ html{ scroll-behavior: smooth; }
   grid-template-columns: repeat(3, 1fr);
   gap: 48px;
   margin-top: 72px;
+  align-items: start;
 }
 .about-card{
   display: flex;
