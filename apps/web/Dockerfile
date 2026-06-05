@@ -27,5 +27,6 @@ COPY --from=base /app/public ./public
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+ENV NEXT_PUBLIC_URL="https://willownet.co"
 
 CMD ["node", "server.js"]
