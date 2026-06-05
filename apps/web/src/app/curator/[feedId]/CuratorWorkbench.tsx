@@ -9,10 +9,20 @@ import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader"
 import { authedFetch } from "@/lib/authed-fetch";
 import type { MechanicalFilters } from "@/lib/types";
 import { DEFAULT_CANDIDATE_BUDGET, DEFAULT_RERANK_MODEL } from "@/lib/defaults";
+import { MAX_BRANCH_TOPICS, type BranchOption } from "@/lib/branch";
 import { useResizable } from "../useResizable";
 import { useCurator, feedIsComplete } from "../curatorContext";
 
 interface Message { role: "user" | "assistant"; content: string; }
+
+// Source post embedded in a branched feed's chat (from /api/chat).
+interface ChatSourcePost {
+  uri: string;
+  bsky_url: string | null;
+  text: string;
+  author_handle: string | null;
+  author_display_name: string | null;
+}
 interface Post {
   uri: string;
   author_did: string;
@@ -142,6 +152,47 @@ function parseMessage(content: string) {
   return { text: textLines.join("\n").trim(), options };
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// Bluesky's embed.js replaces the `.bluesky-embed` node with an <iframe>. If
+// React owns that node, swapping view modes makes React try to remove a node
+// the script already replaced → "removeChild: not a child" crash. So we render
+// only an empty host <div> that React controls and inject the embed markup
+// imperatively — React never reconciles the script-mutated node.
+function BlueskyEmbed({
+  uri,
+  text,
+  url,
+}: {
+  uri: string;
+  text: string;
+  url: string | null;
+}) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const link = url
+      ? `<p><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">View on Bluesky</a></p>`
+      : "";
+    host.innerHTML =
+      `<div class="bluesky-embed" data-bluesky-uri="${escapeHtml(uri)}" data-bluesky-embed-color-mode="light">` +
+      `<p>${escapeHtml(text)}</p>${link}</div>`;
+    const t = setTimeout(() => window.bluesky?.scan?.(host), 0);
+    return () => {
+      clearTimeout(t);
+      host.innerHTML = "";
+    };
+  }, [uri, text, url]);
+  return <div ref={hostRef} />;
+}
+
 export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const {
     feeds,
@@ -173,24 +224,25 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     return () => setUnavailableCount(0);
   }, [setUnavailableCount]);
 
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const [loading, setLoading] = useState(false);
-
   // ?prompt=<text> on the URL — set by /introspect's suggested-feed cards.
-  // Consume once, drop it from the URL so a remount doesn't re-seed.
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const promptParam = searchParams.get("prompt");
+
+  const [messages, setMessages] = useState<Message[]>([]);
+  // Seed the input from ?prompt= via the initializer (not an effect) so it's
+  // there on first paint and we don't trigger a cascading render.
+  const [input, setInput] = useState(() => promptParam ?? "");
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Consume the seed once: focus the textarea and drop ?prompt= from the URL
+  // so a remount doesn't re-seed. No setState here — the value is already in.
   const promptConsumedRef = useRef(false);
   useEffect(() => {
-    if (promptConsumedRef.current) return;
-    if (!promptParam) return;
+    if (promptConsumedRef.current || !promptParam) return;
     promptConsumedRef.current = true;
-    setInput(promptParam);
-    // Focus on the next tick so the textarea is mounted by then.
     setTimeout(() => inputRef.current?.focus(), 0);
     router.replace(pathname);
   }, [promptParam, pathname, router]);
@@ -227,6 +279,20 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const [rerankPrompt, setRerankPrompt] = useState<string>("");
   const [rerankModel, setRerankModel] = useState<string>(DEFAULT_RERANK_MODEL);
   const [rerankThinkingEnabled, setRerankThinkingEnabled] = useState<boolean>(false);
+
+  // Branch flow. sourcePost is set when this feed was branched off a post (it
+  // renders an embedded card atop the chat). The auto-fired branch-init turn
+  // (guarded by branchInitFiredRef) makes the agent write the rerank prompt +
+  // name. The branch* panel state drives the inline "Branch" affordance on
+  // each post card. See BRANCHING_PRD.md.
+  const [sourcePost, setSourcePost] = useState<ChatSourcePost | null>(null);
+  const branchInitFiredRef = useRef(false);
+  const [branchPanelUri, setBranchPanelUri] = useState<string | null>(null);
+  const [branchOptions, setBranchOptions] = useState<BranchOption[] | null>(null);
+  const [branchOptionsLoading, setBranchOptionsLoading] = useState(false);
+  const [branchSelected, setBranchSelected] = useState<Set<number>>(new Set());
+  const [branchCreating, setBranchCreating] = useState(false);
+
   const endRef = useRef<HTMLDivElement>(null);
   // Single signature of the fields that, when changed, should re-fetch posts.
   // Updated by both the user (Tune panel saves) and the agent (chat replies).
@@ -299,6 +365,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       const res = await authedFetch(`/api/chat?feedId=${id}`);
       const data = await res.json();
       const msgs: Message[] = data.messages || [];
+      setSourcePost(data.sourcePost ?? null);
       const f = data.feed;
       if (f) {
         if (Array.isArray(f.subqueries)) setSubqueries(f.subqueries);
@@ -430,9 +497,14 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   }, [setActivePostCount]);
 
   // On mount (i.e. on feed switch via URL change), hydrate chat + posts.
+  // Deferred a tick so the fetch kickoff (which flips loading flags) runs
+  // outside the synchronous effect body, avoiding a cascading render.
   useEffect(() => {
-    loadChat(feedId);
-    loadPosts(feedId);
+    const t = setTimeout(() => {
+      loadChat(feedId);
+      loadPosts(feedId);
+    }, 0);
+    return () => clearTimeout(t);
   }, [feedId, loadChat, loadPosts]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -604,6 +676,202 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     send(composed);
   }
 
+  // Auto-fire the branch-init turn: on a branched feed with no chat yet, ask
+  // the agent to write the rerank prompt + name from the embedded source post.
+  const branchInit = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await authedFetch("/api/chat", {
+        method: "POST",
+        body: JSON.stringify({ message: "__branch_init__", feedId }),
+      });
+      const d = await res.json();
+      if (Array.isArray(d.messages)) setMessages(d.messages);
+      if (d.sourcePost !== undefined) setSourcePost(d.sourcePost);
+      const f = d.feed;
+      if (f) {
+        if (Array.isArray(f.subqueries)) setSubqueries(f.subqueries);
+        if (f.mechanical_filters) setMechanicalFilters(f.mechanical_filters);
+        if (typeof f.rerank_prompt === "string") setRerankPrompt(f.rerank_prompt);
+        feedSignatureRef.current = feedSignature(f);
+        reloadFeeds(); // the agent renamed the feed → refresh the sidebar
+        // The rerank prompt now exists → re-query so the feed is reranked.
+        loadPosts(feedId);
+      }
+    } catch { /* ignore — user can still chat normally */ }
+    finally { setLoading(false); }
+  }, [feedId, reloadFeeds, loadPosts]);
+
+  useEffect(() => {
+    if (!sourcePost || messages.length > 0) return;
+    if (branchInitFiredRef.current || chatLoading || loading) return;
+    branchInitFiredRef.current = true;
+    void branchInit();
+  }, [sourcePost, messages.length, chatLoading, loading, branchInit]);
+
+
+  // --- Branch panel (inline "Branch" affordance on each post card) ---
+  const fetchBranchOptions = useCallback(async (postUri: string) => {
+    setBranchOptionsLoading(true);
+    setBranchOptions(null);
+    try {
+      const res = await authedFetch("/api/branch/options", {
+        method: "POST",
+        body: JSON.stringify({ feedId, postUri }),
+      });
+      const d = await res.json();
+      setBranchOptions(Array.isArray(d.options) ? d.options : []);
+    } catch {
+      setBranchOptions([]);
+    } finally {
+      setBranchOptionsLoading(false);
+    }
+  }, [feedId]);
+
+  function openBranch(postUri: string) {
+    if (branchPanelUri === postUri) {
+      setBranchPanelUri(null);
+      return;
+    }
+    setBranchPanelUri(postUri);
+    setBranchSelected(new Set());
+    setBranchOptions(null);
+    fetchBranchOptions(postUri);
+  }
+
+  function toggleBranchSelect(i: number) {
+    setBranchSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else if (next.size < MAX_BRANCH_TOPICS) next.add(i);
+      return next;
+    });
+  }
+
+  async function createBranch(postUri: string) {
+    if (!branchOptions || branchSelected.size === 0 || branchCreating) return;
+    const picked = [...branchSelected].map((i) => branchOptions[i]).filter(Boolean);
+    setBranchCreating(true);
+    try {
+      const res = await authedFetch("/api/feeds/branch", {
+        method: "POST",
+        body: JSON.stringify({
+          parentFeedId: feedId,
+          sourcePostUri: postUri,
+          subqueries: picked.map((o) => o.subquery),
+          labels: picked.map((o) => o.label),
+        }),
+      });
+      const d = await res.json();
+      if (d.feed?.id) {
+        reloadFeeds();
+        setBranchPanelUri(null);
+        router.push(`/curator/${d.feed.id}`);
+      }
+    } catch { /* ignore */ }
+    finally { setBranchCreating(false); }
+  }
+
+  // Branch button + panel, shared by both the custom-card and embed views so
+  // the affordance is identical in either mode.
+  function branchButton(postUri: string) {
+    return (
+      <button
+        type="button"
+        className={`cur-post-branch${branchPanelUri === postUri ? " active" : ""}`}
+        onClick={() => openBranch(postUri)}
+        title="Branch into a new feed"
+        aria-expanded={branchPanelUri === postUri}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <circle cx="6" cy="6" r="2.5" />
+          <circle cx="6" cy="18" r="2.5" />
+          <circle cx="18" cy="9" r="2.5" />
+          <path d="M6 8.5v7" />
+          <path d="M6 14c0-3 1.5-5 5-5h4.5" />
+        </svg>
+        Branch
+      </button>
+    );
+  }
+
+  function branchPanel(postUri: string) {
+    if (branchPanelUri !== postUri) return null;
+    return (
+      <div className="cur-branch-panel">
+        {branchOptionsLoading ? (
+          <div className="cur-branch-status">
+            <span className="cur-dots-inline"><span /><span /><span /></span>
+            Finding directions to branch into…
+          </div>
+        ) : branchOptions && branchOptions.length > 0 ? (
+          <>
+            <div className="cur-branch-hint">
+              Pick up to {MAX_BRANCH_TOPICS} directions — we&rsquo;ll spin up a new feed.
+            </div>
+            <div className="cur-branch-chips">
+              {branchOptions.map((opt, i) => {
+                const checked = branchSelected.has(i);
+                const atCap = !checked && branchSelected.size >= MAX_BRANCH_TOPICS;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    className={`cur-branch-chip${checked ? " selected" : ""}`}
+                    data-kind={opt.kind}
+                    disabled={atCap || branchCreating}
+                    onClick={() => toggleBranchSelect(i)}
+                    title={opt.subquery}
+                  >
+                    <span className="cur-branch-chip-kind">
+                      {opt.kind === "deeper" ? "↳ deeper" : "→ adjacent"}
+                    </span>
+                    <span className="cur-branch-chip-label">
+                      {checked ? "✓ " : ""}{opt.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="cur-branch-actions">
+              <button
+                type="button"
+                className="cur-branch-create"
+                disabled={branchSelected.size === 0 || branchCreating}
+                onClick={() => createBranch(postUri)}
+              >
+                {branchCreating
+                  ? "Creating…"
+                  : branchSelected.size > 0
+                    ? `Create feed from ${branchSelected.size} topic${branchSelected.size === 1 ? "" : "s"}`
+                    : "Create feed"}
+              </button>
+              <button
+                type="button"
+                className="cur-branch-cancel"
+                onClick={() => setBranchPanelUri(null)}
+                disabled={branchCreating}
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="cur-branch-status">
+            Couldn&rsquo;t find directions.{" "}
+            <button
+              type="button"
+              className="cur-branch-retry"
+              onClick={() => fetchBranchOptions(postUri)}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const hasCriteria = subqueries.length > 0;
 
   const activeFeed = feeds.find(f => f.id === String(feedId));
@@ -695,8 +963,8 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                   return null;
                 }
                 return (
+                  <div key={post.uri} className="cur-post-item cur-post-item-embed">
                   <div
-                    key={post.uri}
                     className="cur-post-embed-wrap"
                     data-bsky-uri={post.uri}
                   >
@@ -752,20 +1020,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                         </div>
                       )}
                     </div>
-                    <div
-                      className="bluesky-embed"
-                      data-bluesky-uri={post.uri}
-                      data-bluesky-embed-color-mode="light"
-                    >
-                      <p>{post.text}</p>
-                      {bskyUrl && (
-                        <p>
-                          <a href={bskyUrl} target="_blank" rel="noopener noreferrer">
-                            View on Bluesky
-                          </a>
-                        </p>
-                      )}
-                    </div>
+                    <BlueskyEmbed uri={post.uri} text={post.text} url={bskyUrl} />
+                  </div>
+                    <div className="cur-post-branch-row">{branchButton(post.uri)}</div>
+                    {branchPanel(post.uri)}
                   </div>
                 );
               })
@@ -793,7 +1051,8 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                   return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
                 })();
                 return (
-                  <article key={post.uri} className="cur-post-card">
+                  <div key={post.uri} className="cur-post-item">
+                  <article className="cur-post-card">
                     {post.is_reply && (
                       <div className="cur-post-reply-banner">
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -979,6 +1238,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                       )}
                     </footer>
                   </article>
+                    <div className="cur-post-branch-row">{branchButton(post.uri)}</div>
+                    {branchPanel(post.uri)}
+                  </div>
                 );
               })
             )}
@@ -1018,7 +1280,44 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           </div>
           <div className="cur-chat-area">
             <div className="cur-chat-inner">
-              {messages.length === 0 && !chatLoading && !loading && (
+              {sourcePost && (
+                <div className="cur-branch-source">
+                  <div className="cur-branch-source-label">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <circle cx="6" cy="6" r="2.5" />
+                      <circle cx="6" cy="18" r="2.5" />
+                      <circle cx="18" cy="9" r="2.5" />
+                      <path d="M6 8.5v7" />
+                      <path d="M6 14c0-3 1.5-5 5-5h4.5" />
+                    </svg>
+                    Branched from this post
+                  </div>
+                  {viewMode === "embed" ? (
+                    <BlueskyEmbed
+                      uri={sourcePost.uri}
+                      text={sourcePost.text}
+                      url={sourcePost.bsky_url}
+                    />
+                  ) : (
+                    <a
+                      className="cur-branch-source-card"
+                      href={sourcePost.bsky_url ?? undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <div className="cur-branch-source-author">
+                        {sourcePost.author_display_name?.trim() ||
+                          (sourcePost.author_handle ? `@${sourcePost.author_handle}` : "Unknown")}
+                        {sourcePost.author_handle && sourcePost.author_display_name?.trim() && (
+                          <span className="cur-branch-source-handle">@{sourcePost.author_handle}</span>
+                        )}
+                      </div>
+                      <div className="cur-branch-source-text">{sourcePost.text}</div>
+                    </a>
+                  )}
+                </div>
+              )}
+              {messages.length === 0 && !sourcePost && !chatLoading && !loading && (
                 <div className="cur-empty">
                   <p>Describe your ideal feed</p>
                   <p className="sub">a topic you&rsquo;re interested in, hobbies, etc.</p>
