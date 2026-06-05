@@ -1516,9 +1516,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                     >
                       ✦ Help me build my prompt
                     </button>
-                    <span className="cur-mode-hint">
-                      let Claude ask you step-by-step questions
-                    </span>
                   </>
                 )}
               </div>
