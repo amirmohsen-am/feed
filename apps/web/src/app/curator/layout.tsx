@@ -377,7 +377,7 @@ function CuratorShell({
                   fontFamily: "var(--rf-body)",
                   fontSize: 13,
                   color: "var(--sage)",
-                  fontStyle: "italic",
+                  fontStyle: "normal",
                 }}
               >
                 No feeds yet — create your first one.

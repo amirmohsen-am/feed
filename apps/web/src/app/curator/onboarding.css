@@ -469,7 +469,7 @@
   font-size: 18px;
   color: var(--accent);
   margin-bottom: 20px;
-  font-style: italic;
+  font-style: normal;
 }
 .onboarding-preview{
   display: flex; flex-direction: column; gap: 1px;

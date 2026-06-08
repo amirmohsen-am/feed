@@ -53,7 +53,7 @@ html{ scroll-behavior: smooth; }
   letter-spacing: -0.01em;
   line-height: 1.05;
 }
-.rf-page em, .rf-page .em{ font-family: var(--rf-display); font-style: italic; font-weight: 400; }
+.rf-page em, .rf-page .em{ font-family: var(--rf-display); font-style: normal; font-weight: 400; }
 .rf-page .mono{
   font-family: var(--rf-mono);
   font-weight: 400; font-size: 11px;
@@ -187,9 +187,9 @@ html{ scroll-behavior: smooth; }
   margin-bottom: 36px;
   color: var(--cream);
 }
-.hero h1 .it{ font-style: italic; color: var(--amber); font-weight: 400; }
+.hero h1 .it{ font-style: normal; color: var(--amber); font-weight: 400; }
 .hero h1 .small-it{
-  display:block; font-style: italic;
+  display:block; font-style: normal;
   font-size: 0.56em;
   color: var(--sage-dim);
   margin-top: 14px;
@@ -287,7 +287,7 @@ html{ scroll-behavior: smooth; }
   margin-bottom: 12px; display: block;
 }
 .interlude-caption p{
-  font-family: var(--rf-display); font-style: italic;
+  font-family: var(--rf-display); font-style: normal;
   font-size: 22px; line-height: 1.35;
   color: var(--cream);
 }
@@ -338,7 +338,7 @@ html{ scroll-behavior: smooth; }
   font-family: var(--rf-display); font-size: 86px;
   line-height: 0.8; float: left;
   padding: 8px 14px 0 0;
-  color: var(--amber); font-style: italic;
+  color: var(--amber); font-style: normal;
 }
 .mission-body em{ color: var(--amber); }
 .pullquote{
@@ -347,7 +347,7 @@ html{ scroll-behavior: smooth; }
   border-top: 1px solid var(--hair);
   border-bottom: 1px solid var(--hair);
   font-family: var(--rf-display); font-size: 34px;
-  font-style: italic; line-height: 1.25;
+  font-style: normal; line-height: 1.25;
   color: var(--cream);
 }
 .pullquote .attr{
@@ -477,7 +477,7 @@ html{ scroll-behavior: smooth; }
   margin-bottom: 32px;
 }
 .step-num{
-  font-family: var(--rf-display); font-style: italic;
+  font-family: var(--rf-display); font-style: normal;
   font-size: 60px; line-height: 0.9;
   color: var(--amber); opacity: 0.9;
 }
@@ -624,7 +624,7 @@ html{ scroll-behavior: smooth; }
 .main-desc{
   color: var(--parchment-dim);
   font-size: 14px; margin-bottom: 28px;
-  font-style: italic; font-family: var(--rf-display);
+  font-style: normal; font-family: var(--rf-display);
 }
 .post{ padding: 20px 0; border-bottom: 1px solid var(--hair); }
 .post:last-child{ border-bottom: none; }
@@ -691,7 +691,7 @@ html{ scroll-behavior: smooth; }
 .about-right{ display: flex; flex-direction: column; }
 .about-quote{
   font-family: var(--rf-display);
-  font-style: italic;
+  font-style: normal;
   font-size: 20px;
   line-height: 1.4;
   color: var(--parchment);
@@ -956,7 +956,7 @@ html{ scroll-behavior: smooth; }
   line-height: 1.65;
   color: var(--parchment);
   font-weight: 300;
-  font-style: italic;
+  font-style: normal;
   margin-bottom: 32px;
 }
 .snitch-reward{
@@ -1031,7 +1031,7 @@ html{ scroll-behavior: smooth; }
   font-family: var(--rf-display);
   font-size: 22px;
   color: var(--cream);
-  font-style: italic;
+  font-style: normal;
   margin: 0;
 }
 .about-role{

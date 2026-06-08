@@ -26,7 +26,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Merriweather:ital,wght@1,900&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Merriweather:wght@900&display=swap"
           rel="stylesheet"
         />
       </head>

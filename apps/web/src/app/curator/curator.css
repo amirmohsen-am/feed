@@ -15,6 +15,10 @@
   --hair:         rgba(11,24,20,0.08);
   --hair-strong:  rgba(11,24,20,0.16);
 
+  /* Shared height for the sidebar head + main topbar so their bottom
+     separators line up across both columns. */
+  --cur-header-h: 72px;
+
   display: flex;
   height: 100dvh;
   background: var(--paper);
@@ -54,7 +58,10 @@
   flex-shrink: 0;
 }
 .cur-sidebar-head{
-  padding: 22px 20px 18px;
+  height: var(--cur-header-h);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  padding: 0 20px;
   border-bottom: 1px solid var(--hair);
   display: flex;
   align-items: center;
@@ -98,7 +105,7 @@
   box-shadow: 0 1px 0 rgba(11,24,20,0.04);
 }
 .cur-feed-item.drafting .fi-name{
-  font-style: italic;
+  font-style: normal;
   color: var(--ink-2);
 }
 .cur-feed-item.drafting .fi-sub{
@@ -240,7 +247,10 @@
 }
 
 .cur-topbar{
-  padding: 14px 24px;
+  height: var(--cur-header-h);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  padding: 0 24px;
   border-bottom: 1px solid var(--hair);
   display: flex;
   align-items: center;
@@ -548,7 +558,7 @@
   font-family: var(--rf-body);
   font-size: 12px;
   color: var(--ink-3);
-  font-style: italic;
+  font-style: normal;
 }
 .cur-mode-row{
   max-width: 640px;
@@ -585,7 +595,7 @@
   font-family: var(--rf-body);
   font-size: 12px;
   color: var(--ink-3);
-  font-style: italic;
+  font-style: normal;
 }
 .cur-input-wrap{
   max-width: 640px;
@@ -683,7 +693,7 @@
 }
 .cur-feed-desc{
   font-family: var(--rf-display);
-  font-style: italic;
+  font-style: normal;
   font-size: 16px;
   color: var(--ink-3);
   margin-bottom: 26px;
@@ -1537,7 +1547,7 @@
 }
 .cur-post-debug-reason{
   color: var(--ink-2);
-  font-style: italic;
+  font-style: normal;
   font-family: var(--rf-sans, inherit);
   font-size: 12px;
 }
@@ -2560,8 +2570,9 @@
   .cur-topbar-burger{ display: inline-flex; }
 
   /* Slim the topbar — icon-only action buttons */
+  .curator-shell{ --cur-header-h: 56px; }
   .cur-topbar{
-    padding: 10px 12px;
+    padding: 0 12px;
     gap: 8px;
     min-width: 0;
   }

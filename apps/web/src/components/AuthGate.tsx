@@ -77,7 +77,7 @@ export default function AuthGate({
           background: "#fbfaf6",
           color: "#6a7570",
           fontFamily: "var(--rf-display), 'Instrument Serif', serif",
-          fontStyle: "italic",
+          fontStyle: "normal",
           fontSize: 18,
         }}
       >

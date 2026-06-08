@@ -142,7 +142,7 @@ function Wordmark({ height = 32, shimmer = true }: { height?: number; shimmer?: 
         x="0"
         y="26"
         fontFamily="'Merriweather', serif"
-        fontStyle="italic"
+        fontStyle="normal"
         fontWeight="900"
         fontSize="27"
         fill={fillColor}

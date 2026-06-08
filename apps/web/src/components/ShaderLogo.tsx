@@ -23,7 +23,7 @@ export default function ShaderLogo({ height = 200, color = "#e8b988" }: ShaderLo
         x="0"
         y={y}
         fontFamily="'Merriweather', serif"
-        fontStyle="italic"
+        fontStyle="normal"
         fontWeight="900"
         fontSize={fontSize}
         fill={color}

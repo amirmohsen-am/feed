@@ -99,7 +99,7 @@ export default function ServerErrorToast() {
               marginTop: 6,
               color: "#a8d5bd",
               fontSize: 12.5,
-              fontStyle: "italic",
+              fontStyle: "normal",
             }}
           >
             {current.hint}

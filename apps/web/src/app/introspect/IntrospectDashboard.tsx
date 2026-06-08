@@ -395,7 +395,7 @@ function IntrospectLoaded({
           {/* ── Main column ────────────────────────────────── */}
           <div className="order-1 md:order-2 flex flex-col gap-6 min-w-0">
             {!profile && !stream.phase && (
-              <p className="text-[#666] italic text-sm">
+              <p className="text-[#666] text-sm">
                 Analyze your activity to build your profile and suggested feeds.
               </p>
             )}
@@ -666,7 +666,7 @@ function ProfileHero({
           {aggregating && <Cursor />}
         </div>
       ) : (
-        <p className="text-[#888] italic">
+        <p className="text-[#888]">
           Analyze your activity to build your profile.
         </p>
       )}
@@ -1110,7 +1110,7 @@ function BatchRow({
           ) : note ? (
             <MarkdownBody text={note.text} />
           ) : (
-            <p className="text-[#999] italic text-sm">
+            <p className="text-[#999] text-sm">
               Not yet analyzed. Click <em>Analyze more activity</em> above.
             </p>
           )}
@@ -1369,7 +1369,7 @@ function MarkdownBody({ text, hero = false }: { text: string; hero?: boolean }) 
           strong: (props) => (
             <strong className="font-semibold text-[#1a1a1a]" {...props} />
           ),
-          em: (props) => <em className="italic text-[#0a5249]" {...props} />,
+          em: (props) => <em className="not-italic text-[#0a5249]" {...props} />,
           code: (props) => (
             <code
               className="bg-[#f4f4f4] text-[#333] px-1.5 py-0.5 rounded text-[0.9em] font-mono"
@@ -1378,7 +1378,7 @@ function MarkdownBody({ text, hero = false }: { text: string; hero?: boolean }) 
           ),
           blockquote: (props) => (
             <blockquote
-              className="border-l-2 border-[#ddd] pl-3 italic text-[#555] my-3"
+              className="border-l-2 border-[#ddd] pl-3 text-[#555] my-3"
               {...props}
             />
           ),
