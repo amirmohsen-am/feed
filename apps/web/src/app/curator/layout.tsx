@@ -71,6 +71,7 @@ const ANON_PROFILE: UserProfile = {
 
 export default function CuratorLayout({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile>(ANON_PROFILE);
+  const [bskyOAuthReady, setBskyOAuthReady] = useState(false);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -89,6 +90,7 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
             bskyAppPassword: row.bsky_app_password ? "••••" : "",
             onboardedAt: row.created_at || new Date().toISOString(),
           });
+          setBskyOAuthReady(!!data.oauthReady);
         }
       }
     } catch { /* use anonymous profile */ }
@@ -109,10 +111,20 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
     fetchProfile();
   }, [fetchProfile]);
 
-  return <CuratorShell profile={profile}>{children}</CuratorShell>;
+  return <CuratorShell profile={profile} bskyOAuthReady={bskyOAuthReady} refreshProfile={fetchProfile}>{children}</CuratorShell>;
 }
 
-function CuratorShell({ profile, children }: { profile: UserProfile; children: React.ReactNode }) {
+function CuratorShell({
+  profile,
+  bskyOAuthReady,
+  refreshProfile,
+  children,
+}: {
+  profile: UserProfile;
+  bskyOAuthReady: boolean;
+  refreshProfile: () => Promise<void>;
+  children: React.ReactNode;
+}) {
   const router = useRouter();
   const params = useParams<{ feedId?: string }>();
   const activeFeedId = params?.feedId ?? null;
@@ -276,6 +288,8 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
     <CuratorProvider
       value={{
         profile,
+        bskyOAuthReady,
+        refreshProfile,
         feeds,
         reloadFeeds,
         activePostCount,
@@ -448,9 +462,21 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
                   <div className="profile-row">
                     <span className="profile-key">Status</span>
                     {profile.blueskyDid ? (
-                      <span className="profile-val" style={{ color: "var(--aurora-deep)" }}>
-                        ● Connected
-                      </span>
+                      bskyOAuthReady ? (
+                        <span className="profile-val" style={{ color: "var(--aurora-deep)" }}>
+                          ● Connected
+                        </span>
+                      ) : (
+                        <button
+                          className="cur-bsky-connect-btn"
+                          onClick={() => {
+                            setProfileOpen(false);
+                            setShowBskyConnect(true);
+                          }}
+                        >
+                          Reconnect Bluesky
+                        </button>
+                      )
                     ) : (
                       <button
                         className="cur-bsky-connect-btn"
@@ -551,9 +577,9 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
 
         {/* BLUESKY CONNECT MODAL */}
         <Dialog open={showBskyConnect} onOpenChange={(open) => { if (!open) { setShowBskyConnect(false); setBskyHandle(""); } }}>
-          <DialogContent className="profile-dialog">
+          <DialogContent className="settings-dialog">
             <DialogHeader>
-              <DialogTitle style={{ fontFamily: "var(--rf-display)", fontSize: 22, fontWeight: 400 }}>
+              <DialogTitle style={{ fontFamily: "var(--rf-display)", fontSize: 22, fontWeight: 400, color: "var(--ink)" }}>
                 Connect Bluesky
               </DialogTitle>
             </DialogHeader>
@@ -585,16 +611,16 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
                 style={{
                   width: "100%",
                   padding: "10px 12px",
-                  background: "var(--void-soft)",
+                  background: "#fff",
                   border: "1px solid var(--hair-strong)",
                   borderRadius: 8,
-                  color: "var(--cream)",
+                  color: "var(--ink)",
                   fontFamily: "var(--rf-body)",
                   fontSize: 14,
                   outline: "none",
                 }}
               />
-              <p style={{ color: "var(--sage)", fontFamily: "var(--rf-body)", fontSize: 12, marginTop: 6 }}>
+              <p style={{ color: "var(--ink-3)", fontFamily: "var(--rf-body)", fontSize: 12, marginTop: 6 }}>
                 You&apos;ll be redirected to Bluesky to authorize access.
               </p>
             </div>
@@ -602,9 +628,9 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
               <button
                 onClick={() => { setShowBskyConnect(false); setBskyHandle(""); }}
                 style={{
-                  background: "transparent",
+                  background: "#fff",
                   border: "1px solid var(--hair-strong)",
-                  color: "var(--parchment)",
+                  color: "var(--ink-2)",
                   fontFamily: "var(--rf-mono)",
                   fontSize: 10,
                   letterSpacing: "0.1em",
@@ -629,8 +655,8 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
                     .catch(() => setBskyConnecting(false));
                 }}
                 style={{
-                  background: bskyHandle.trim() && !bskyConnecting ? "var(--aurora)" : "var(--hair-strong)",
-                  color: "var(--void)",
+                  background: bskyHandle.trim() && !bskyConnecting ? "var(--aurora-deep)" : "var(--hair-strong)",
+                  color: "#fff",
                   fontFamily: "var(--rf-mono)",
                   fontSize: 10,
                   letterSpacing: "0.1em",

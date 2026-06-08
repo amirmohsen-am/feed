@@ -142,28 +142,76 @@ export default function PublishFeedModal({
 
   const fieldStyle: React.CSSProperties = {
     width: "100%",
-    background: "var(--void)",
+    background: "#fff",
     border: "1px solid var(--hair-strong)",
     borderRadius: 8,
     padding: "10px 14px",
     fontSize: 13,
-    color: "var(--cream)",
+    color: "var(--ink)",
     fontFamily: "var(--rf-body)",
     outline: "none",
+  };
+
+  const textBody: React.CSSProperties = {
+    fontSize: 13,
+    color: "var(--ink-2)",
+    lineHeight: 1.55,
+  };
+
+  const textMuted: React.CSSProperties = {
+    fontSize: 12,
+    color: "var(--ink-3)",
+    lineHeight: 1.5,
+  };
+
+  const textLabel: React.CSSProperties = {
+    fontSize: 11,
+    color: "var(--ink-3)",
+    fontFamily: "var(--rf-mono)",
+    textTransform: "uppercase",
+    letterSpacing: "0.1em",
+  };
+
+  const btnSecondary: React.CSSProperties = {
+    border: "1px solid var(--hair-strong)",
+    background: "#fff",
+    color: "var(--ink-2)",
+    cursor: "pointer",
+    fontSize: 13,
+    fontFamily: "var(--rf-body)",
+  };
+
+  const btnPrimary: React.CSSProperties = {
+    border: "none",
+    background: "var(--aurora-deep)",
+    color: "#fff",
+    cursor: "pointer",
+    fontSize: 13,
+    fontFamily: "var(--rf-body)",
+    fontWeight: 500,
+  };
+
+  const inlineCode: React.CSSProperties = {
+    color: "var(--ink)",
+    background: "rgba(11,24,20,0.06)",
+    padding: "1px 5px",
+    borderRadius: 4,
+    fontFamily: "var(--rf-mono)",
+    fontSize: "0.92em",
   };
 
   const handleDisplay = blueskyHandle.replace(/^@/, "");
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="profile-dialog" style={{ maxWidth: 460 }}>
+      <DialogContent className="settings-dialog" style={{ maxWidth: 460 }}>
         <DialogHeader>
           <DialogTitle
             style={{
               fontFamily: "var(--rf-display)",
               fontSize: 22,
               fontWeight: 400,
-              color: "var(--cream)",
+              color: "var(--ink)",
             }}
           >
             Publish to Bluesky
@@ -188,16 +236,10 @@ export default function PublishFeedModal({
             >
               ✓
             </div>
-            <p style={{ fontSize: 14, lineHeight: 1.6, marginBottom: 12 }}>
+            <p style={{ ...textBody, marginBottom: 12, color: "var(--ink)" }}>
               {success}
             </p>
-            <p
-              style={{
-                fontSize: 12,
-                color: "var(--parchment-dim)",
-                marginBottom: 20,
-              }}
-            >
+            <p style={{ ...textMuted, marginBottom: 20 }}>
               Open the Bluesky app, search for &ldquo;{feedName}&rdquo;, or check
               your profile under Feeds.
             </p>
@@ -208,55 +250,36 @@ export default function PublishFeedModal({
                 width: "100%",
                 padding: "10px",
                 borderRadius: 8,
-                border: "none",
-                cursor: "pointer",
-                fontSize: 13,
-                background: "var(--hair-strong)",
-                color: "var(--cream)",
-                fontFamily: "var(--rf-body)",
+                ...btnSecondary,
               }}
             >
               Done
             </button>
           </div>
         ) : authPhase === "checking" ? (
-          <p style={{ fontSize: 13, color: "var(--parchment-dim)", padding: "12px 0" }}>
+          <p style={{ ...textBody, padding: "12px 0", color: "var(--ink-3)" }}>
             Checking Bluesky authorization…
           </p>
         ) : authPhase === "local_dev" ? (
           <div>
-            <p
-              style={{
-                fontSize: 13,
-                color: "var(--parchment-dim)",
-                lineHeight: 1.5,
-                marginBottom: 16,
-              }}
-            >
+            <p style={{ ...textBody, marginBottom: 16 }}>
               This feed was registered pointing at{" "}
-              <code style={{ color: "var(--cream)" }}>did:web:localhost</code>{" "}
-              because you published from local dev. Bluesky cannot reach localhost,
-              so the feed breaks in the app.
+              <code style={inlineCode}>did:web:localhost</code> because you
+              published from local dev. Bluesky cannot reach localhost, so the
+              feed breaks in the app.
             </p>
-            <p
-              style={{
-                fontSize: 13,
-                color: "var(--parchment-dim)",
-                lineHeight: 1.5,
-                marginBottom: 20,
-              }}
-            >
+            <p style={{ ...textBody, marginBottom: 20 }}>
               Open{" "}
               <a
                 href={prodPublishUrl}
-                style={{ color: "var(--aurora)" }}
+                style={{ color: "var(--aurora-deep)", fontWeight: 500 }}
                 target="_blank"
                 rel="noopener noreferrer"
               >
                 {prodPublishUrl.replace(/^https?:\/\//, "")}
               </a>
               , authorize Bluesky, and publish again — that updates the feed to{" "}
-              <code style={{ color: "var(--cream)" }}>did:web:willownet.co</code>.
+              <code style={inlineCode}>did:web:willownet.co</code>.
             </p>
             <button
               type="button"
@@ -265,12 +288,7 @@ export default function PublishFeedModal({
                 width: "100%",
                 padding: "10px",
                 borderRadius: 8,
-                border: "1px solid var(--hair-strong)",
-                background: "transparent",
-                color: "var(--parchment-dim)",
-                cursor: "pointer",
-                fontSize: 13,
-                fontFamily: "var(--rf-body)",
+                ...btnSecondary,
               }}
             >
               Got it
@@ -278,14 +296,7 @@ export default function PublishFeedModal({
           </div>
         ) : authPhase === "unlinked" ? (
           <div>
-            <p
-              style={{
-                fontSize: 13,
-                color: "var(--parchment-dim)",
-                lineHeight: 1.5,
-                marginBottom: 20,
-              }}
-            >
+            <p style={{ ...textBody, marginBottom: 20 }}>
               Link your Bluesky account before publishing. We use OAuth — no
               password is stored.
             </p>
@@ -297,12 +308,7 @@ export default function PublishFeedModal({
                   flex: 1,
                   padding: "10px",
                   borderRadius: 8,
-                  border: "1px solid var(--hair-strong)",
-                  background: "transparent",
-                  color: "var(--parchment-dim)",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontFamily: "var(--rf-body)",
+                  ...btnSecondary,
                 }}
               >
                 Cancel
@@ -314,13 +320,7 @@ export default function PublishFeedModal({
                   flex: 1,
                   padding: "10px",
                   borderRadius: 8,
-                  border: "none",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontFamily: "var(--rf-body)",
-                  fontWeight: 500,
-                  background: "var(--aurora)",
-                  color: "var(--void)",
+                  ...btnPrimary,
                 }}
               >
                 Connect Bluesky
@@ -329,14 +329,7 @@ export default function PublishFeedModal({
           </div>
         ) : authPhase === "needs_oauth" ? (
           <div>
-            <p
-              style={{
-                fontSize: 13,
-                color: "var(--parchment-dim)",
-                lineHeight: 1.5,
-                marginBottom: 16,
-              }}
-            >
+            <p style={{ ...textBody, marginBottom: 16 }}>
               Your handle is linked, but publishing requires a one-time Bluesky
               authorization so we can register the feed on your account.
             </p>
@@ -345,8 +338,7 @@ export default function PublishFeedModal({
               <div
                 style={{
                   ...fieldStyle,
-                  background: "transparent",
-                  color: "var(--parchment-dim)",
+                  color: "var(--ink-2)",
                   marginBottom: 16,
                 }}
               >
@@ -362,13 +354,8 @@ export default function PublishFeedModal({
                 width: "100%",
                 padding: "10px",
                 borderRadius: 8,
-                border: "none",
+                ...btnPrimary,
                 cursor: authorizing ? "not-allowed" : "pointer",
-                fontSize: 13,
-                fontFamily: "var(--rf-body)",
-                fontWeight: 500,
-                background: "var(--aurora)",
-                color: "var(--void)",
                 opacity: authorizing ? 0.6 : 1,
                 marginBottom: 12,
               }}
@@ -382,7 +369,7 @@ export default function PublishFeedModal({
               style={{
                 background: "none",
                 border: "none",
-                color: "var(--parchment-dim)",
+                color: "var(--aurora-deep)",
                 fontSize: 12,
                 cursor: "pointer",
                 fontFamily: "var(--rf-body)",
@@ -397,14 +384,7 @@ export default function PublishFeedModal({
             {showAppPassword && (
               <>
                 <Separator style={{ margin: "12px 0" }} />
-                <p
-                  style={{
-                    fontSize: 12,
-                    color: "var(--parchment-dim)",
-                    marginBottom: 10,
-                    lineHeight: 1.5,
-                  }}
-                >
+                <p style={{ ...textMuted, marginBottom: 10 }}>
                   Bluesky app → Settings → Privacy and Security → App Passwords
                 </p>
                 <input
@@ -430,13 +410,10 @@ export default function PublishFeedModal({
                     width: "100%",
                     padding: "10px",
                     borderRadius: 8,
+                    ...btnSecondary,
+                    background: "var(--ink)",
+                    color: "#fff",
                     border: "none",
-                    cursor: "pointer",
-                    fontSize: 13,
-                    fontFamily: "var(--rf-body)",
-                    fontWeight: 500,
-                    background: "var(--hair-strong)",
-                    color: "var(--cream)",
                     opacity: loading || !appPassword.trim() ? 0.4 : 1,
                   }}
                 >
@@ -459,12 +436,7 @@ export default function PublishFeedModal({
                 marginTop: 16,
                 padding: "8px",
                 borderRadius: 8,
-                border: "1px solid var(--hair-strong)",
-                background: "transparent",
-                color: "var(--parchment-dim)",
-                cursor: "pointer",
-                fontSize: 13,
-                fontFamily: "var(--rf-body)",
+                ...btnSecondary,
               }}
             >
               Cancel
@@ -472,14 +444,7 @@ export default function PublishFeedModal({
           </div>
         ) : (
           <div>
-            <p
-              style={{
-                fontSize: 13,
-                color: "var(--parchment-dim)",
-                lineHeight: 1.5,
-                marginBottom: 16,
-              }}
-            >
+            <p style={{ ...textBody, marginBottom: 16 }}>
               Register &ldquo;{feedName}&rdquo; as a custom feed on your Bluesky
               account. Bluesky will fetch posts from Willow whenever someone opens
               the feed.
@@ -487,23 +452,13 @@ export default function PublishFeedModal({
 
             {handleDisplay && (
               <>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--parchment-dim)",
-                    fontFamily: "var(--rf-mono)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    marginBottom: 6,
-                  }}
-                >
+                <div style={{ ...textLabel, marginBottom: 6 }}>
                   Publishing as
                 </div>
                 <div
                   style={{
                     ...fieldStyle,
-                    background: "transparent",
-                    color: "var(--parchment-dim)",
+                    color: "var(--ink-2)",
                     marginBottom: 16,
                   }}
                 >
@@ -532,12 +487,7 @@ export default function PublishFeedModal({
                   flex: 1,
                   padding: "10px",
                   borderRadius: 8,
-                  border: "1px solid var(--hair-strong)",
-                  background: "transparent",
-                  color: "var(--parchment-dim)",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontFamily: "var(--rf-body)",
+                  ...btnSecondary,
                 }}
               >
                 Cancel
@@ -550,13 +500,7 @@ export default function PublishFeedModal({
                   flex: 1,
                   padding: "10px",
                   borderRadius: 8,
-                  border: "none",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontFamily: "var(--rf-body)",
-                  fontWeight: 500,
-                  background: "var(--aurora)",
-                  color: "var(--void)",
+                  ...btnPrimary,
                   opacity: loading ? 0.4 : 1,
                 }}
               >

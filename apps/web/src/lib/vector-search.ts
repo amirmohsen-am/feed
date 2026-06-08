@@ -116,6 +116,8 @@ export interface VectorHit {
   // AppView fetch was not enabled for this search. The reranker uses these
   // when the feed has a rerank prompt configured.
   image_urls: string[];
+  // Link-card thumbnail from AppView embed.external.thumb (when present).
+  external_thumb: string | null;
 }
 
 export interface SearchFilter {
@@ -354,6 +356,7 @@ function rowToHit(r: PgRow): VectorHit {
     author_avatar_cid: r.author_avatar_cid,
     like_nsfw: false,
     image_urls: [],
+    external_thumb: null,
   };
 }
 
@@ -483,6 +486,7 @@ async function backfillIncompleteAuthors(hits: VectorHit[]): Promise<void> {
 interface AppViewMeta {
   labels: string[];
   imageUrls: string[];
+  externalThumb: string | null;
 }
 
 interface AppViewPostView {
@@ -490,10 +494,12 @@ interface AppViewPostView {
   labels?: Array<{ val: string }>;
   embed?: {
     $type?: string;
+    external?: { thumb?: string };
     images?: Array<{ thumb?: string; fullsize?: string }>;
     // recordWithMedia nests the media one level deeper.
     media?: {
       $type?: string;
+      external?: { thumb?: string };
       images?: Array<{ thumb?: string; fullsize?: string }>;
     };
   };
@@ -506,6 +512,23 @@ function extractImageUrls(p: AppViewPostView): string[] {
   return all
     .map((img) => img.thumb ?? img.fullsize ?? null)
     .filter((u): u is string => typeof u === "string" && u.length > 0);
+}
+
+function extractExternalThumb(p: AppViewPostView): string | null {
+  const embed = p.embed;
+  if (!embed) return null;
+  if (embed.$type === "app.bsky.embed.external#view") {
+    const thumb = embed.external?.thumb;
+    return typeof thumb === "string" && thumb.length > 0 ? thumb : null;
+  }
+  if (
+    embed.$type === "app.bsky.embed.recordWithMedia#view" &&
+    embed.media?.$type === "app.bsky.embed.external#view"
+  ) {
+    const thumb = embed.media.external?.thumb;
+    return typeof thumb === "string" && thumb.length > 0 ? thumb : null;
+  }
+  return null;
 }
 
 /**
@@ -561,6 +584,7 @@ async function fetchAppViewMeta(
       out.set(p.uri, {
         labels: (p.labels ?? []).map((l) => l.val),
         imageUrls: extractImageUrls(p),
+        externalThumb: extractExternalThumb(p),
       });
     }
   }
@@ -685,7 +709,10 @@ export async function searchPosts(opts: SearchOpts): Promise<VectorHit[]> {
   const blockSet = new Set(blockLabels);
   const wantLabels = blockLabels.length > 0;
   const wantImages = opts.withImages === true;
-  const wantAppView = wantLabels || wantImages;
+  const wantExternalThumbs = hits.some(
+    (h) => h.has_external_link || !!h.external_uri
+  );
+  const wantAppView = wantLabels || wantImages || wantExternalThumbs;
   const wantProfiles = opts.filter?.excludeLikelyNsfw === true;
 
   const authorDids = wantProfiles ? uniqueAuthorDids(hits) : [];
@@ -701,11 +728,13 @@ export async function searchPosts(opts: SearchOpts): Promise<VectorHit[]> {
   ]);
   const tParallel = performance.now();
 
-  // Attach image URLs to hits (in place). image_urls is otherwise [].
-  if (wantImages && appViewMeta) {
+  // Attach AppView media to hits (in place).
+  if (appViewMeta) {
     for (const h of hits) {
       const meta = appViewMeta.get(h.uri);
-      if (meta && meta.imageUrls.length > 0) h.image_urls = meta.imageUrls;
+      if (!meta) continue;
+      if (wantImages && meta.imageUrls.length > 0) h.image_urls = meta.imageUrls;
+      if (meta.externalThumb) h.external_thumb = meta.externalThumb;
     }
   }
 

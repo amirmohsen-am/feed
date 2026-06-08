@@ -42,6 +42,7 @@ interface Post {
   external_uri: string | null;
   external_title: string | null;
   external_desc: string | null;
+  external_thumb: string | null;
   quote_uri: string | null;
   has_images: boolean;
   image_count: number;
@@ -196,6 +197,7 @@ function BlueskyEmbed({
 export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const {
     profile,
+    bskyOAuthReady,
     feeds,
     reloadFeeds,
     setActivePostCount,
@@ -302,8 +304,86 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   // Bluesky like state: uri → { liked, likeUri, pending }
   const [likeState, setLikeState] = useState<Record<string, { liked: boolean; likeUri?: string; pending: boolean }>>({});
-  // User can like if they have OAuth (blueskyDid set) or app password
-  const hasBskyAuth = !!(profile.blueskyDid || (profile.blueskyHandle && profile.bskyAppPassword));
+  const [engagePending, setEngagePending] = useState<
+    Record<string, Partial<Record<"reply" | "repost" | "quote", boolean>>>
+  >({});
+  const [countDelta, setCountDelta] = useState<
+    Record<string, { replies?: number; reposts?: number; quotes?: number }>
+  >({});
+  const [composer, setComposer] = useState<{ uri: string; kind: "reply" | "quote" } | null>(null);
+  const [composerText, setComposerText] = useState("");
+  const [composerError, setComposerError] = useState("");
+  const [composerPending, setComposerPending] = useState(false);
+  // OAuth session required for repo writes; app password is a legacy fallback.
+  const hasBskyAuth = bskyOAuthReady || !!profile.bskyAppPassword;
+
+  function ensureBskyAuth(): boolean {
+    if (!hasBskyAuth) {
+      setShowBskyAuth(true);
+      return false;
+    }
+    return true;
+  }
+
+  async function handleRepost(postUri: string) {
+    if (!ensureBskyAuth()) return;
+    setEngagePending((s) => ({ ...s, [postUri]: { ...s[postUri], repost: true } }));
+    try {
+      const res = await authedFetch("/api/bsky/repost", {
+        method: "POST",
+        body: JSON.stringify({ uri: postUri }),
+      });
+      if (res.ok) {
+        setCountDelta((s) => ({
+          ...s,
+          [postUri]: { ...s[postUri], reposts: (s[postUri]?.reposts ?? 0) + 1 },
+        }));
+      }
+    } finally {
+      setEngagePending((s) => ({ ...s, [postUri]: { ...s[postUri], repost: false } }));
+    }
+  }
+
+  function openComposer(postUri: string, kind: "reply" | "quote") {
+    if (!ensureBskyAuth()) return;
+    setComposer({ uri: postUri, kind });
+    setComposerText("");
+    setComposerError("");
+  }
+
+  async function submitComposer() {
+    if (!composer || !composerText.trim()) return;
+    setComposerPending(true);
+    setComposerError("");
+    try {
+      const res = await authedFetch("/api/bsky/compose", {
+        method: "POST",
+        body: JSON.stringify({
+          uri: composer.uri,
+          kind: composer.kind,
+          text: composerText,
+        }),
+        suppressErrorToast: true,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setComposerError(data.error || "Failed to post");
+        return;
+      }
+      const field = composer.kind === "reply" ? "replies" : "quotes";
+      setCountDelta((s) => ({
+        ...s,
+        [composer.uri]: {
+          ...s[composer.uri],
+          [field]: (s[composer.uri]?.[field] ?? 0) + 1,
+        },
+      }));
+      setComposer(null);
+      setComposerText("");
+    } finally {
+      setComposerPending(false);
+    }
+  }
 
   // On-demand Bluesky auth prompt
   const [showBskyAuth, setShowBskyAuth] = useState(false);
@@ -333,10 +413,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   }
 
   async function toggleLike(postUri: string, currentlyLiked: boolean, currentLikeUri?: string) {
-    if (!hasBskyAuth) {
-      setShowBskyAuth(true);
-      return;
-    }
+    if (!ensureBskyAuth()) return;
     const prev = likeState[postUri];
     // Optimistic update
     setLikeState((s) => ({
@@ -365,6 +442,76 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     } catch {
       setLikeState((s) => ({ ...s, [postUri]: prev ?? { liked: currentlyLiked, likeUri: currentLikeUri, pending: false } }));
     }
+  }
+
+  function renderEngageFooter(post: Post, bskyUrl: string | null) {
+    return (
+      <footer className="cur-post-stats">
+        <button
+          type="button"
+          className="cur-post-stat cur-post-engage-btn"
+          title="Reply"
+          disabled={engagePending[post.uri]?.reply}
+          onClick={() => openComposer(post.uri, "reply")}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+          </svg>
+          {formatCount(post.reply_count + (countDelta[post.uri]?.replies ?? 0))}
+        </button>
+        <button
+          type="button"
+          className={`cur-post-stat cur-post-engage-btn${(countDelta[post.uri]?.reposts ?? 0) > 0 ? " cur-post-reposted" : ""}`}
+          title="Repost"
+          disabled={engagePending[post.uri]?.repost}
+          onClick={() => handleRepost(post.uri)}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <polyline points="17 1 21 5 17 9" />
+            <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+            <polyline points="7 23 3 19 7 15" />
+            <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+          </svg>
+          {formatCount(post.repost_count + (countDelta[post.uri]?.reposts ?? 0))}
+        </button>
+        <button
+          type="button"
+          className={`cur-post-stat cur-post-engage-btn cur-post-like-btn ${likeState[post.uri]?.liked ? "cur-post-liked" : ""}`}
+          title={likeState[post.uri]?.liked ? "Unlike" : "Like"}
+          disabled={likeState[post.uri]?.pending}
+          onClick={() => toggleLike(post.uri, !!likeState[post.uri]?.liked, likeState[post.uri]?.likeUri)}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill={likeState[post.uri]?.liked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+          </svg>
+          {formatCount(post.like_count + (likeState[post.uri]?.liked ? 1 : 0))}
+        </button>
+        <button
+          type="button"
+          className="cur-post-stat cur-post-engage-btn"
+          title="Quote"
+          disabled={engagePending[post.uri]?.quote}
+          onClick={() => openComposer(post.uri, "quote")}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M3 21c3 0 5-2 5-5V7H3v8h4" />
+            <path d="M14 21c3 0 5-2 5-5V7h-5v8h4" />
+          </svg>
+          {formatCount(post.quote_count + (countDelta[post.uri]?.quotes ?? 0))}
+        </button>
+        {bskyUrl && (
+          <a
+            href={bskyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="cur-post-open"
+            title="Open in Bluesky"
+          >
+            Open ↗
+          </a>
+        )}
+      </footer>
+    );
   }
 
   const [postsLoading, setPostsLoading] = useState(false);
@@ -1302,6 +1449,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                       )}
                     </div>
                     <BlueskyEmbed uri={post.uri} text={post.text} url={bskyUrl} />
+                    {renderEngageFooter(post, bskyUrl)}
                   </div>
                     {branchZone(post.uri)}
                   </div>
@@ -1404,17 +1552,29 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
                     {post.external_uri && (
                       <a
-                        className="cur-post-embed"
+                        className={`cur-post-embed${post.external_thumb ? " has-thumb" : ""}`}
                         href={post.external_uri}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        <div className="cur-post-embed-host">{extHost || "link"}</div>
-                        {post.external_title && (
-                          <div className="cur-post-embed-title">{post.external_title}</div>
-                        )}
-                        {post.external_desc && (
-                          <div className="cur-post-embed-desc">{post.external_desc}</div>
+                        <div className="cur-post-embed-body">
+                          <div className="cur-post-embed-host">{extHost || "link"}</div>
+                          {post.external_title && (
+                            <div className="cur-post-embed-title">{post.external_title}</div>
+                          )}
+                          {post.external_desc && (
+                            <div className="cur-post-embed-desc">{post.external_desc}</div>
+                          )}
+                        </div>
+                        {post.external_thumb && (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={post.external_thumb}
+                            alt=""
+                            className="cur-post-embed-thumb"
+                            loading="lazy"
+                            referrerPolicy="no-referrer"
+                          />
                         )}
                       </a>
                     )}
@@ -1481,52 +1641,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                       </div>
                     )}
 
-                    <footer className="cur-post-stats">
-                      <span className="cur-post-stat" title="Replies">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                        </svg>
-                        {formatCount(post.reply_count)}
-                      </span>
-                      <span className="cur-post-stat" title="Reposts">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                          <polyline points="17 1 21 5 17 9" />
-                          <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                          <polyline points="7 23 3 19 7 15" />
-                          <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                        </svg>
-                        {formatCount(post.repost_count)}
-                      </span>
-                      <button
-                        className={`cur-post-stat cur-post-like-btn ${likeState[post.uri]?.liked ? "cur-post-liked" : ""}`}
-                        title={likeState[post.uri]?.liked ? "Unlike" : "Like"}
-                        disabled={likeState[post.uri]?.pending}
-                        onClick={() => toggleLike(post.uri, !!likeState[post.uri]?.liked, likeState[post.uri]?.likeUri)}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill={likeState[post.uri]?.liked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                        </svg>
-                        {formatCount(post.like_count + (likeState[post.uri]?.liked ? 1 : 0))}
-                      </button>
-                      <span className="cur-post-stat" title="Quotes">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                          <path d="M3 21c3 0 5-2 5-5V7H3v8h4" />
-                          <path d="M14 21c3 0 5-2 5-5V7h-5v8h4" />
-                        </svg>
-                        {formatCount(post.quote_count)}
-                      </span>
-                      {bskyUrl && (
-                        <a
-                          href={bskyUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="cur-post-open"
-                          title="Open in Bluesky"
-                        >
-                          Open ↗
-                        </a>
-                      )}
-                    </footer>
+                    {renderEngageFooter(post, bskyUrl)}
                   </article>
                     {branchZone(post.uri)}
                   </div>
@@ -1826,12 +1941,63 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           )}
         </div>
       )}
+      {composer && (
+        <div className="cur-bsky-auth-overlay" onClick={() => !composerPending && setComposer(null)}>
+          <div className="cur-bsky-auth-modal cur-compose-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{composer.kind === "reply" ? "Reply on Bluesky" : "Quote on Bluesky"}</h3>
+            <p>
+              {composer.kind === "reply"
+                ? "Your reply will be posted to Bluesky from your connected account."
+                : "Add your commentary — the original post will be embedded in your quote."}
+            </p>
+            <textarea
+              value={composerText}
+              onChange={(e) => {
+                setComposerText(e.target.value.slice(0, 300));
+                setComposerError("");
+              }}
+              placeholder={composer.kind === "reply" ? "Write a reply…" : "Add a quote comment…"}
+              rows={4}
+              autoFocus
+              className="cur-compose-textarea"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  submitComposer();
+                }
+              }}
+            />
+            <div className="cur-compose-meta">
+              <span>{composerText.length}/300</span>
+            </div>
+            {composerError && <div className="cur-bsky-auth-error">{composerError}</div>}
+            <div className="cur-bsky-auth-actions">
+              <button
+                type="button"
+                className="cur-bsky-auth-cancel"
+                onClick={() => setComposer(null)}
+                disabled={composerPending}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="cur-bsky-auth-submit"
+                onClick={submitComposer}
+                disabled={composerPending || !composerText.trim()}
+              >
+                {composerPending ? "Posting…" : composer.kind === "reply" ? "Reply" : "Quote"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Bluesky auth prompt */}
       {showBskyAuth && (
         <div className="cur-bsky-auth-overlay" onClick={() => setShowBskyAuth(false)}>
           <div className="cur-bsky-auth-modal" onClick={(e) => e.stopPropagation()}>
             <h3>Sign in with Bluesky</h3>
-            <p>Connect your Bluesky account to like, repost, and follow from here.</p>
+            <p>Connect your Bluesky account to reply, repost, quote, and like from here.</p>
             <input
               type="text"
               value={bskyHandle}

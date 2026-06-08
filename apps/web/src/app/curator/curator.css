@@ -848,6 +848,27 @@
   text-decoration: none;
   transition: border-color 0.18s, background 0.18s;
 }
+.cur-post-embed.has-thumb{
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.cur-post-embed-body{
+  flex: 1;
+  min-width: 0;
+}
+.cur-post-embed.has-thumb .cur-post-embed-body{
+  padding: 10px 12px;
+}
+.cur-post-embed-thumb{
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border-top: 1px solid var(--hair);
+}
 .cur-post-embed:hover{
   border-color: var(--aurora-deep);
   background: rgba(125,203,165,0.06);
@@ -881,10 +902,13 @@
 
 /* Hashtag links */
 .cur-post-hashtag{
-  color: var(--accent, #1185fe);
+  color: var(--ink);
   text-decoration: none;
 }
-.cur-post-hashtag:hover{ text-decoration: underline; }
+.cur-post-hashtag:hover{
+  color: var(--ink-2);
+  text-decoration: underline;
+}
 
 /* Image grid — Bluesky-style tiled layout */
 .cur-post-images{
@@ -1025,6 +1049,26 @@
   border: none;
   cursor: pointer;
   transition: color 0.15s;
+}
+.cur-post-engage-btn{
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s;
+  font: inherit;
+}
+.cur-post-engage-btn:hover{
+  color: var(--aurora-deep);
+}
+.cur-post-engage-btn:disabled{
+  opacity: 0.5;
+  cursor: wait;
+}
+.cur-post-reposted{
+  color: var(--aurora-deep);
+}
+.cur-post-reposted svg{
+  opacity: 1;
 }
 .cur-post-like-btn:hover{
   color: #e5484d;
@@ -1455,6 +1499,10 @@
   max-width: 600px !important;
   width: 100% !important;
   zoom: 0.85;
+}
+.cur-post-embed-wrap .cur-post-stats{
+  max-width: var(--embed-w);
+  margin: 8px auto 0;
 }
 .cur-post-reply-banner-embed{
   margin: 0 0 6px;
@@ -2798,6 +2846,32 @@
 }
 .cur-bsky-auth-submit:hover{ background: var(--ink-2); }
 .cur-bsky-auth-submit:disabled{ opacity: 0.4; cursor: default; }
+
+.cur-compose-modal{ max-width: 480px; }
+.cur-compose-textarea{
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--hair-strong);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-family: var(--rf-body);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 96px;
+  outline: none;
+}
+.cur-compose-textarea:focus{ border-color: #3e8a6c; }
+.cur-compose-meta{
+  margin-top: 6px;
+  font-family: var(--rf-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  text-align: right;
+}
 @keyframes modalIn{
   0%{ opacity: 0; transform: scale(0.95); }
   100%{ opacity: 1; transform: scale(1); }

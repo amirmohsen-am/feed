@@ -17,6 +17,8 @@ export type ViewMode = "card" | "embed";
 
 export interface CuratorContextValue {
   profile: UserProfile;
+  bskyOAuthReady: boolean;
+  refreshProfile: () => Promise<void>;
   feeds: SavedFeed[];
   reloadFeeds: () => Promise<void>;
   activePostCount: number;
