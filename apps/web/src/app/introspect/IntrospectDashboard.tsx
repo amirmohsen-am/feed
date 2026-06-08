@@ -69,8 +69,35 @@ type StreamEvent =
   | { t: "done"; snapshot: Snapshot }
   | { t: "error"; error: string; snapshot?: Snapshot; batchIndex?: number };
 
+/**
+ * Developer view toggle. Dev mode is the verbose debug view — cost, token
+ * counts, model id, per-batch telemetry, and the internal "batch" framing.
+ * Ordinary visitors get the clean, user-friendly view with none of that.
+ *
+ * The page is public (no sign-in) and cost numbers aren't sensitive, so the
+ * gate is a simple client-side flag: append `?dev=1` to any introspect URL
+ * to turn it on (persisted to localStorage so it sticks), `?dev=0` to turn
+ * it off. Telemetry is still collected in the snapshot regardless — only the
+ * rendering is gated.
+ */
+function useDevMode(): boolean {
+  const [dev, setDev] = useState(false);
+  useEffect(() => {
+    try {
+      const param = new URLSearchParams(window.location.search).get("dev");
+      if (param === "1") localStorage.setItem("introspect:dev", "1");
+      else if (param === "0") localStorage.removeItem("introspect:dev");
+      setDev(localStorage.getItem("introspect:dev") === "1");
+    } catch {
+      // window/localStorage unavailable (SSR) — stay in user mode.
+    }
+  }, []);
+  return dev;
+}
+
 export default function IntrospectDashboard({ handle }: { handle: string }) {
   const router = useRouter();
+  const devMode = useDevMode();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   // True from first render so we show the loading view (not the error/retry
   // view) before the auto-fetch effect kicks in.
@@ -192,7 +219,7 @@ export default function IntrospectDashboard({ handle }: { handle: string }) {
     if (!snapshot) return;
     if (
       !confirm(
-        `Delete all stored data for @${snapshot.handle}? This will wipe stats, batch notes, and the unified profile. Cached images stay.`
+        `Delete all stored data for @${snapshot.handle}? This will wipe the analysis and profile. Cached images stay.`
       )
     ) {
       return;
@@ -259,6 +286,7 @@ export default function IntrospectDashboard({ handle }: { handle: string }) {
   return (
     <IntrospectLoaded
       snapshot={snapshot}
+      devMode={devMode}
       processing={processing}
       fetching={fetching}
       stream={stream}
@@ -275,6 +303,7 @@ export default function IntrospectDashboard({ handle }: { handle: string }) {
 
 function IntrospectLoaded({
   snapshot,
+  devMode,
   processing,
   fetching,
   stream,
@@ -285,6 +314,7 @@ function IntrospectLoaded({
   onRefresh,
 }: {
   snapshot: Snapshot;
+  devMode: boolean;
   processing: boolean;
   fetching: boolean;
   stream: StreamState;
@@ -299,17 +329,22 @@ function IntrospectLoaded({
 
   const processedCount = Object.keys(batchNotes).length;
   const totalBatches = batches.length;
+  // User-facing progress is framed in engagements analyzed, not "batches".
+  const analyzedCount = batches
+    .filter((b) => batchNotes[b.index])
+    .reduce((sum, b) => sum + b.engagementIds.length, 0);
+  const totalEngagements = snapshot.engagements.length;
 
   return (
     <main className="min-h-screen bg-[#fafafa] text-[#1a1a1a]">
-      <div className="mx-auto max-w-[1120px] px-6 py-8 pb-24">
-        <header className="border-b border-[#1a1a1a] pb-4 mb-7 flex justify-between items-baseline gap-4 flex-wrap">
-          <h1 className="text-[28px] font-serif tracking-tight">
+      <div className="mx-auto max-w-[1120px] px-4 py-6 pb-20 sm:px-6 sm:py-8 sm:pb-24">
+        <header className="border-b border-[#1a1a1a] pb-4 mb-6 sm:mb-7 flex justify-between items-baseline gap-3 flex-wrap">
+          <h1 className="text-2xl sm:text-[28px] font-serif tracking-tight">
             introspect{" "}
-            <span className="font-mono text-sm text-[#666] font-normal ml-1">
+            <span className="font-mono text-[13px] sm:text-sm text-[#666] font-normal ml-1 break-all">
               @{snapshot.handle}
             </span>
-            <span className="text-[#888] text-xs ml-3 font-normal">
+            <span className="text-[#888] text-xs ml-2 sm:ml-3 font-normal">
               refreshed {relativeTime(snapshot.fetchedAt)}
             </span>
           </h1>
@@ -348,33 +383,61 @@ function IntrospectLoaded({
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-8 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6 md:gap-8 items-start">
           {/* ── Left rail: deterministic stats ─────────────── */}
-          <div className="md:sticky md:top-6 flex flex-col gap-4">
+          {/* On mobile this drops below the main column (stats are secondary
+              to the profile + action), then returns to the sticky left rail
+              at md. */}
+          <div className="order-2 md:order-1 md:sticky md:top-6 flex flex-col gap-4">
             <StatsRail snapshot={snapshot} />
           </div>
 
           {/* ── Main column ────────────────────────────────── */}
-          <div className="flex flex-col gap-6 min-w-0">
-            {snapshot.feedSeedPrompts &&
-              snapshot.feedSeedPrompts.prompts.length > 0 && (
-                <SuggestedFeeds seeds={snapshot.feedSeedPrompts} />
-              )}
+          <div className="order-1 md:order-2 flex flex-col gap-6 min-w-0">
+            {!profile && !stream.phase && (
+              <p className="text-[#666] italic text-sm">
+                Analyze your activity to build your profile and suggested feeds.
+              </p>
+            )}
 
-            <ProfileHero
-              snapshot={snapshot}
-              stream={stream}
-              processedCount={processedCount}
-              totalBatches={totalBatches}
-            />
+            {/* Suggested feeds. While the seeds phase is running we show a
+                loader in their place (on the first run there are no prompts
+                yet; on later runs the stale ones are hidden until refreshed). */}
+            {stream.phase === "seeds" ? (
+              <SuggestingFeedsLoader />
+            ) : (
+              snapshot.feedSeedPrompts &&
+              snapshot.feedSeedPrompts.prompts.length > 0 && (
+                <SuggestedFeeds seeds={snapshot.feedSeedPrompts} devMode={devMode} />
+              )
+            )}
+
+            {/* Profile hero stays up once there's a profile or any has been
+                streamed this run — including through the seeds phase, where
+                the freshly-streamed text lives in stream.aggregateText until
+                the final snapshot lands. */}
+            {(profile || stream.aggregateText.length > 0) && (
+              <ProfileHero
+                snapshot={snapshot}
+                devMode={devMode}
+                stream={stream}
+                processedCount={processedCount}
+                totalBatches={totalBatches}
+                analyzedCount={analyzedCount}
+                totalEngagements={totalEngagements}
+              />
+            )}
 
             {totalBatches > 0 && (
               <ProcessStrip
                 snapshot={snapshot}
+                devMode={devMode}
                 processing={processing}
                 fetching={fetching}
                 stream={stream}
                 onProcess={onProcess}
+                analyzedCount={analyzedCount}
+                totalEngagements={totalEngagements}
               />
             )}
 
@@ -382,17 +445,12 @@ function IntrospectLoaded({
               <BatchNotes
                 batches={batches}
                 batchNotes={batchNotes}
+                devMode={devMode}
                 stream={stream}
-                processedCount={processedCount}
+                analyzedCount={analyzedCount}
+                totalEngagements={totalEngagements}
                 onOpenDetails={setDrawerBatch}
               />
-            )}
-
-            {!profile && (
-              <p className="text-[#666] italic text-sm">
-                Process at least one batch to generate the unified profile and
-                suggested feeds.
-              </p>
             )}
           </div>
         </div>
@@ -402,6 +460,7 @@ function IntrospectLoaded({
         <DetailDrawer
           batch={batches.find((b) => b.index === drawerBatch)!}
           note={batchNotes[drawerBatch]}
+          devMode={devMode}
           engagements={snapshot.engagements}
           onClose={() => setDrawerBatch(null)}
         />
@@ -425,7 +484,7 @@ function StatsRail({ snapshot }: { snapshot: Snapshot }) {
   const maxPct = Math.max(...SIGNAL_ORDER.map((s) => stats.byType[s].pct));
   return (
     <>
-      <Panel title="Engagement" tag="local · no LLM">
+      <Panel title="Engagement">
         <KV label="total" value={stats.total.toLocaleString()} />
         <KV label="span" value={`${stats.spanDays} d`} />
         <KV label="avg / day" value={String(stats.avgPerDay)} />
@@ -564,22 +623,30 @@ function KV({
 
 function ProfileHero({
   snapshot,
+  devMode,
   stream,
   processedCount,
   totalBatches,
+  analyzedCount,
+  totalEngagements,
 }: {
   snapshot: Snapshot;
+  devMode: boolean;
   stream: StreamState;
   processedCount: number;
   totalBatches: number;
+  analyzedCount: number;
+  totalEngagements: number;
 }) {
   const { profile } = snapshot;
   const aggregating = stream.phase === "aggregate";
-  const liveText = aggregating ? stream.aggregateText : profile?.text ?? "";
+  // Prefer text streamed this run (it persists in aggregateText through the
+  // seeds phase, after aggregation finishes) over the committed profile.
+  const liveText = stream.aggregateText || profile?.text || "";
 
   return (
     <div
-      className="bg-white rounded-xl p-7"
+      className="bg-white rounded-xl p-5 sm:p-7"
       style={{
         border: `1px solid ${ACCENT}`,
         boxShadow: `0 1px 0 ${ACCENT_SOFT}, 0 8px 24px -18px ${ACCENT}`,
@@ -600,24 +667,30 @@ function ProfileHero({
         </div>
       ) : (
         <p className="text-[#888] italic">
-          Process at least one batch to generate the unified profile.
+          Analyze your activity to build your profile.
         </p>
       )}
 
       {profile && !aggregating && (
         <div className="font-mono text-[10px] text-[#bbb] mt-4 pt-3.5 border-t border-[#eee]">
-          {processedCount < totalBatches && (
+          {analyzedCount < totalEngagements && (
             <span className="text-amber-700 mr-2">
-              partial — {processedCount} of {totalBatches} batches
+              partial — analyze more to deepen this
             </span>
           )}
-          {processedCount} of {totalBatches} batches ·{" "}
-          <span
-            className="cursor-help border-b border-dotted border-[#ccc]"
-            title={telemetryTitle(profile.telemetry)}
-          >
-            aggregator ⓘ
-          </span>
+          Built from {analyzedCount.toLocaleString()} of{" "}
+          {totalEngagements.toLocaleString()} engagements
+          {devMode && (
+            <>
+              {" "}· {processedCount}/{totalBatches} batches ·{" "}
+              <span
+                className="cursor-help border-b border-dotted border-[#ccc]"
+                title={telemetryTitle(profile.telemetry)}
+              >
+                aggregator ⓘ
+              </span>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -628,16 +701,22 @@ function ProfileHero({
 
 function ProcessStrip({
   snapshot,
+  devMode,
   processing,
   fetching,
   stream,
   onProcess,
+  analyzedCount,
+  totalEngagements,
 }: {
   snapshot: Snapshot;
+  devMode: boolean;
   processing: boolean;
   fetching: boolean;
   stream: StreamState;
   onProcess: () => void;
+  analyzedCount: number;
+  totalEngagements: number;
 }) {
   const { batches, batchNotes, profile, callHistory } = snapshot;
   const processedCount = Object.keys(batchNotes).length;
@@ -652,51 +731,65 @@ function ProcessStrip({
   );
   const estimateToFinish = remaining * perClickCost;
 
+  // Dev mode appends the cost/latency estimate to the button; users see a
+  // plain action label with no pricing.
+  const devSuffix =
+    !devMode || allDone
+      ? ""
+      : ` · ~$${perClickCost.toFixed(2)} · ~${EST_PER_CLICK_S}s`;
   const label = processing
     ? stream.phase === "extract"
-      ? `Processing… extracting batch ${stream.batchIndex ?? ""}`.trim()
+      ? "Analyzing your activity…"
       : stream.phase === "aggregate"
-        ? "Processing… aggregating profile"
+        ? "Building your profile…"
         : stream.phase === "seeds"
-          ? "Processing… suggesting feeds"
-          : "Processing…"
+          ? "Suggesting feeds…"
+          : "Analyzing…"
     : allDone && profile !== null
-      ? "All batches processed"
+      ? "All activity analyzed"
       : allDone && profile === null
-        ? `Retry Aggregator only (~$${EST_AGGREGATOR_USD.toFixed(2)}, ~5s)`
-        : `Process next batch (${remaining} remaining · ~$${perClickCost.toFixed(
-            2
-          )} · ~${EST_PER_CLICK_S}s)`;
+        ? `Retry profile${devMode ? ` (~$${EST_AGGREGATOR_USD.toFixed(2)}, ~5s)` : ""}`
+        : `${processedCount === 0 ? "Analyze your activity" : "Analyze more activity"}${devSuffix}`;
 
   return (
-    <div className="bg-white border border-[#e0e0e0] rounded-xl p-5">
+    <div className="bg-white border border-[#e0e0e0] rounded-xl p-4 sm:p-5">
       <div className="flex justify-between text-[13px] text-[#666] mb-1 flex-wrap gap-2">
         <span>
           {processing ? (
-            <>Processing — streaming…</>
+            <>Analyzing…</>
           ) : allDone ? (
-            <>All {totalBatches} batches processed</>
+            <>
+              All{" "}
+              <strong className="text-[#1a1a1a]">
+                {totalEngagements.toLocaleString()}
+              </strong>{" "}
+              engagements analyzed
+            </>
           ) : (
             <>
-              <strong className="text-[#1a1a1a]">{processedCount}</strong> of{" "}
-              {totalBatches} batches processed
+              <strong className="text-[#1a1a1a]">
+                {analyzedCount.toLocaleString()}
+              </strong>{" "}
+              of {totalEngagements.toLocaleString()} engagements analyzed
             </>
           )}
         </span>
-        <span>
-          session{" "}
-          <strong className="text-[#1a1a1a] font-mono">
-            ${sessionSpend.toFixed(2)}
-          </strong>
-          {!allDone && (
-            <>
-              {" "}· est. to finish{" "}
-              <strong className="text-[#1a1a1a] font-mono">
-                ~${estimateToFinish.toFixed(2)}
-              </strong>
-            </>
-          )}
-        </span>
+        {devMode && (
+          <span>
+            session{" "}
+            <strong className="text-[#1a1a1a] font-mono">
+              ${sessionSpend.toFixed(2)}
+            </strong>
+            {!allDone && (
+              <>
+                {" "}· est. to finish{" "}
+                <strong className="text-[#1a1a1a] font-mono">
+                  ~${estimateToFinish.toFixed(2)}
+                </strong>
+              </>
+            )}
+          </span>
+        )}
       </div>
 
       {processing && <StreamRail stream={stream} />}
@@ -723,7 +816,11 @@ function StreamRail({ stream }: { stream: StreamState }) {
     "seeds",
   ];
   const current = stream.phase ? order.indexOf(stream.phase) : -1;
-  const labels = { extract: "Extract", aggregate: "Aggregate", seeds: "Feed seeds" };
+  const labels = {
+    extract: "Read activity",
+    aggregate: "Build profile",
+    seeds: "Suggest feeds",
+  };
 
   return (
     <div className="flex items-center my-3.5">
@@ -784,7 +881,33 @@ function Cursor() {
 
 // ── Suggested feeds (callout) ──────────────────────────────────────────
 
-function SuggestedFeeds({ seeds }: { seeds: FeedSeedPrompts }) {
+/** Placeholder shown while the feed-seed generator is running. */
+function SuggestingFeedsLoader() {
+  return (
+    <section>
+      <h3 className="font-serif text-lg">Suggested feeds</h3>
+      <div
+        className="rounded-[14px] p-4 sm:p-[22px] mt-4 flex items-center gap-3 text-sm"
+        style={{
+          background: ACCENT_SOFT,
+          border: `1px solid ${ACCENT}`,
+          color: ACCENT,
+        }}
+      >
+        <Spinner />
+        Suggesting feeds…
+      </div>
+    </section>
+  );
+}
+
+function SuggestedFeeds({
+  seeds,
+  devMode,
+}: {
+  seeds: FeedSeedPrompts;
+  devMode: boolean;
+}) {
   const router = useRouter();
   return (
     <section>
@@ -794,12 +917,14 @@ function SuggestedFeeds({ seeds }: { seeds: FeedSeedPrompts }) {
       <p className="text-xs text-[#888] mt-1.5 mb-4">
         Built from your profile. Click one to open the curator with the prompt
         pre-filled.{" "}
-        <span className="font-mono text-[#888]">
-          · generator: ${seeds.telemetry.costUsd.toFixed(3)}
-        </span>
+        {devMode && (
+          <span className="font-mono text-[#888]">
+            · generator: ${seeds.telemetry.costUsd.toFixed(3)}
+          </span>
+        )}
       </p>
       <div
-        className="rounded-[14px] p-[22px]"
+        className="rounded-[14px] p-4 sm:p-[22px]"
         style={{ background: ACCENT_SOFT, border: `1px solid ${ACCENT}` }}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -835,14 +960,18 @@ function SuggestedFeeds({ seeds }: { seeds: FeedSeedPrompts }) {
 function BatchNotes({
   batches,
   batchNotes,
+  devMode,
   stream,
-  processedCount,
+  analyzedCount,
+  totalEngagements,
   onOpenDetails,
 }: {
   batches: BatchInfo[];
   batchNotes: Record<number, BatchNote>;
+  devMode: boolean;
   stream: StreamState;
-  processedCount: number;
+  analyzedCount: number;
+  totalEngagements: number;
   onOpenDetails: (index: number) => void;
 }) {
   // Newest batch with a note auto-expands; everything else collapsed.
@@ -855,32 +984,43 @@ function BatchNotes({
   return (
     <section>
       <h3 className="font-serif text-[17px] border-b border-[#e0e0e0] pb-2 mb-1">
-        Batch notes
+        {devMode ? "Batch notes" : "What we found"}
       </h3>
       <p className="text-xs text-[#888] my-2">
-        Processed newest first ·{" "}
-        <strong className="text-[#1a1a1a]">
-          each batch = 100 engagement records.
-        </strong>{" "}
-        {processedCount} of {batches.length} processed. Click a row to read the
-        note, or <strong className="text-[#1a1a1a]">Details</strong> for the
-        breakdown.
+        Newest activity first.{" "}
+        {devMode && (
+          <strong className="text-[#1a1a1a]">
+            Each batch = 100 engagement records.{" "}
+          </strong>
+        )}
+        {analyzedCount.toLocaleString()} of {totalEngagements.toLocaleString()}{" "}
+        engagements analyzed. Click a row to read the notes, or{" "}
+        <strong className="text-[#1a1a1a]">Details</strong> for the breakdown.
       </p>
       <div>
-        {batches.map((b) => (
-          <BatchRow
-            key={b.index}
-            batch={b}
-            note={batchNotes[b.index]}
-            isStreaming={
-              stream.phase === "extract" && stream.batchIndex === b.index
-            }
-            streamText={stream.extractText}
-            open={!!open[b.index]}
-            onToggle={() => toggle(b.index)}
-            onOpenDetails={() => onOpenDetails(b.index)}
-          />
-        ))}
+        {batches.map((b) => {
+          const note = batchNotes[b.index];
+          // The text streamed for this batch this run. It stays in
+          // stream.extractText through the aggregate + seeds phases (until the
+          // final snapshot commits the note), so keep rendering it the whole
+          // time — otherwise the just-analyzed activity blanks out while the
+          // profile is being generated.
+          const isThisRow = stream.batchIndex === b.index;
+          const streamText = isThisRow && !note ? stream.extractText : "";
+          return (
+            <BatchRow
+              key={b.index}
+              batch={b}
+              note={note}
+              devMode={devMode}
+              isStreaming={stream.phase === "extract" && isThisRow}
+              streamText={streamText}
+              open={!!open[b.index]}
+              onToggle={() => toggle(b.index)}
+              onOpenDetails={() => onOpenDetails(b.index)}
+            />
+          );
+        })}
       </div>
     </section>
   );
@@ -889,6 +1029,7 @@ function BatchNotes({
 function BatchRow({
   batch,
   note,
+  devMode,
   isStreaming,
   streamText,
   open,
@@ -897,26 +1038,31 @@ function BatchRow({
 }: {
   batch: BatchInfo;
   note: BatchNote | undefined;
+  devMode: boolean;
   isStreaming: boolean;
   streamText: string;
   open: boolean;
   onToggle: () => void;
   onOpenDetails: () => void;
 }) {
-  const live = isStreaming ? splitHeadline(streamText) : null;
+  // Render streamed text whenever we have it for this row (through every
+  // phase), not only while it's actively typing.
+  const live = streamText ? splitHeadline(streamText) : null;
   const headline =
     live?.headline ||
     note?.headline ||
-    (isStreaming ? "Extracting…" : note ? firstSentence(note.text) : "Not yet processed");
-  const expanded = open || isStreaming;
+    (isStreaming ? "Analyzing…" : note ? firstSentence(note.text) : "Not yet analyzed");
+  const expanded = open || !!streamText || isStreaming;
 
   return (
     <div className="border-b border-[#eee]">
-      <div className="flex gap-3 items-center py-3.5 px-1 hover:bg-[#fcfcfc]">
+      {/* Wraps on mobile: headline (+ Details) on the first line, the
+          count·date meta drops to its own line below; single row at sm+. */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1 items-center py-3 sm:py-3.5 px-1 hover:bg-[#fcfcfc]">
         <button
           type="button"
           onClick={onToggle}
-          className="flex gap-3 items-center flex-1 min-w-0 text-left"
+          className="order-1 flex gap-3 items-center flex-1 min-w-0 text-left"
         >
           <span
             className="text-[11px] transition-transform"
@@ -927,24 +1073,27 @@ function BatchRow({
           >
             ▸
           </span>
-          <span
-            className="font-mono text-[11px] font-semibold flex-none"
-            style={{ color: ACCENT }}
-          >
-            Batch {batch.index}
-          </span>
+          {devMode && (
+            <span
+              className="font-mono text-[11px] font-semibold flex-none"
+              style={{ color: ACCENT }}
+            >
+              Batch {batch.index}
+            </span>
+          )}
           <span className="text-sm text-[#1a1a1a] flex-1 truncate">
             {headline}
           </span>
         </button>
-        <span className="font-mono text-[11px] text-[#888] flex-none">
-          {fmtDate(batch.startTs)} → {fmtDate(batch.endTs)}
+        <span className="order-3 sm:order-2 basis-full sm:basis-auto sm:flex-none font-mono text-[11px] text-[#888] pl-[26px] sm:pl-0">
+          {batch.engagementIds.length} engagements · {fmtDate(batch.startTs)} →{" "}
+          {fmtDate(batch.endTs)}
         </span>
         {note && (
           <button
             type="button"
             onClick={onOpenDetails}
-            className="font-mono text-[10px] text-[#666] bg-[#f4f4f4] border border-[#eee] px-2.5 py-1 rounded-md hover:border-[#0f766e] hover:text-[#0f766e] flex-none"
+            className="order-2 sm:order-3 font-mono text-[10px] text-[#666] bg-[#f4f4f4] border border-[#eee] px-2.5 py-1 rounded-md hover:border-[#0f766e] hover:text-[#0f766e] flex-none"
           >
             Details
           </button>
@@ -953,16 +1102,16 @@ function BatchRow({
 
       {expanded && (
         <div className="pt-0.5 pb-5 pl-[30px] pr-1">
-          {isStreaming ? (
+          {streamText ? (
             <div className="text-[15px]">
               <MarkdownBody text={live?.body ?? ""} />
-              <Cursor />
+              {isStreaming && <Cursor />}
             </div>
           ) : note ? (
             <MarkdownBody text={note.text} />
           ) : (
             <p className="text-[#999] italic text-sm">
-              Not yet processed. Click <em>Process next batch</em> above.
+              Not yet analyzed. Click <em>Analyze more activity</em> above.
             </p>
           )}
         </div>
@@ -976,11 +1125,13 @@ function BatchRow({
 function DetailDrawer({
   batch,
   note,
+  devMode,
   engagements,
   onClose,
 }: {
   batch: BatchInfo;
   note: BatchNote | undefined;
+  devMode: boolean;
   engagements: Engagement[];
   onClose: () => void;
 }) {
@@ -1008,10 +1159,19 @@ function DetailDrawer({
       <aside className="fixed top-0 right-0 h-screen w-[380px] max-w-[90vw] bg-white shadow-2xl z-[80] flex flex-col">
         <div className="flex justify-between items-baseline px-6 pt-5 pb-4 border-b border-[#e0e0e0]">
           <div>
-            <div className="font-serif text-xl">Batch {batch.index}</div>
+            <div className="font-serif text-xl">
+              {devMode
+                ? `Batch ${batch.index}`
+                : `${fmtDate(batch.startTs)} → ${fmtDate(batch.endTs)}`}
+            </div>
             <div className="font-mono text-[11px] text-[#888] mt-1">
-              100 engagement records · {fmtDate(batch.startTs)} →{" "}
-              {fmtDate(batch.endTs)} · spans {detail.spanDays}d
+              {batch.engagementIds.length} engagements
+              {devMode && (
+                <>
+                  {" "}· {fmtDate(batch.startTs)} → {fmtDate(batch.endTs)}
+                </>
+              )}{" "}
+              · spans {detail.spanDays}d
             </div>
           </div>
           <button
@@ -1073,7 +1233,7 @@ function DetailDrawer({
             </div>
           </DrawerSection>
 
-          {note && (
+          {note && devMode && (
             <DrawerSection title="Extractor run">
               <div className="font-mono text-[11px] text-[#666] leading-relaxed">
                 cost ${note.telemetry.costUsd.toFixed(3)} ·{" "}
