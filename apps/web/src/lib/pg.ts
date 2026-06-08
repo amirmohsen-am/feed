@@ -359,12 +359,29 @@ export async function getPublishedFeedsWithPublisher(): Promise<PublishedFeedEnt
 }
 
 /** Posts for the public feed skeleton xrpc (uses preview pipeline + cache). */
-export async function getFeedSkeletonPosts(
-  feedId: number,
+const SKELETON_STOCK_LIMIT = 100;
+
+async function readAnyFeedCachePosts(
+  feedId: number
+): Promise<FeedPreviewPost[] | null> {
+  try {
+    const res = await query(
+      `SELECT posts FROM feed_result_cache WHERE feed_id = $1 LIMIT 1`,
+      [feedId]
+    );
+    if (res.rows.length === 0) return null;
+    const posts = res.rows[0].posts as FeedPreviewPost[];
+    return Array.isArray(posts) && posts.length > 0 ? posts : null;
+  } catch {
+    return null;
+  }
+}
+
+function paginateSkeletonPosts(
+  posts: FeedPreviewPost[],
   limit: number,
   cursor?: string
-): Promise<{ uri: string; indexed_at: string }[]> {
-  const posts = await getFeedPreviewPosts(feedId, 100);
+): { uri: string; indexed_at: string }[] {
   let filtered = posts;
   if (cursor) {
     filtered = posts.filter((p) => p.indexed_at < cursor);
@@ -373,6 +390,50 @@ export async function getFeedSkeletonPosts(
     uri: p.uri,
     indexed_at: p.indexed_at,
   }));
+}
+
+export async function getFeedSkeletonPosts(
+  feedId: number,
+  limit: number,
+  cursor?: string
+): Promise<{ uri: string; indexed_at: string }[]> {
+  const t0 = performance.now();
+
+  // Bluesky times out around ~3s. Serve any cached posts immediately — even
+  // if the curator warmed a different limit/hash — rather than blocking on
+  // vector search + rerank.
+  const cached = await readAnyFeedCachePosts(feedId);
+  if (cached) {
+    console.log(
+      `[skeleton] cache hit feedId=${feedId} posts=${cached.length} ` +
+        `total=${(performance.now() - t0).toFixed(0)}ms`
+    );
+    return paginateSkeletonPosts(cached, limit, cursor);
+  }
+
+  // Cold path: vector order only (no LLM rerank) to stay within Bluesky's timeout.
+  const posts = await getFeedPreviewPosts(
+    feedId,
+    SKELETON_STOCK_LIMIT,
+    undefined,
+    { skipRerank: true }
+  );
+  console.log(
+    `[skeleton] cold compute feedId=${feedId} posts=${posts.length} ` +
+      `total=${(performance.now() - t0).toFixed(0)}ms`
+  );
+  return paginateSkeletonPosts(posts, limit, cursor);
+}
+
+/** Pre-warm skeleton cache after publish so Bluesky's first fetch succeeds. */
+export async function warmFeedSkeletonCache(feedId: number): Promise<number> {
+  const posts = await getFeedPreviewPosts(
+    feedId,
+    SKELETON_STOCK_LIMIT,
+    undefined,
+    { skipRerank: true }
+  );
+  return posts.length;
 }
 
 export async function getActiveFeeds(): Promise<DbFeed[]> {
@@ -603,7 +664,7 @@ export async function getFeedPreviewPosts(
   feedId: number,
   limit: number = 25,
   onStage?: (e: PreviewStageEvent) => void,
-  opts?: { forceFresh?: boolean }
+  opts?: { forceFresh?: boolean; skipRerank?: boolean }
 ): Promise<FeedPreviewPost[]> {
   const t0 = performance.now();
   const feedRes = await query("SELECT * FROM feeds WHERE id = $1", [feedId]);
@@ -652,7 +713,8 @@ export async function getFeedPreviewPosts(
   onStage?.({ stage: "searching" });
 
   try {
-    const willRerank = feed.rerank_prompt.trim().length > 0;
+    const willRerank =
+      !opts?.skipRerank && feed.rerank_prompt.trim().length > 0;
     const hits = await searchPosts({
       subqueries: feed.subqueries,
       totalBudget: feed.candidate_budget,

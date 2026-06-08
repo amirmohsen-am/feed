@@ -7,7 +7,7 @@ import {
   isFeedgenPublishable,
   feedgenPublishBlockedMessage,
 } from "@/lib/feedgen";
-import { getFeedForUser, getUserById, updateFeed } from "@/lib/pg";
+import { getFeedForUser, getUserById, updateFeed, warmFeedSkeletonCache } from "@/lib/pg";
 import { restoreBskySession } from "@/lib/bsky-oauth";
 
 /**
@@ -127,6 +127,19 @@ export async function POST(req: NextRequest) {
     }
 
     await updateFeed(feedId, { published_rkey: rkey, is_active: true });
+
+    // Warm skeleton cache before Bluesky's first fetch (avoids timeout on cold rerank).
+    try {
+      const warmed = await warmFeedSkeletonCache(feedId);
+      console.log(
+        `[publish-feed] skeleton cache warmed feedId=${feedId} posts=${warmed}`
+      );
+    } catch (e) {
+      console.warn(
+        "[publish-feed] skeleton cache warm failed:",
+        e instanceof Error ? e.message : e
+      );
+    }
 
     const feedUri = `at://${publisherDid}/app.bsky.feed.generator/${rkey}`;
 
