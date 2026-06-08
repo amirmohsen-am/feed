@@ -147,29 +147,31 @@ function CuratorShell({
 
   // Display settings (persisted to localStorage), surfaced in the top-bar
   // settings dialog and consumed by the posts pane in CuratorWorkbench.
-  const [viewMode, setViewModeState] = useState<ViewMode>(() => {
-    if (typeof window === "undefined") return "card";
-    return window.localStorage.getItem(VIEW_MODE_KEY) === "embed" ? "embed" : "card";
-  });
+  // Initialized to the SSR defaults and hydrated from localStorage in an effect
+  // after mount (below) — reading localStorage in the initializer makes the
+  // first client render disagree with the server HTML → hydration mismatch.
+  const [viewMode, setViewModeState] = useState<ViewMode>("card");
   const setViewMode = useCallback((next: ViewMode) => {
     setViewModeState(next);
     try { window.localStorage.setItem(VIEW_MODE_KEY, next); } catch { /* ignore */ }
   }, []);
-  const [showDebug, setShowDebugState] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    return window.localStorage.getItem(SHOW_DEBUG_KEY) !== "false";
-  });
+  const [showDebug, setShowDebugState] = useState<boolean>(true);
   const setShowDebug = useCallback((next: boolean) => {
     setShowDebugState(next);
     try { window.localStorage.setItem(SHOW_DEBUG_KEY, String(next)); } catch { /* ignore */ }
   }, []);
-  const [hideUnavailable, setHideUnavailableState] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    return window.localStorage.getItem(HIDE_UNAVAIL_KEY) !== "false";
-  });
+  const [hideUnavailable, setHideUnavailableState] = useState<boolean>(true);
   const setHideUnavailable = useCallback((next: boolean) => {
     setHideUnavailableState(next);
     try { window.localStorage.setItem(HIDE_UNAVAIL_KEY, String(next)); } catch { /* ignore */ }
+  }, []);
+  // Hydrate display settings from localStorage once mounted (client-only).
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(VIEW_MODE_KEY) === "embed") setViewModeState("embed");
+      if (window.localStorage.getItem(SHOW_DEBUG_KEY) === "false") setShowDebugState(false);
+      if (window.localStorage.getItem(HIDE_UNAVAIL_KEY) === "false") setHideUnavailableState(false);
+    } catch { /* ignore */ }
   }, []);
   const [unavailableCount, setUnavailableCount] = useState(0);
 

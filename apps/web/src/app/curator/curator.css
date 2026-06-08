@@ -350,6 +350,13 @@
 .cur-feed-posts-inner{
   max-width: 680px;
   margin: 0 auto;
+  transition: opacity 0.25s ease;
+}
+/* While the feed is recomputing after a chat message, fade the current posts
+   to signal they're about to change; restored when the new posts land. */
+.cur-feed-posts-inner.refreshing{
+  opacity: 0.4;
+  pointer-events: none;
 }
 /* Right: chat pane (resizable width) */
 .cur-chat-pane{

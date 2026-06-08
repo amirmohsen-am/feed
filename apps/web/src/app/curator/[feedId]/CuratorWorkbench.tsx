@@ -515,6 +515,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   }
 
   const [postsLoading, setPostsLoading] = useState(false);
+  // Set true when a chat message is sent while posts are on screen, so we can
+  // fade the feed to signal it's changing; cleared once posts finish loading
+  // (or when the turn ends without triggering a re-query).
+  const [feedRefreshing, setFeedRefreshing] = useState(false);
   const [pipelineStage, setPipelineStage] = useState<PipelineStage>("idle");
   const [pipelineCandidates, setPipelineCandidates] = useState<number | undefined>(undefined);
   const [pipelineHits, setPipelineHits] = useState<number | undefined>(undefined);
@@ -748,6 +752,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     } catch { /* ignore */ }
     finally {
       setPostsLoading(false);
+      setFeedRefreshing(false);
     }
   }, [setActivePostCount]);
 
@@ -842,6 +847,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     setSelectedOptions(new Set());
     setMessages(prev => [...prev, { role: "user", content: text.trim() }]);
     setLoading(true);
+    // Fade the current feed to signal it may be changing. Only when posts are
+    // actually on screen; cleared on posts load (or below if no re-query fires).
+    if (posts.length > 0) setFeedRefreshing(true);
+    let willReload = false;
     const interview = interviewModeRef.current;
     // Interview flag is consumed once: after a single nudged turn, the model
     // picks up the question/options pattern from history on its own.
@@ -871,6 +880,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           if (subsChanged) reloadFeeds();
           if (postsDebounceRef.current) clearTimeout(postsDebounceRef.current);
           postsDebounceRef.current = setTimeout(() => loadPosts(feedId), 600);
+          willReload = true;
         }
       }
       const last = msgs[msgs.length - 1];
@@ -880,10 +890,15 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       if (d.done) {
         loadPosts(feedId);
         reloadFeeds();
+        willReload = true;
       }
     } catch {
       setMessages(prev => [...prev, { role: "assistant", content: "Something went wrong." }]);
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+      // No re-query was triggered → nothing will clear the fade, so do it here.
+      if (!willReload) setFeedRefreshing(false);
+    }
   }
 
   // Cancel any pending debounce on unmount so a stale timer doesn't fire
@@ -1358,7 +1373,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               </button>
             </div>
           </div>
-          <div className="cur-feed-posts-inner">
+          <div className={`cur-feed-posts-inner${feedRefreshing ? " refreshing" : ""}`}>
             {posts.length === 0 ? (
               <div className="cur-empty">
                 {postsLoading ? (

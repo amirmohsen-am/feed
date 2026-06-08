@@ -222,7 +222,7 @@ export default function LandingPageV2() {
 
 
       {/* HERO with Globe */}
-      <section className="hero" style={{ minHeight: "100vh", display: "flex", alignItems: "flex-start", position: "relative", overflow: "hidden" }}>
+      <section className="hero" style={{ minHeight: "100vh", display: "flex", alignItems: "stretch", position: "relative", overflow: "hidden" }}>
         <div className="hero-globe">
           <World data={sampleArcs} globeConfig={globeConfig} />
         </div>

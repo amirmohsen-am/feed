@@ -1128,7 +1128,8 @@ html{ scroll-behavior: smooth; }
 .hero-content--centered{
   position: relative; z-index: 3;
   text-align: center; max-width: 720px;
-  margin: 0 auto; padding-top: 8vh;
+  margin: 0 auto; padding-top: 8vh; padding-bottom: 6vh;
+  display: flex; flex-direction: column;
 }
 .hero-title{
   font-size: clamp(2.4rem, 5vw, 4rem);
@@ -1142,7 +1143,7 @@ html{ scroll-behavior: smooth; }
   font-family: var(--rf-mono); font-size: 11px;
   letter-spacing: 0.1em; text-transform: uppercase;
   color: #ffffff; font-weight: 700;
-  margin-bottom: 10px; margin-top: 180px;
+  margin-bottom: 10px; margin-top: auto;
   text-align: center;
 }
 .hero-waitlist-form{
@@ -1166,7 +1167,7 @@ html{ scroll-behavior: smooth; }
     margin: 4px auto 1.5rem;
     max-width: 90%;
   }
-  .hero-waitlist-label{ margin-top: 120px; font-size: 10px; }
+  .hero-waitlist-label{ margin-top: auto; font-size: 10px; }
   .hero-waitlist-form{ max-width: 100%; padding: 0 8px; }
   .subscribe-pill input{ font-size: 14px; padding: 9px 14px; }
   .subscribe-join{ padding: 0 18px; }
@@ -1217,7 +1218,6 @@ html{ scroll-behavior: smooth; }
   .landing-wordmark{ left: 16px; }
   .landing-nav{ right: 12px; }
   .hero-title{ font-size: 1.7rem; }
-  .hero-waitlist-label{ margin-top: 120px; }
   .plate h3{ font-size: 22px; }
   .how h2{ font-size: 32px; }
 }
