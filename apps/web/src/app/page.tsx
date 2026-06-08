@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import { motion } from "motion/react";
 import Link from "next/link";
 import "./landing.css";
-import ShaderSendButton from "@/components/ShaderSendButton";
 
 const World = dynamic(() => import("@/components/ui/globe").then((m) => m.World), { ssr: false });
 
@@ -173,7 +172,7 @@ function SubscribeForm() {
 
   return (
     <form className="subscribe-form" onSubmit={onSubmit} noValidate>
-      <div className="subscribe-row">
+      <div className="subscribe-pill">
         <input
           type="email"
           required
@@ -187,7 +186,13 @@ function SubscribeForm() {
           }}
           disabled={status === "loading"}
         />
-        <ShaderSendButton disabled={status === "loading" || email.trim().length === 0} />
+        <button
+          type="submit"
+          className="subscribe-join"
+          disabled={status === "loading" || email.trim().length === 0}
+        >
+          {status === "loading" ? "Joining…" : "Join"}
+        </button>
       </div>
       {status === "error" && message && (
         <div className="subscribe-error">{message}</div>
