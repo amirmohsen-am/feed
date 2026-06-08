@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Geist } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import { cn } from "@/lib/utils";
 import ServerErrorToast from "@/components/ServerErrorToast";
 import Analytics from "@/components/Analytics";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+const geistMono = Geist_Mono({subsets:['latin'],variable:'--font-geist-mono'});
 
 export const metadata: Metadata = {
   title: "Willow — A quieter, more intentional feed.",
@@ -18,12 +19,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn("h-full antialiased", "font-sans", geist.variable)}>
+    <html lang="en" className={cn("h-full antialiased", "font-sans", geist.variable, geistMono.variable)}>
       <head>
+        {/* Editorial brand wordmarks only: Instrument Serif (landing "willow"),
+            Merriweather (curator "Willow" logo). All UI/body/mono type is Geist. */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400;1,6..72,700;1,6..72,800&family=Playfair+Display:ital,wght@1,700;1,800;1,900&family=Merriweather:ital,wght@1,900&family=JetBrains+Mono:wght@300;400;500&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Merriweather:ital,wght@1,900&display=swap"
           rel="stylesheet"
         />
       </head>

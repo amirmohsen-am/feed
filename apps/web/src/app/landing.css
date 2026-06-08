@@ -30,9 +30,9 @@ html{ scroll-behavior: smooth; }
   --hair:        rgba(243,236,221,0.14);
   --hair-strong: rgba(243,236,221,0.28);
 
-  --rf-display:   'Instrument Serif', 'Times New Roman', serif;
-  --rf-body:      'Newsreader', 'Georgia', serif;
-  --rf-mono:      'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  --rf-display:   var(--font-sans), system-ui, sans-serif;
+  --rf-body:      var(--font-sans), system-ui, sans-serif;
+  --rf-mono:      var(--font-geist-mono), ui-monospace, 'SF Mono', monospace;
 }
 
 .rf-page{
@@ -1090,7 +1090,8 @@ html{ scroll-behavior: smooth; }
 /* ── LANDING NAV (wordmark + links) ──────────── */
 .landing-wordmark{
   position: fixed; top: 24px; left: 32px; z-index: 50;
-  font-family: var(--rf-display), 'Instrument Serif', serif;
+  /* Brand wordmark stays editorial even though UI type is now Geist. */
+  font-family: 'Instrument Serif', serif;
   font-size: 22px; color: var(--cream);
   letter-spacing: -0.02em;
 }

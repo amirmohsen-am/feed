@@ -29,9 +29,11 @@
   --hair:        rgba(243,236,221,0.14);
   --hair-strong: rgba(243,236,221,0.28);
 
-  --rf-display:  'Instrument Serif', 'Times New Roman', serif;
-  --rf-body:     'Newsreader', 'Georgia', serif;
-  --rf-mono:     'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  /* UI/body/display all use Geist; hierarchy comes from weight & size.
+     'Instrument Serif'/'Merriweather' stay loaded only for the brand wordmarks. */
+  --rf-display:  var(--font-sans), system-ui, sans-serif;
+  --rf-body:     var(--font-sans), system-ui, sans-serif;
+  --rf-mono:     var(--font-geist-mono), ui-monospace, 'SF Mono', monospace;
   --background:        oklch(1 0 0);
   --foreground:        oklch(0.145 0 0);
   --card:        oklch(1 0 0);
