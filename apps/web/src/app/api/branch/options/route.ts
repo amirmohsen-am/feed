@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { requireAuth, isAuthError } from "@/lib/auth";
+import { enforceRateLimit, LLM_RULES } from "@/lib/rate-limit";
 import { getFeedForUser } from "@/lib/pg";
 import { hydratePostByUri } from "@/lib/vector-search";
 import { ensureEnvFromSecret } from "@/lib/secrets";
@@ -58,6 +59,8 @@ const TOOLS: Anthropic.Tool[] = [
 ];
 
 export async function POST(req: NextRequest) {
+  const limited = enforceRateLimit(req, "branch-options", LLM_RULES);
+  if (limited) return limited;
   const t0 = performance.now();
   const auth = await requireAuth();
   if (isAuthError(auth)) return auth;

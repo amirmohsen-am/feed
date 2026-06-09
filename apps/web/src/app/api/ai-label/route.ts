@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { enforceRateLimit, LLM_RULES } from "@/lib/rate-limit";
 import { checkPostMedia } from "@/lib/hive";
 
 /**
@@ -9,6 +10,8 @@ import { checkPostMedia } from "@/lib/hive";
  * Returns { uri, ai_generated, scores, error? }.
  */
 export async function GET(req: NextRequest) {
+  const limited = enforceRateLimit(req, "ai-label", LLM_RULES);
+  if (limited) return limited;
   const auth = await requireAuth();
 
   const uri = req.nextUrl.searchParams.get("uri");

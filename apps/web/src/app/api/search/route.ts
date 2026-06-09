@@ -25,6 +25,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { enforceRateLimit, LLM_RULES } from "@/lib/rate-limit";
 import {
   getRerankPromptForUser,
   insertSearchRun,
@@ -50,6 +51,8 @@ function clampInt(v: unknown, lo: number, hi: number, fallback: number): number 
 }
 
 export async function POST(req: NextRequest) {
+  const limited = enforceRateLimit(req, "search", LLM_RULES);
+  if (limited) return limited;
   const tTotal0 = performance.now();
   const auth = await requireAuth();
 
@@ -63,6 +66,13 @@ export async function POST(req: NextRequest) {
   const query = typeof body.query === "string" ? body.query.trim() : "";
   if (!query) {
     return NextResponse.json({ error: "query required" }, { status: 400 });
+  }
+  // Bound the embedded query length to keep per-call embedding cost predictable.
+  if (query.length > 1000) {
+    return NextResponse.json(
+      { error: "query too long (max 1000 characters)" },
+      { status: 400 }
+    );
   }
 
   const vectorK = clampInt(body.vector_k, 1, 200, 100);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { requireAuth } from "@/lib/auth";
+import { enforceRateLimit, LLM_RULES } from "@/lib/rate-limit";
 import {
   getFeedForUser,
   getFeed,
@@ -162,6 +163,8 @@ function toChatSourcePost(hit: VectorHit): ChatSourcePost {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = enforceRateLimit(req, "chat", LLM_RULES);
+  if (limited) return limited;
   const t0 = performance.now();
   const auth = await requireAuth();
   const tAuth = performance.now();
@@ -186,6 +189,14 @@ export async function POST(req: NextRequest) {
     if (!message || typeof message !== "string") {
       return NextResponse.json(
         { error: "Message required" },
+        { status: 400 }
+      );
+    }
+    // Bound input size: the user message is interpolated into the Claude
+    // request, so cap it to keep per-call token cost predictable.
+    if (message.length > 4000) {
+      return NextResponse.json(
+        { error: "Message too long (max 4000 characters)" },
         { status: 400 }
       );
     }

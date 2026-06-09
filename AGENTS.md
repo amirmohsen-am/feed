@@ -152,6 +152,7 @@ gcloud logging read 'resource.labels.service_name="jetstream-indexer"' --project
 
 # Conventions
 
+- Running `npm install` (or `npm ci`) in either app is pre-approved — just do it when needed, no need to ask first.
 - All API routes under `apps/web/src/app/api/*` use `requireAuth(req)` from `apps/web/src/lib/auth.ts`.
 - The curator UI loads sidebar feeds from Postgres (`/api/feeds`), filtered to feeds with non-empty topics/keywords. Postgres is the source of truth — there is no client-side cache (no localStorage, no Firestore).
 - Feed switching in the curator is non-blocking: clicking a feed clears the panels synchronously and fires chat + posts fetches in parallel. There is no auto-polling — the user clicks **Refresh** to re-query.

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { requireAuth } from "@/lib/auth";
+import { enforceRateLimit, LLM_RULES } from "@/lib/rate-limit";
 import { ensureEnvFromSecret } from "@/lib/secrets";
 import { createFeed, updateFeed, addChatMessage } from "@/lib/pg";
 import type { FeedPreviewPost } from "@/lib/pg";
@@ -49,6 +50,8 @@ MECHANICAL FILTERS: Only set lang_allow if the user indicated a language prefere
 NAME: A short, evocative 2-4 word feed name. Not generic like "My Feed" — something that captures the vibe.`;
 
 export async function POST(req: NextRequest) {
+  const limited = enforceRateLimit(req, "onboarding-analyze", LLM_RULES);
+  if (limited) return limited;
   const authResult = await requireAuth();
   const { userId } = authResult;
 

@@ -12,6 +12,8 @@
  * and AppView batches post hydration with embed details.
  */
 
+import { assertPublicHttpsUrl } from "./ssrf-guard";
+
 const APPVIEW = "https://public.api.bsky.app";
 const PLC = "https://plc.directory";
 
@@ -61,7 +63,12 @@ export async function didToPds(did: string): Promise<string> {
       s.type === "AtprotoPersonalDataServer"
   );
   if (!svc) throw new Error(`No PDS service in DID doc for ${did}`);
-  return svc.serviceEndpoint.replace(/\/$/, "");
+  const endpoint = svc.serviceEndpoint.replace(/\/$/, "");
+  // The serviceEndpoint host/scheme are attacker-controllable (did:plc docs are
+  // self-published), so this fetch target must be validated before any caller
+  // (listRecords) hits it — otherwise it's an SSRF into internal hosts.
+  await assertPublicHttpsUrl(endpoint);
+  return endpoint;
 }
 
 /**
@@ -97,9 +104,14 @@ export async function listRecords<T = unknown>(
       if (res.status === 400 && /Could not locate record/i.test(body)) {
         return out;
       }
-      throw new Error(
-        `listRecords ${collection} failed: ${res.status} ${body}`
+      // Log the upstream body server-side, but do NOT include it in the thrown
+      // message: this PDS is an attacker-controllable host, and its response
+      // body is surfaced to the caller via the route's error handler — echoing
+      // it would turn the SSRF guard's residual surface into a data-exfil read.
+      console.warn(
+        `[introspect] listRecords ${collection} failed: ${res.status} ${body.slice(0, 200)}`
       );
+      throw new Error(`listRecords ${collection} failed: ${res.status}`);
     }
     const data = (await res.json()) as ListRecordsResponse<T>;
     out.push(...data.records);
