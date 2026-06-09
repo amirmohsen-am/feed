@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { UserProfile } from "@/lib/types";
 import FeedbackModal from "@/components/FeedbackModal";
+import EditableFeedName from "@/components/EditableFeedName";
 import PublishFeedModal from "@/components/PublishFeedModal";
 import FeedSearch from "@/components/FeedSearch";
 import ShaderLogo from "@/components/ShaderLogo";
@@ -198,6 +199,10 @@ function CuratorShell({
     }
   }, []);
 
+  const renameFeed = useCallback((feedId: string, name: string) => {
+    setFeeds((prev) => prev.map((f) => (f.id === feedId ? { ...f, name } : f)));
+  }, []);
+
   useEffect(() => { reloadFeeds(); }, [reloadFeeds, profile.uid]);
 
   // When the URL changes to a different feed, jump mobile to the Feed tab
@@ -348,7 +353,13 @@ function CuratorShell({
                 >
                   <span className="swatch" style={{ background: feed.color }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="fi-name">{feed.name}</div>
+                    <EditableFeedName
+                      feedId={feed.id}
+                      name={feed.name}
+                      variant="sidebar"
+                      className="fi-name"
+                      onRenamed={(name) => renameFeed(feed.id, name)}
+                    />
                     <div className="fi-sub">
                       {!isComplete
                         ? "drafting · resume chat"
@@ -692,7 +703,18 @@ function CuratorShell({
               </svg>
             </button>
             <div className="cur-topbar-left">
-              <h2>{activeFeed?.name || "Curate a feed"}</h2>
+              {activeFeed ? (
+                <h2>
+                  <EditableFeedName
+                    feedId={activeFeed.id}
+                    name={activeFeed.name}
+                    variant="topbar"
+                    onRenamed={(name) => renameFeed(activeFeed.id, name)}
+                  />
+                </h2>
+              ) : (
+                <h2>Curate a feed</h2>
+              )}
               {activeHasCriteria && <span className="live-badge">live</span>}
             </div>
             <div className="cur-topbar-right">

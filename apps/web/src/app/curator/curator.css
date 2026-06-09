@@ -122,6 +122,53 @@
   line-height: 1.25;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.cur-feed-name-editable{
+  display: block;
+  cursor: text;
+  border-radius: 4px;
+  outline: none;
+}
+.cur-feed-name-editable-sidebar{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cur-feed-name-editable-topbar{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cur-feed-name-editable:hover,
+.cur-feed-name-editable:focus-visible{
+  background: rgba(11,24,20,0.04);
+}
+.cur-feed-name-input{
+  font-family: var(--rf-display);
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--aurora-deep);
+  border-radius: 6px;
+  outline: none;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.cur-feed-name-input-sidebar{
+  font-size: 16px;
+  line-height: 1.25;
+  padding: 1px 6px;
+}
+.cur-feed-name-input-topbar{
+  font-size: 26px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  padding: 2px 8px;
+}
+.cur-topbar-left h2 .cur-feed-name-editable-topbar,
+.cur-topbar-left h2 .cur-feed-name-input-topbar{
+  display: block;
+  max-width: 100%;
+}
 .cur-feed-item .fi-sub{
   font-family: var(--rf-mono); font-size: 9px;
   letter-spacing: 0.1em; text-transform: uppercase;
