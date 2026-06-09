@@ -28,6 +28,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { UserProfile } from "@/lib/types";
 import FeedbackModal from "@/components/FeedbackModal";
+import EditableFeedName from "@/components/EditableFeedName";
+import PublishFeedModal from "@/components/PublishFeedModal";
 import FeedSearch from "@/components/FeedSearch";
 import ShaderLogo from "@/components/ShaderLogo";
 import { authedFetch } from "@/lib/authed-fetch";
@@ -70,6 +72,7 @@ const ANON_PROFILE: UserProfile = {
 
 export default function CuratorLayout({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile>(ANON_PROFILE);
+  const [bskyOAuthReady, setBskyOAuthReady] = useState(false);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -88,6 +91,7 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
             bskyAppPassword: row.bsky_app_password ? "••••" : "",
             onboardedAt: row.created_at || new Date().toISOString(),
           });
+          setBskyOAuthReady(!!data.oauthReady);
         }
       }
     } catch { /* use anonymous profile */ }
@@ -108,10 +112,20 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
     fetchProfile();
   }, [fetchProfile]);
 
-  return <CuratorShell profile={profile}>{children}</CuratorShell>;
+  return <CuratorShell profile={profile} bskyOAuthReady={bskyOAuthReady} refreshProfile={fetchProfile}>{children}</CuratorShell>;
 }
 
-function CuratorShell({ profile, children }: { profile: UserProfile; children: React.ReactNode }) {
+function CuratorShell({
+  profile,
+  bskyOAuthReady,
+  refreshProfile,
+  children,
+}: {
+  profile: UserProfile;
+  bskyOAuthReady: boolean;
+  refreshProfile: () => Promise<void>;
+  children: React.ReactNode;
+}) {
   const router = useRouter();
   const params = useParams<{ feedId?: string }>();
   const activeFeedId = params?.feedId ?? null;
@@ -123,35 +137,42 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
   const [feeds, setFeeds] = useState<SavedFeed[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showPublish, setShowPublish] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [showBskyConnect, setShowBskyConnect] = useState(false);
+  const [bskyHandle, setBskyHandle] = useState("");
+  const [bskyConnecting, setBskyConnecting] = useState(false);
   const [activePostCount, setActivePostCount] = useState(0);
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
   const [optionsUnread, setOptionsUnread] = useState(false);
 
   // Display settings (persisted to localStorage), surfaced in the top-bar
   // settings dialog and consumed by the posts pane in CuratorWorkbench.
-  const [viewMode, setViewModeState] = useState<ViewMode>(() => {
-    if (typeof window === "undefined") return "card";
-    return window.localStorage.getItem(VIEW_MODE_KEY) === "embed" ? "embed" : "card";
-  });
+  // Initialized to the SSR defaults and hydrated from localStorage in an effect
+  // after mount (below) — reading localStorage in the initializer makes the
+  // first client render disagree with the server HTML → hydration mismatch.
+  const [viewMode, setViewModeState] = useState<ViewMode>("card");
   const setViewMode = useCallback((next: ViewMode) => {
     setViewModeState(next);
     try { window.localStorage.setItem(VIEW_MODE_KEY, next); } catch { /* ignore */ }
   }, []);
-  const [showDebug, setShowDebugState] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    return window.localStorage.getItem(SHOW_DEBUG_KEY) !== "false";
-  });
+  const [showDebug, setShowDebugState] = useState<boolean>(true);
   const setShowDebug = useCallback((next: boolean) => {
     setShowDebugState(next);
     try { window.localStorage.setItem(SHOW_DEBUG_KEY, String(next)); } catch { /* ignore */ }
   }, []);
-  const [hideUnavailable, setHideUnavailableState] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    return window.localStorage.getItem(HIDE_UNAVAIL_KEY) !== "false";
-  });
+  const [hideUnavailable, setHideUnavailableState] = useState<boolean>(true);
   const setHideUnavailable = useCallback((next: boolean) => {
     setHideUnavailableState(next);
     try { window.localStorage.setItem(HIDE_UNAVAIL_KEY, String(next)); } catch { /* ignore */ }
+  }, []);
+  // Hydrate display settings from localStorage once mounted (client-only).
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(VIEW_MODE_KEY) === "embed") setViewModeState("embed");
+      if (window.localStorage.getItem(SHOW_DEBUG_KEY) === "false") setShowDebugState(false);
+      if (window.localStorage.getItem(HIDE_UNAVAIL_KEY) === "false") setHideUnavailableState(false);
+    } catch { /* ignore */ }
   }, []);
   const [unavailableCount, setUnavailableCount] = useState(0);
 
@@ -176,6 +197,10 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
     } catch {
       /* ignore */
     }
+  }, []);
+
+  const renameFeed = useCallback((feedId: string, name: string) => {
+    setFeeds((prev) => prev.map((f) => (f.id === feedId ? { ...f, name } : f)));
   }, []);
 
   useEffect(() => { reloadFeeds(); }, [reloadFeeds, profile.uid]);
@@ -270,6 +295,8 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
     <CuratorProvider
       value={{
         profile,
+        bskyOAuthReady,
+        refreshProfile,
         feeds,
         reloadFeeds,
         activePostCount,
@@ -286,6 +313,7 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
         setHideUnavailable,
         unavailableCount,
         setUnavailableCount,
+        openPublish: () => setShowPublish(true),
       }}
     >
       <div className="curator-shell">
@@ -326,7 +354,13 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
                 >
                   <span className="swatch" style={{ background: feed.color }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="fi-name">{feed.name}</div>
+                    <EditableFeedName
+                      feedId={feed.id}
+                      name={feed.name}
+                      variant="sidebar"
+                      className="fi-name"
+                      onRenamed={(name) => renameFeed(feed.id, name)}
+                    />
                     <div className="fi-sub">
                       {!isComplete
                         ? "drafting · resume chat"
@@ -357,7 +391,7 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
                   fontFamily: "var(--rf-body)",
                   fontSize: 13,
                   color: "var(--sage)",
-                  fontStyle: "italic",
+                  fontStyle: "normal",
                 }}
               >
                 No feeds yet — create your first one.
@@ -395,7 +429,7 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
             style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
           >
             <Link href="/">← Home</Link>
-            <Dialog>
+            <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
               <DialogTrigger className="cur-profile-btn" title="Profile">
                 {profile.photoURL ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
@@ -442,22 +476,27 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
                   <div className="profile-row">
                     <span className="profile-key">Status</span>
                     {profile.blueskyDid ? (
-                      <span className="profile-val" style={{ color: "var(--aurora-deep)" }}>
-                        ● Connected
-                      </span>
+                      bskyOAuthReady ? (
+                        <span className="profile-val" style={{ color: "var(--aurora-deep)" }}>
+                          ● Connected
+                        </span>
+                      ) : (
+                        <button
+                          className="cur-bsky-connect-btn"
+                          onClick={() => {
+                            setProfileOpen(false);
+                            setShowBskyConnect(true);
+                          }}
+                        >
+                          Reconnect Bluesky
+                        </button>
+                      )
                     ) : (
                       <button
                         className="cur-bsky-connect-btn"
                         onClick={() => {
-                          const handle = prompt("Enter your Bluesky handle (e.g. yourname.bsky.social)");
-                          if (!handle) return;
-                          authedFetch("/api/bsky/oauth/authorize", {
-                            method: "POST",
-                            body: JSON.stringify({ handle: handle.trim().replace(/^@/, "") }),
-                          })
-                            .then((r) => r.json())
-                            .then((data) => { if (data.url) window.location.href = data.url; })
-                            .catch(() => {});
+                          setProfileOpen(false);
+                          setShowBskyConnect(true);
                         }}
                       >
                         Connect Bluesky
@@ -550,6 +589,105 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
           </AlertDialogContent>
         </AlertDialog>
 
+        {/* BLUESKY CONNECT MODAL */}
+        <Dialog open={showBskyConnect} onOpenChange={(open) => { if (!open) { setShowBskyConnect(false); setBskyHandle(""); } }}>
+          <DialogContent className="settings-dialog">
+            <DialogHeader>
+              <DialogTitle style={{ fontFamily: "var(--rf-display)", fontSize: 22, fontWeight: 400, color: "var(--ink)" }}>
+                Connect Bluesky
+              </DialogTitle>
+            </DialogHeader>
+            <Separator />
+            <div className="profile-section">
+              <label className="profile-label" htmlFor="bsky-handle-input">
+                Your Bluesky handle
+              </label>
+              <input
+                id="bsky-handle-input"
+                type="text"
+                placeholder="yourname.bsky.social"
+                value={bskyHandle}
+                onChange={(e) => setBskyHandle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && bskyHandle.trim()) {
+                    e.preventDefault();
+                    setBskyConnecting(true);
+                    authedFetch("/api/bsky/oauth/authorize", {
+                      method: "POST",
+                      body: JSON.stringify({ handle: bskyHandle.trim().replace(/^@/, "") }),
+                    })
+                      .then((r) => r.json())
+                      .then((data) => { if (data.url) window.location.href = data.url; })
+                      .catch(() => setBskyConnecting(false));
+                  }
+                }}
+                autoFocus
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  background: "#fff",
+                  border: "1px solid var(--hair-strong)",
+                  borderRadius: 8,
+                  color: "var(--ink)",
+                  fontFamily: "var(--rf-body)",
+                  fontSize: 14,
+                  outline: "none",
+                }}
+              />
+              <p style={{ color: "var(--ink-3)", fontFamily: "var(--rf-body)", fontSize: 12, marginTop: 6 }}>
+                You&apos;ll be redirected to Bluesky to authorize access.
+              </p>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+              <button
+                onClick={() => { setShowBskyConnect(false); setBskyHandle(""); }}
+                style={{
+                  background: "#fff",
+                  border: "1px solid var(--hair-strong)",
+                  color: "var(--ink-2)",
+                  fontFamily: "var(--rf-mono)",
+                  fontSize: 10,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  borderRadius: 999,
+                  padding: "8px 16px",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!bskyHandle.trim() || bskyConnecting}
+                onClick={() => {
+                  setBskyConnecting(true);
+                  authedFetch("/api/bsky/oauth/authorize", {
+                    method: "POST",
+                    body: JSON.stringify({ handle: bskyHandle.trim().replace(/^@/, "") }),
+                  })
+                    .then((r) => r.json())
+                    .then((data) => { if (data.url) window.location.href = data.url; })
+                    .catch(() => setBskyConnecting(false));
+                }}
+                style={{
+                  background: bskyHandle.trim() && !bskyConnecting ? "var(--aurora-deep)" : "var(--hair-strong)",
+                  color: "#fff",
+                  fontFamily: "var(--rf-mono)",
+                  fontSize: 10,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  borderRadius: 999,
+                  padding: "8px 16px",
+                  border: "none",
+                  cursor: bskyHandle.trim() && !bskyConnecting ? "pointer" : "not-allowed",
+                  opacity: bskyHandle.trim() && !bskyConnecting ? 1 : 0.5,
+                }}
+              >
+                {bskyConnecting ? "Connecting…" : "Connect"}
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* MAIN — topbar + page workbench + mobile tabs all live in cur-main
             so the data-mobile-tab CSS selectors can scope which pane shows. */}
         <div className="cur-main" data-mobile-tab={mobileTab}>
@@ -566,7 +704,18 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
               </svg>
             </button>
             <div className="cur-topbar-left">
-              <h2>{activeFeed?.name || "Curate a feed"}</h2>
+              {activeFeed ? (
+                <h2>
+                  <EditableFeedName
+                    feedId={activeFeed.id}
+                    name={activeFeed.name}
+                    variant="topbar"
+                    onRenamed={(name) => renameFeed(activeFeed.id, name)}
+                  />
+                </h2>
+              ) : (
+                <h2>Curate a feed</h2>
+              )}
               {activeHasCriteria && <span className="live-badge">live</span>}
             </div>
             <div className="cur-topbar-right">
@@ -575,21 +724,38 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
                   href={`/introspect/${encodeURIComponent(profile.blueskyHandle.replace(/^@/, "").toLowerCase())}`}
                   className="cur-topbar-btn ghost"
                   prefetch={false}
-                  title="Introspection"
+                  title="Introspect my engagements"
+                  aria-label="Introspect my engagements"
                 >
-                  <span aria-hidden style={{ marginRight: 2 }}>✦</span>
-                  Introspection
+                  <span aria-hidden>✦</span>
+                  <span className="cur-topbar-btn-text">Introspect my engagements</span>
                 </Link>
               ) : (
-                <Link
-                  href="/introspect"
+                <button
+                  type="button"
                   className="cur-topbar-btn ghost"
-                  prefetch={false}
-                  title="Introspect a Bluesky handle"
+                  onClick={() => setShowBskyConnect(true)}
+                  title="Connect Bluesky to introspect your engagements"
+                  aria-label="Connect Bluesky to introspect your engagements"
                 >
-                  <span aria-hidden style={{ marginRight: 2 }}>✦</span>
-                  Introspect a handle
-                </Link>
+                  <span aria-hidden>✦</span>
+                  <span className="cur-topbar-btn-text">Introspect my engagements</span>
+                </button>
+              )}
+              {activeFeed && activeHasCriteria && (
+                <button
+                  className="cur-topbar-btn publish"
+                  onClick={() => setShowPublish(true)}
+                  title="Publish this feed to Bluesky"
+                  aria-label="Publish this feed to Bluesky"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                    <polyline points="16 6 12 2 8 6" />
+                    <line x1="12" y1="2" x2="12" y2="15" />
+                  </svg>
+                  <span className="cur-topbar-btn-text">Publish to Bluesky</span>
+                </button>
               )}
               <button
                 onClick={() => setShowFeedback(true)}
@@ -733,6 +899,20 @@ function CuratorShell({ profile, children }: { profile: UserProfile; children: R
             onClose={() => setShowFeedback(false)}
             feedId={activeFeed ? Number(activeFeed.id) : null}
             feedName={activeFeed?.name ?? null}
+          />
+        )}
+
+        {showPublish && activeFeed && (
+          <PublishFeedModal
+            onClose={() => setShowPublish(false)}
+            blueskyHandle={profile.blueskyHandle}
+            blueskyDid={profile.blueskyDid}
+            feedName={activeFeed.name}
+            feedId={Number(activeFeed.id)}
+            onConnectBluesky={() => {
+              setShowPublish(false);
+              setShowBskyConnect(true);
+            }}
           />
         )}
 

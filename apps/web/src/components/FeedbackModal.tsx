@@ -1,7 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { authedFetch } from "@/lib/authed-fetch";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
 
 type Category = "bug" | "idea" | "feed_quality" | "other";
 
@@ -37,19 +44,6 @@ export default function FeedbackModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
-  const firstRef = useRef<HTMLSelectElement>(null);
-
-  useEffect(() => {
-    firstRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !submitting) onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, submitting]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -83,115 +77,57 @@ export default function FeedbackModal({
     }
   }
 
+  const fieldStyle: React.CSSProperties = {
+    background: "#fff",
+    border: "1px solid var(--hair-strong)",
+    borderRadius: 8,
+    padding: "10px 12px",
+    fontSize: 13,
+    color: "var(--ink)",
+    fontFamily: "var(--rf-body)",
+    outline: "none",
+  };
+
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.6)",
-        backdropFilter: "blur(8px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 100,
-        padding: 16,
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        if (!next && !submitting) onClose();
       }}
-      onClick={() => { if (!submitting) onClose(); }}
     >
-      <form
-        onSubmit={handleSubmit}
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--midnight, #0a1a14)",
-          border: "1px solid var(--hair, #1a2e24)",
-          borderRadius: 12,
-          width: "100%",
-          maxWidth: 480,
-          overflow: "hidden",
-          fontFamily: "var(--rf-body, system-ui)",
-          color: "var(--cream, #f3ecdd)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "16px 24px",
-            borderBottom: "1px solid var(--hair, #1a2e24)",
-          }}
-        >
-          <div>
+      <DialogContent className="settings-dialog">
+        <DialogHeader>
+          <DialogTitle
+            style={{ fontFamily: "var(--rf-display)", fontSize: 22, fontWeight: 400 }}
+          >
+            Send feedback
+          </DialogTitle>
+          {feedName && (
             <div
               style={{
-                fontFamily: "var(--rf-display, Georgia)",
-                fontSize: 18,
-                fontWeight: 400,
+                fontSize: 11,
+                color: "var(--ink-3)",
+                fontFamily: "var(--rf-mono)",
+                letterSpacing: "0.04em",
               }}
             >
-              Send feedback
+              About: {feedName}
             </div>
-            {feedName && (
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "var(--parchment-dim, #8a9a90)",
-                  marginTop: 2,
-                  fontFamily: "var(--rf-mono, ui-monospace)",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                About: {feedName}
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--parchment-dim, #8a9a90)",
-              fontSize: 20,
-              cursor: submitting ? "not-allowed" : "pointer",
-            }}
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
+          )}
+        </DialogHeader>
+        <Separator />
 
-        <div style={{ padding: "20px 24px", display: "grid", gap: 18 }}>
+        <form onSubmit={handleSubmit} style={{ display: "grid", gap: 18 }}>
           {/* Category */}
           <label style={{ display: "grid", gap: 6 }}>
-            <span
-              style={{
-                fontSize: 11,
-                textTransform: "uppercase",
-                letterSpacing: "0.1em",
-                color: "var(--parchment-dim)",
-                fontFamily: "var(--rf-mono)",
-              }}
-            >
+            <span className="settings-label" style={{ marginBottom: 0 }}>
               Topic
             </span>
             <select
-              ref={firstRef}
               value={category}
               onChange={(e) => setCategory(e.target.value as Category)}
               disabled={submitting}
-              style={{
-                background: "var(--void, #060f0b)",
-                border: "1px solid var(--hair-strong, #2a3e34)",
-                borderRadius: 8,
-                padding: "10px 12px",
-                fontSize: 13,
-                color: "var(--cream)",
-                fontFamily: "var(--rf-body)",
-                outline: "none",
-                appearance: "none",
-              }}
+              style={{ ...fieldStyle, appearance: "none" }}
             >
               {CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>
@@ -203,15 +139,7 @@ export default function FeedbackModal({
 
           {/* Rating */}
           <div style={{ display: "grid", gap: 8 }}>
-            <span
-              style={{
-                fontSize: 11,
-                textTransform: "uppercase",
-                letterSpacing: "0.1em",
-                color: "var(--parchment-dim)",
-                fontFamily: "var(--rf-mono)",
-              }}
-            >
+            <span className="settings-label" style={{ marginBottom: 0 }}>
               How happy are you with Ripple Feed right now?
             </span>
             <div
@@ -236,11 +164,11 @@ export default function FeedbackModal({
                       padding: "8px 0",
                       borderRadius: 6,
                       border: selected
-                        ? "1px solid var(--aurora, #6fd1a3)"
-                        : "1px solid var(--hair-strong, #2a3e34)",
-                      background: selected ? "var(--aurora, #6fd1a3)" : "var(--void, #060f0b)",
-                      color: selected ? "var(--void, #060f0b)" : "var(--cream)",
-                      fontFamily: "var(--rf-mono, ui-monospace)",
+                        ? "1px solid var(--aurora-deep)"
+                        : "1px solid var(--hair-strong)",
+                      background: selected ? "var(--aurora-deep)" : "#fff",
+                      color: selected ? "#fff" : "var(--ink-2)",
+                      fontFamily: "var(--rf-mono)",
                       fontSize: 12,
                       cursor: submitting ? "not-allowed" : "pointer",
                       transition: "background 120ms, color 120ms, border-color 120ms",
@@ -256,7 +184,7 @@ export default function FeedbackModal({
                 display: "flex",
                 justifyContent: "space-between",
                 fontSize: 10,
-                color: "var(--parchment-dim)",
+                color: "var(--ink-3)",
                 fontFamily: "var(--rf-mono)",
                 letterSpacing: "0.05em",
               }}
@@ -268,16 +196,11 @@ export default function FeedbackModal({
 
           {/* Comment */}
           <label style={{ display: "grid", gap: 6 }}>
-            <span
-              style={{
-                fontSize: 11,
-                textTransform: "uppercase",
-                letterSpacing: "0.1em",
-                color: "var(--parchment-dim)",
-                fontFamily: "var(--rf-mono)",
-              }}
-            >
-              Tell us more <span style={{ textTransform: "none", letterSpacing: 0 }}>(optional)</span>
+            <span className="settings-label" style={{ marginBottom: 0 }}>
+              Tell us more{" "}
+              <span style={{ textTransform: "none", letterSpacing: 0 }}>
+                (optional)
+              </span>
             </span>
             <textarea
               value={body}
@@ -285,23 +208,12 @@ export default function FeedbackModal({
               rows={5}
               placeholder="What worked, what didn't, what you wish was different…"
               disabled={submitting}
-              style={{
-                background: "var(--void, #060f0b)",
-                border: "1px solid var(--hair-strong, #2a3e34)",
-                borderRadius: 8,
-                padding: "10px 12px",
-                fontSize: 13,
-                color: "var(--cream)",
-                fontFamily: "var(--rf-body)",
-                resize: "vertical",
-                outline: "none",
-                minHeight: 80,
-              }}
+              style={{ ...fieldStyle, resize: "vertical", minHeight: 80 }}
             />
             <span
               style={{
                 fontSize: 10,
-                color: "var(--parchment-dim)",
+                color: "var(--ink-3)",
                 fontFamily: "var(--rf-mono)",
                 textAlign: "right",
               }}
@@ -314,7 +226,7 @@ export default function FeedbackModal({
             <div
               style={{
                 fontSize: 12,
-                color: "var(--rose, #ff7a7a)",
+                color: "var(--rose)",
                 fontFamily: "var(--rf-mono)",
               }}
             >
@@ -326,64 +238,62 @@ export default function FeedbackModal({
             <div
               style={{
                 fontSize: 12,
-                color: "var(--aurora, #6fd1a3)",
+                color: "var(--aurora-deep)",
                 fontFamily: "var(--rf-mono)",
               }}
             >
               ✓ Thanks — feedback sent.
             </div>
           )}
-        </div>
 
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 10,
-            padding: "12px 24px 18px",
-            borderTop: "1px solid var(--hair, #1a2e24)",
-          }}
-        >
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
+          <div
             style={{
-              background: "transparent",
-              border: "1px solid var(--hair-strong, #2a3e34)",
-              color: "var(--parchment)",
-              fontFamily: "var(--rf-mono)",
-              fontSize: 11,
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              borderRadius: 999,
-              padding: "8px 16px",
-              cursor: submitting ? "not-allowed" : "pointer",
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 10,
             }}
           >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={submitting || done}
-            style={{
-              background: "var(--aurora, #6fd1a3)",
-              border: "1px solid var(--aurora, #6fd1a3)",
-              color: "var(--void, #060f0b)",
-              fontFamily: "var(--rf-mono)",
-              fontSize: 11,
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              borderRadius: 999,
-              padding: "8px 18px",
-              cursor: submitting || done ? "not-allowed" : "pointer",
-              opacity: submitting || done ? 0.6 : 1,
-            }}
-          >
-            {submitting ? "Sending…" : done ? "Sent" : "Send"}
-          </button>
-        </div>
-      </form>
-    </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--hair-strong)",
+                color: "var(--ink-2)",
+                fontFamily: "var(--rf-mono)",
+                fontSize: 11,
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+                borderRadius: 999,
+                padding: "8px 16px",
+                cursor: submitting ? "not-allowed" : "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || done}
+              style={{
+                background: "var(--aurora-deep)",
+                border: "1px solid var(--aurora-deep)",
+                color: "#fff",
+                fontFamily: "var(--rf-mono)",
+                fontSize: 11,
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+                borderRadius: 999,
+                padding: "8px 18px",
+                cursor: submitting || done ? "not-allowed" : "pointer",
+                opacity: submitting || done ? 0.6 : 1,
+              }}
+            >
+              {submitting ? "Sending…" : done ? "Sent" : "Send"}
+            </button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

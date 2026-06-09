@@ -13,17 +13,22 @@ export interface ApiErrorDetail {
  */
 export async function authedFetch(
   url: string,
-  options: RequestInit = {}
+  options: RequestInit & { suppressErrorToast?: boolean } = {}
 ): Promise<Response> {
-  const headers = new Headers(options.headers);
+  const { suppressErrorToast, ...fetchOptions } = options;
+  const headers = new Headers(fetchOptions.headers);
 
-  if (!headers.has("Content-Type") && options.body) {
+  if (!headers.has("Content-Type") && fetchOptions.body) {
     headers.set("Content-Type", "application/json");
   }
 
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(url, { ...fetchOptions, headers });
 
-  if (!res.ok && typeof window !== "undefined") {
+  if (
+    !res.ok &&
+    !suppressErrorToast &&
+    typeof window !== "undefined"
+  ) {
     const clone = res.clone();
     const ct = clone.headers.get("content-type") || "";
     let message = `${res.status} ${res.statusText || "Error"}`;

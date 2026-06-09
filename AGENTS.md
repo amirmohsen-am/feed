@@ -29,7 +29,7 @@ Each app is self-contained with its own `package.json` and `package-lock.json`. 
 | Worker runtime | Node 22 + tsx — `npm start` from `apps/jetstream-indexer/` |
 | Package manager | npm (each app has its own `package-lock.json`) |
 | Database | Cloud SQL Postgres 15 in `timelines-492720`. Two instances: `feed-db` (web app) and `bsky-db` (indexer). |
-| Auth | Firebase Auth (Google sign-in). Token verified on the server in `apps/web/src/lib/auth.ts`. No user-managed admin SA key (org policy blocks creation), so prod uses insecure-decode fallback for the demo. |
+| Auth | Anonymous session cookie set by `apps/web/src/middleware.ts` — no sign-in. Server resolves it in `apps/web/src/lib/auth.ts` (`requireAuth`) via `session.ts`, creating/looking up the user row by session id. Bluesky OAuth (`src/lib/bsky-oauth.ts`) layers on for authenticated Bluesky actions. |
 | Chat LLM | Anthropic Claude (`claude-sonnet-4-6`) via `@anthropic-ai/sdk` — `/api/chat`, `/api/import-memory` |
 | Post search | pgvector (HNSW, halfvec) on `bsky-db` — KNN SQL in `apps/web/src/lib/vector-search.ts`. Query embedding still via Vertex Gemini. |
 | Hosting | Both services on Cloud Run in `timelines-492720` |
@@ -39,7 +39,7 @@ Each app is self-contained with its own `package.json` and `package-lock.json`. 
 **Two Cloud SQL instances**, one database each:
 
 - **Instance `feed-db`** (db-f1-micro) — hosts the web app's `feed_curator` database. Secret: `database-url`.
-  - `users` — Firebase UID → internal Postgres UUID
+  - `users` — anonymous session id → internal Postgres UUID; linked Bluesky DID/handle once the user completes Bluesky OAuth
   - `feeds` — per-user feed configs (`name`, `mechanical_filters`, `semantic_config`, `description`)
   - `chat_messages` — per-feed chat transcripts
   - `subscribers` — landing-page mailing list
@@ -188,7 +188,7 @@ const c = await client();       // fetches ANTHROPIC_API_KEY from SM on first ca
 |---|---|
 | Cloud SQL `feed-db` (web app) | `gcloud sql instances describe feed-db --project=timelines-492720` |
 | Cloud SQL `bsky-db` (indexer) | `gcloud sql instances describe bsky-db --project=timelines-492720` |
-| Firebase project | `timelines-492720` (display name "timelines"). Authorized domains list managed via Identity Toolkit Admin API. |
+| Firebase project | `timelines-492720` (display name "timelines"). Used only for Firebase Analytics now (`apps/web/src/components/Analytics.tsx`) — no longer the auth provider. |
 | Secret Manager | `gcloud secrets list --project=timelines-492720` |
 | Vertex Gemini embeddings | project `timelines-492720`, region `us-central1`, model `gemini-embedding-001` (768d). No Vector Search index — search is pgvector on `bsky-db`. |
 | GCS data bucket | `gs://happy-feed-data-timelines` (parquet posts/embeddings + Jetstream cursor) |

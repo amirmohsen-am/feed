@@ -80,7 +80,7 @@
   font-family: var(--rf-display);
   font-size: 22px;
 }
-.srch-rail-head em { color: var(--aurora-deep); font-style: italic; }
+.srch-rail-head em { color: var(--aurora-deep); font-style: normal; }
 
 .srch-section-label {
   font-family: var(--rf-mono);
@@ -204,7 +204,7 @@
   color: var(--ink);
   font-family: var(--rf-display);
   font-size: 22px;
-  font-style: italic;
+  font-style: normal;
 }
 .srch-input input::placeholder { color: var(--ink-4); }
 .srch-input button {
@@ -330,7 +330,7 @@
   color: var(--ink-3);
   font-family: var(--rf-display);
   font-size: 20px;
-  font-style: italic;
+  font-style: normal;
 }
 
 .srch-row {
@@ -356,7 +356,7 @@
 .srch-embed-loading {
   color: var(--ink-3);
   font-size: 13px;
-  font-style: italic;
+  font-style: normal;
   padding: 12px 0;
   margin: 0;
 }
@@ -392,14 +392,14 @@
 .srch-reason {
   padding: 9px 12px;
   border-left: 2px solid var(--aurora-deep);
-  font-style: italic;
+  font-style: normal;
   color: var(--ink);
   font-size: 12.5px;
   background: rgba(125,203,165,0.08);
   border-radius: 0 4px 4px 0;
 }
 .srch-reason-empty {
-  font-style: italic;
+  font-style: normal;
   color: var(--ink-4);
   font-size: 12px;
 }

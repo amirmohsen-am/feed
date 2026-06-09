@@ -18,8 +18,14 @@ export function useResizable(
   max: number,
   direction: "left" | "right"
 ): [number, (e: React.PointerEvent<HTMLDivElement>) => void] {
-  const [width, setWidth] = useState<number>(() => readStoredWidth(key, initial, min, max));
+  // Always start from `initial` so SSR and the first client render match.
+  // Restore the persisted width after mount (see React hydration docs).
+  const [width, setWidth] = useState<number>(initial);
   const draggingRef = useRef<{ startX: number; startW: number } | null>(null);
+
+  useEffect(() => {
+    setWidth(readStoredWidth(key, initial, min, max));
+  }, [key, initial, min, max]);
 
   useEffect(() => {
     function onMove(e: PointerEvent) {

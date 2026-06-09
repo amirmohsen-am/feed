@@ -94,6 +94,41 @@ export async function unlikePost(
 /**
  * Resolve a post URI to its CID by fetching it from the AppView.
  */
+export async function publishFeedGenerator(
+  session: BskySession,
+  params: {
+    rkey: string;
+    serviceDid: string;
+    displayName: string;
+    description: string;
+  }
+): Promise<string> {
+  const res = await fetch(`${BSKY_SERVICE}/xrpc/com.atproto.repo.putRecord`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.accessJwt}`,
+    },
+    body: JSON.stringify({
+      repo: session.did,
+      collection: "app.bsky.feed.generator",
+      rkey: params.rkey,
+      record: {
+        $type: "app.bsky.feed.generator",
+        did: params.serviceDid,
+        displayName: params.displayName.slice(0, 24),
+        description: params.description.slice(0, 300),
+        createdAt: new Date().toISOString(),
+      },
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Bluesky publishFeedGenerator failed (${res.status}): ${body}`);
+  }
+  return `at://${session.did}/app.bsky.feed.generator/${params.rkey}`;
+}
+
 export async function resolvePostCid(postUri: string): Promise<string> {
   const params = new URLSearchParams();
   params.append("uris", postUri);

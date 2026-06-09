@@ -1,4 +1,5 @@
 import IntrospectDashboard from "../IntrospectDashboard";
+import IntrospectGate from "../IntrospectGate";
 
 export default async function IntrospectHandlePage({
   params,
@@ -8,5 +9,9 @@ export default async function IntrospectHandlePage({
   // Next 16 made route params a promise in server components.
   const { handle } = await params;
   const cleanHandle = decodeURIComponent(handle).replace(/^@/, "").toLowerCase();
-  return <IntrospectDashboard handle={cleanHandle} />;
+  return (
+    <IntrospectGate>
+      <IntrospectDashboard handle={cleanHandle} />
+    </IntrospectGate>
+  );
 }

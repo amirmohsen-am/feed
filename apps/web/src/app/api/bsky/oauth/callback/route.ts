@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { handleBskyOAuthCallback } from "@/lib/bsky-oauth";
-import { query } from "@/lib/pg";
+import { linkBlueskyAccount } from "@/lib/link-bluesky";
+import { SESSION_COOKIE } from "@/lib/session";
 
 /**
  * POST /api/bsky/oauth/callback
  * Body: { params: string } — the full query string from the OAuth redirect
  *
  * Exchanges the authorization code for tokens and links the Bluesky DID
- * to the current anonymous session user.
+ * to the Willow user for this browser session.
  */
 export async function POST(req: NextRequest) {
   const auth = await requireAuth();
@@ -16,6 +17,11 @@ export async function POST(req: NextRequest) {
   const { params } = await req.json();
   if (!params || typeof params !== "string") {
     return NextResponse.json({ error: "params required" }, { status: 400 });
+  }
+
+  const sessionId = req.cookies.get(SESSION_COOKIE)?.value;
+  if (!sessionId) {
+    return NextResponse.json({ error: "Missing session" }, { status: 400 });
   }
 
   try {
@@ -34,13 +40,14 @@ export async function POST(req: NextRequest) {
       }
     } catch { /* non-fatal */ }
 
-    // Link Bluesky DID + handle to the current session user
-    await query(
-      `UPDATE users SET bluesky_did = $1, bluesky_handle = $2, updated_at = now() WHERE id = $3`,
-      [did, handle ?? null, auth.userId]
-    );
+    const { userId } = await linkBlueskyAccount({
+      sessionId,
+      oauthUserId: auth.userId,
+      did,
+      handle: handle ?? null,
+    });
 
-    return NextResponse.json({ ok: true, did, handle });
+    return NextResponse.json({ ok: true, did, handle, userId });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn("[bsky/oauth/callback] error:", msg);

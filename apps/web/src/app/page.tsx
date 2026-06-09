@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import { motion } from "motion/react";
 import Link from "next/link";
 import "./landing.css";
-import ShaderSendButton from "@/components/ShaderSendButton";
 
 const World = dynamic(() => import("@/components/ui/globe").then((m) => m.World), { ssr: false });
 
@@ -173,7 +172,7 @@ function SubscribeForm() {
 
   return (
     <form className="subscribe-form" onSubmit={onSubmit} noValidate>
-      <div className="subscribe-row">
+      <div className="subscribe-pill">
         <input
           type="email"
           required
@@ -187,7 +186,13 @@ function SubscribeForm() {
           }}
           disabled={status === "loading"}
         />
-        <ShaderSendButton disabled={status === "loading" || email.trim().length === 0} />
+        <button
+          type="submit"
+          className="subscribe-join"
+          disabled={status === "loading" || email.trim().length === 0}
+        >
+          {status === "loading" ? "Joining…" : "Join"}
+        </button>
       </div>
       {status === "error" && message && (
         <div className="subscribe-error">{message}</div>
@@ -217,7 +222,7 @@ export default function LandingPageV2() {
 
 
       {/* HERO with Globe */}
-      <section className="hero" style={{ minHeight: "100vh", display: "flex", alignItems: "flex-start", position: "relative", overflow: "hidden" }}>
+      <section className="hero" style={{ minHeight: "100vh", display: "flex", alignItems: "stretch", position: "relative", overflow: "hidden" }}>
         <div className="hero-globe">
           <World data={sampleArcs} globeConfig={globeConfig} />
         </div>
@@ -229,16 +234,33 @@ export default function LandingPageV2() {
             transition={{ duration: 1, ease: "easeOut" }}
             className="hero-title"
           >
-            A feed you <span className="it">actually</span> choose.
+            Transparency into <span className="it">your</span> feed.
           </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: -40 }}
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, ease: "easeOut", delay: 0.3 }}
-            className="hero-sub hero-sub--centered">
-            In the same way you <em>curate what you eat</em>, you must curate what you consume online to stay healthy.
-            We&apos;re building the tools to help you do that.
-          </motion.p>
+            className="hero-pillars"
+          >
+            <div className="hero-pillar">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className="hero-pillar-icon" src="/images/pillars/feed-curation.png" alt="" aria-hidden="true" />
+              <span className="hero-pillar-label">Feed curation</span>
+              <span className="hero-pillar-sub">Choose your feed</span>
+            </div>
+            <div className="hero-pillar">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className="hero-pillar-icon" src="/images/pillars/user-identification.png" alt="" aria-hidden="true" />
+              <span className="hero-pillar-label">User identification</span>
+              <span className="hero-pillar-sub">See who&apos;s real</span>
+            </div>
+            <div className="hero-pillar">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className="hero-pillar-icon" src="/images/pillars/content-validation.png" alt="" aria-hidden="true" />
+              <span className="hero-pillar-label">Content validation</span>
+              <span className="hero-pillar-sub">See what&apos;s true</span>
+            </div>
+          </motion.div>
           <p className="hero-waitlist-label">Join the Waitlist</p>
           <div className="hero-waitlist-form">
             <SubscribeForm />

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { query } from "./pg";
+import { ensureSessionUser } from "./link-bluesky";
 
 const SESSION_COOKIE = "sid";
 
@@ -8,6 +9,8 @@ export interface SessionUser {
   blueskyDid: string | null;
   blueskyHandle: string | null;
 }
+
+export { SESSION_COOKIE };
 
 /**
  * Read the session cookie and look up (or create) the anonymous user.
@@ -22,32 +25,16 @@ export async function getSession(): Promise<SessionUser> {
     throw new Error("No session cookie — middleware may not be running");
   }
 
-  // Try to find existing user
-  const existing = await query(
-    "SELECT id, bluesky_did, bluesky_handle FROM users WHERE session_id = $1",
-    [sessionId]
-  );
+  const userId = await ensureSessionUser(sessionId);
 
-  if (existing.rows[0]) {
-    return {
-      userId: existing.rows[0].id,
-      blueskyDid: existing.rows[0].bluesky_did,
-      blueskyHandle: existing.rows[0].bluesky_handle,
-    };
-  }
-
-  // Create anonymous user
-  const res = await query(
-    `INSERT INTO users (session_id, name, email)
-     VALUES ($1, 'Anonymous', '')
-     ON CONFLICT (session_id) DO UPDATE SET updated_at = now()
-     RETURNING id, bluesky_did, bluesky_handle`,
-    [sessionId]
+  const user = await query(
+    "SELECT bluesky_did, bluesky_handle FROM users WHERE id = $1",
+    [userId]
   );
 
   return {
-    userId: res.rows[0].id,
-    blueskyDid: res.rows[0].bluesky_did,
-    blueskyHandle: res.rows[0].bluesky_handle,
+    userId,
+    blueskyDid: user.rows[0]?.bluesky_did ?? null,
+    blueskyHandle: user.rows[0]?.bluesky_handle ?? null,
   };
 }

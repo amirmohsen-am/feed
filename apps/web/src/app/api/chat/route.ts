@@ -12,7 +12,6 @@ import {
 } from "@/lib/pg";
 import { ensureEnvFromSecret } from "@/lib/secrets";
 import { hydratePostByUri, type VectorHit } from "@/lib/vector-search";
-import { composeSourcePostText } from "@/lib/branch";
 import type { MechanicalFilters } from "@/lib/types";
 
 let _client: Anthropic | null = null;
@@ -230,16 +229,10 @@ export async function POST(req: NextRequest) {
     if (isBranchInit) {
       // Give the agent context, not instructions — the base curator system
       // prompt already knows how to turn topics into subqueries, write a
-      // rerank prompt, and name the feed. It decides; we just hand it the post
-      // + the chosen topics (pretty-printed so the transcript reads cleanly).
-      const postBlock = sourcePostHit
-        ? composeSourcePostText(sourcePostHit)
-        : "(the source post could not be loaded)";
-      const topics = JSON.stringify(feed.subqueries, null, 2);
-      const branchSeed =
-        `I branched off this Bluesky post and chose these topics:\n${topics}\n\n` +
-        `THE POST:\n${postBlock}\n\n` +
-        `Set it up.`;
+      // rerank prompt, and name the feed. We just hand it the chosen topics
+      // (line-separated so the transcript reads cleanly).
+      const topics = feed.subqueries.map((t) => `- ${t}`).join("\n");
+      const branchSeed = `Create a feed with these topics:\n${topics}`;
       // Persist the seed so the transcript transparently shows the prompt the
       // branch was built from (unlike __init__, which hides its kickoff).
       await addChatMessage(feedId, "user", branchSeed);

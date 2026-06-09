@@ -60,7 +60,7 @@ export default function ServerErrorToast() {
         borderRadius: 8,
         padding: "12px 16px",
         color: "#f3ecdd",
-        fontFamily: "'Newsreader', Georgia, serif",
+        fontFamily: "var(--font-sans), system-ui, sans-serif",
         fontSize: 13,
         lineHeight: 1.5,
         boxShadow: "0 8px 32px -8px rgba(0,0,0,.6)",
@@ -84,7 +84,7 @@ export default function ServerErrorToast() {
           <span
             style={{
               fontFamily:
-                "'JetBrains Mono', ui-monospace, 'SF Mono', monospace",
+                "var(--font-geist-mono), ui-monospace, 'SF Mono', monospace",
               fontSize: 11,
               color: "#a8b5a8",
             }}
@@ -99,7 +99,7 @@ export default function ServerErrorToast() {
               marginTop: 6,
               color: "#a8d5bd",
               fontSize: 12.5,
-              fontStyle: "italic",
+              fontStyle: "normal",
             }}
           >
             {current.hint}

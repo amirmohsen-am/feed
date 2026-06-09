@@ -18,24 +18,32 @@ import { query } from "./pg";
 // Postgres-backed stores
 // ---------------------------------------------------------------------------
 
-// Track which user started each OAuth flow so we can link the DID
-// back to the correct user even when cookies don't survive the redirect.
+// Track which user and browser session started each OAuth flow so we can link
+// the DID back to the correct user even when cookies don't survive the redirect.
 let _pendingUserId: string | null = null;
+let _pendingSessionId: string | null = null;
 
 export function setPendingOAuthUserId(userId: string) {
   _pendingUserId = userId;
+}
+
+export function setPendingOAuthSessionId(sessionId: string) {
+  _pendingSessionId = sessionId;
 }
 
 function pgStateStore(): NodeSavedStateStore {
   return {
     async set(key: string, val: NodeSavedState) {
       await query(
-        `INSERT INTO bsky_oauth_state (key, data, user_id, expires_at)
-         VALUES ($1, $2, $3, now() + interval '10 minutes')
-         ON CONFLICT (key) DO UPDATE SET data = $2, user_id = $3, expires_at = now() + interval '10 minutes'`,
-        [key, JSON.stringify(val), _pendingUserId]
+        `INSERT INTO bsky_oauth_state (key, data, user_id, session_id, expires_at)
+         VALUES ($1, $2, $3, $4, now() + interval '10 minutes')
+         ON CONFLICT (key) DO UPDATE SET
+           data = $2, user_id = $3, session_id = $4,
+           expires_at = now() + interval '10 minutes'`,
+        [key, JSON.stringify(val), _pendingUserId, _pendingSessionId]
       );
       _pendingUserId = null;
+      _pendingSessionId = null;
     },
     async get(key: string) {
       const res = await query(
@@ -52,15 +60,27 @@ function pgStateStore(): NodeSavedStateStore {
 }
 
 /**
- * Look up the user_id that was stored alongside an OAuth state key.
+ * Look up the user_id and session_id stored alongside an OAuth state key.
  * Called from the callback route BEFORE the state is consumed.
  */
-export async function getOAuthStateUserId(stateKey: string): Promise<string | null> {
+export async function getOAuthStateContext(stateKey: string): Promise<{
+  userId: string | null;
+  sessionId: string | null;
+}> {
   const res = await query(
-    `SELECT user_id FROM bsky_oauth_state WHERE key = $1`,
+    `SELECT user_id, session_id FROM bsky_oauth_state WHERE key = $1`,
     [stateKey]
   );
-  return res.rows[0]?.user_id ?? null;
+  return {
+    userId: res.rows[0]?.user_id ?? null,
+    sessionId: res.rows[0]?.session_id ?? null,
+  };
+}
+
+/** @deprecated Use getOAuthStateContext */
+export async function getOAuthStateUserId(stateKey: string): Promise<string | null> {
+  const ctx = await getOAuthStateContext(stateKey);
+  return ctx.userId;
 }
 
 function pgSessionStore(): NodeSavedSessionStore {
@@ -177,4 +197,24 @@ export async function handleBskyOAuthCallback(
 export async function restoreBskySession(did: string) {
   const client = getBskyOAuthClient();
   return client.restore(did);
+}
+
+/** Whether we have stored OAuth tokens for this DID (may still need refresh). */
+export async function hasBskyOAuthSession(did: string): Promise<boolean> {
+  const res = await query(
+    `SELECT 1 FROM bsky_oauth_session WHERE did = $1 LIMIT 1`,
+    [did]
+  );
+  return (res.rowCount ?? 0) > 0;
+}
+
+/** True when stored OAuth tokens exist and restore succeeds (refresh if needed). */
+export async function canRestoreBskySession(did: string): Promise<boolean> {
+  if (!(await hasBskyOAuthSession(did))) return false;
+  try {
+    await restoreBskySession(did);
+    return true;
+  } catch {
+    return false;
+  }
 }

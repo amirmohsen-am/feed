@@ -207,6 +207,7 @@ export async function POST(req: NextRequest) {
         external_uri: h.external_uri,
         external_title: h.external_title,
         external_desc: h.external_desc,
+        external_thumb: h.external_thumb,
         quote_uri: h.quote_uri,
         has_images: h.has_images,
         image_count: h.image_count,

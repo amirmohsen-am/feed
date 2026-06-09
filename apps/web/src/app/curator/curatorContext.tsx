@@ -17,6 +17,8 @@ export type ViewMode = "card" | "embed";
 
 export interface CuratorContextValue {
   profile: UserProfile;
+  bskyOAuthReady: boolean;
+  refreshProfile: () => Promise<void>;
   feeds: SavedFeed[];
   reloadFeeds: () => Promise<void>;
   activePostCount: number;
@@ -37,6 +39,7 @@ export interface CuratorContextValue {
   // mirrored up from the workbench so the settings dialog can show it.
   unavailableCount: number;
   setUnavailableCount: (n: number) => void;
+  openPublish: () => void;
 }
 
 const CuratorContext = createContext<CuratorContextValue | null>(null);

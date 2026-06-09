@@ -92,6 +92,13 @@ export async function PATCH(req: NextRequest) {
     subqueries: cleanSubs,
     candidate_budget: budget,
   };
+  if (typeof name === "string") {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      return NextResponse.json({ error: "name cannot be empty" }, { status: 400 });
+    }
+    updates.name = trimmed.slice(0, 80);
+  }
   if (typeof rerank_prompt === "string") {
     updates.rerank_prompt = rerank_prompt;
   }
