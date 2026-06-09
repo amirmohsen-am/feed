@@ -438,6 +438,23 @@ export default function LandingPageV2() {
                 </div>
               </div>
             </div>
+            <div className="about-card reveal" style={{ transitionDelay: "360ms" }}>
+              <div className="about-photo">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/images/toby.jpg" alt="Toby" />
+              </div>
+              <div className="about-info">
+                <h3 className="about-name">Toby Leeder</h3>
+                <p className="about-role">Product Intern</p>
+                <p className="about-bio">
+                  UC Berkeley student studying applied mathematics and computer science. Struggles with social media overuse (you don&rsquo;t want to see my iPhone screen time metrics). Excited to be a part of the solution!
+                </p>
+                <div className="about-links">
+                  <a href="https://bsky.app/profile/tobyleeder.bsky.social" className="about-link" target="_blank" rel="noopener noreferrer" aria-label="Bluesky"><BlueskyIcon /></a>
+                  <a href="https://www.linkedin.com/in/toby-leeder/" className="about-link" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn"><LinkedInIcon /></a>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
