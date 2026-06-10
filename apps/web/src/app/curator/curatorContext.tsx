@@ -11,7 +11,7 @@ export interface SavedFeed {
   createdAt: string;
 }
 
-export type MobileTab = "chat" | "feed" | "tune";
+export type MobileTab = "chat" | "feed";
 
 export type ViewMode = "card" | "embed";
 
