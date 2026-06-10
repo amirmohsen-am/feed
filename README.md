@@ -81,6 +81,28 @@ gcloud run deploy jetstream-indexer \
 
 The worker needs `--no-cpu-throttling` (long-lived WebSocket to Jetstream) and `concurrency=1` (single writer to the cursor file).
 
+## Database settings applied out-of-band (bsky-db)
+
+The `bsky_posts` database carries settings that live **only in the live instance** — they are not in `apps/jetstream-indexer/sql/*.sql` migrations, and a rebuild/restore of `bsky-db` silently loses them (feeds with selective filters degrade to near-empty results, no errors). Reapply after any rebuild:
+
+```sql
+-- Load pgvector in this session first; otherwise ALTER DATABASE fails with
+-- "permission denied to set parameter" (extension GUCs are unknown placeholders
+-- until vector.so is loaded in the issuing backend).
+SELECT '[1,2,3]'::vector;
+
+ALTER DATABASE bsky_posts SET hnsw.ef_search = 250;
+ALTER DATABASE bsky_posts SET hnsw.iterative_scan = 'relaxed_order';
+ALTER DATABASE bsky_posts SET hnsw.max_scan_tuples = 40000;
+ALTER DATABASE bsky_posts SET effective_cache_size = '12GB';
+```
+
+- `ef_search = 250` — HNSW recall knob; set at database level so the pooled one-shot read path needs no `SET LOCAL`.
+- `iterative_scan = relaxed_order` + `max_scan_tuples = 40000` — fixes filtered-KNN starvation: by default the scan stops after `ef_search` candidates, so selective filter combos (e.g. 24h + en + top-level + min likes) post-filter down to ~0 hits. Iterative scan resumes the graph walk until the LIMIT fills, bounded at 40k tuples visited (never a full scan). `relaxed_order` is fine because the read path unions per-subquery results and reranks anyway.
+- The HNSW index itself is also built out-of-band (`CREATE INDEX CONCURRENTLY`, see `apps/jetstream-indexer/sql/0003_pgvector.sql`) — the boot-time migrator does not create it.
+
+Verify current values: `SELECT setconfig FROM pg_db_role_setting s JOIN pg_database d ON d.oid = s.setdatabase WHERE d.datname = 'bsky_posts';`
+
 ## Monitoring
 
 Cloud Monitoring dashboard for the indexer (flush rate, cursor lag, embed cost, QPS): <https://console.cloud.google.com/monitoring/dashboards/builder/781a3b9f-7c30-4eed-82bd-61fa79964612?project=timelines-492720>
