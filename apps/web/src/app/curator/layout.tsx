@@ -29,7 +29,6 @@ import FeedbackModal from "@/components/FeedbackModal";
 import EditableFeedName from "@/components/EditableFeedName";
 import PublishFeedModal from "@/components/PublishFeedModal";
 import FeedSearch from "@/components/FeedSearch";
-import ShaderLogo from "@/components/ShaderLogo";
 import { authedFetch } from "@/lib/authed-fetch";
 import { useResizable } from "./useResizable";
 import {
@@ -135,13 +134,49 @@ function CuratorShell({
   const [feeds, setFeeds] = useState<SavedFeed[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showPublish, setShowPublish] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showBskyConnect, setShowBskyConnect] = useState(false);
   const [bskyHandle, setBskyHandle] = useState("");
   const [bskyConnecting, setBskyConnecting] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+
+  async function handleShare(feed: SavedFeed) {
+    const url = `${window.location.origin}/f/${feed.id}`;
+    const text = `Hey — check out this feed I made about "${feed.name}", maybe you'd like it too`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: feed.name, text, url });
+      } catch {
+        /* user dismissed the share sheet */
+      }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(`${text}: ${url}`);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      await authedFetch("/api/auth/logout", { method: "POST" });
+      // Full reload: middleware mints a fresh anonymous session.
+      window.location.href = "/curator";
+    } catch {
+      setLoggingOut(false);
+    }
+  }
   const [activePostCount, setActivePostCount] = useState(0);
-  const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
+  // Feed-first on mobile: the chat is a slide-up overlay ("chat" = open).
+  // Drafting feeds auto-open it via the tab-reset logic below.
+  const [mobileTab, setMobileTab] = useState<MobileTab>("feed");
   const [optionsUnread, setOptionsUnread] = useState(false);
 
   // Display settings (persisted to localStorage), surfaced in the top-bar
@@ -329,9 +364,7 @@ function CuratorShell({
           style={{ ["--cur-sidebar-w" as string]: `${sidebarWidth}px` }}
         >
           <div className="cur-sidebar-head">
-            <Link href="/">
-              <ShaderLogo height={32} />
-            </Link>
+            <Link href="/" className="cur-wordmark">willow</Link>
           </div>
 
           <div className="cur-sidebar-label">
@@ -427,6 +460,22 @@ function CuratorShell({
             style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
           >
             <Link href="/">← Home</Link>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              type="button"
+              className="cur-profile-btn cur-sidebar-gear"
+              title="Settings"
+              aria-label="Settings"
+              onClick={() => {
+                setSidebarOpen(false);
+                setShowSettings(true);
+              }}
+            >
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </button>
             <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
               <DialogTrigger className="cur-profile-btn" title="Profile">
                 {profile.photoURL ? (
@@ -518,8 +567,33 @@ function CuratorShell({
                     <span className="profile-val">{feeds.length}</span>
                   </div>
                 </div>
+                <Separator />
+                <div className="profile-section" style={{ paddingBottom: 0 }}>
+                  {profile.blueskyDid ? (
+                    <button
+                      type="button"
+                      className="profile-auth-btn logout"
+                      disabled={loggingOut}
+                      onClick={handleLogout}
+                    >
+                      {loggingOut ? "Logging out…" : "Log out"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="profile-auth-btn login"
+                      onClick={() => {
+                        setProfileOpen(false);
+                        setShowBskyConnect(true);
+                      }}
+                    >
+                      Log in with Bluesky
+                    </button>
+                  )}
+                </div>
               </DialogContent>
             </Dialog>
+            </div>
           </div>
         </div>
 
@@ -767,7 +841,7 @@ function CuratorShell({
                   <line x1="8" y1="13" x2="13" y2="13" />
                 </svg>
               </button>
-              <Dialog>
+              <Dialog open={showSettings} onOpenChange={setShowSettings}>
                 <DialogTrigger
                   className={`cur-topbar-icon${viewMode === "embed" ? " active" : ""}`}
                   title="Display settings"
@@ -844,52 +918,81 @@ function CuratorShell({
                       </label>
                     )}
                   </div>
+                  {/* Mobile-only: feedback + introspect fold in here since the
+                      topbar icons are hidden on small screens. */}
+                  <div className="settings-mobile-more">
+                    <Separator />
+                    <div className="settings-section">
+                      <div className="settings-label">More</div>
+                      <button
+                        type="button"
+                        className="settings-action-row"
+                        onClick={() => {
+                          setShowSettings(false);
+                          setShowFeedback(true);
+                        }}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                          <line x1="8" y1="10" x2="16" y2="10" />
+                          <line x1="8" y1="13" x2="13" y2="13" />
+                        </svg>
+                        Send feedback
+                      </button>
+                      {profile.blueskyHandle ? (
+                        <Link
+                          href={`/introspect/${encodeURIComponent(profile.blueskyHandle.replace(/^@/, "").toLowerCase())}`}
+                          className="settings-action-row"
+                          prefetch={false}
+                          onClick={() => setShowSettings(false)}
+                        >
+                          <span aria-hidden>✦</span>
+                          Introspect my engagements
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          className="settings-action-row"
+                          onClick={() => {
+                            setShowSettings(false);
+                            setShowBskyConnect(true);
+                          }}
+                        >
+                          <span aria-hidden>✦</span>
+                          Introspect my engagements
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </DialogContent>
               </Dialog>
             </div>
+
+            {/* Share — outside cur-topbar-right so it stays visible on mobile
+                (the other topbar icons are folded away on small screens). */}
+            {activeFeed && activeHasCriteria && (
+              <button
+                type="button"
+                className="cur-topbar-icon cur-topbar-share"
+                onClick={() => handleShare(activeFeed)}
+                title={shareCopied ? "Link copied!" : "Share this feed"}
+                aria-label="Share this feed"
+              >
+                {shareCopied ? (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : (
+                  /* forward/share arrow (like message-forwarding), not export-up */
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M21 11.5 13 4.5v4C6.5 9 3.5 13 3 19c2.6-3.4 5.8-5 10-5v4l8-6.5z" />
+                  </svg>
+                )}
+              </button>
+            )}
           </div>
 
           {children}
-
-          {/* MOBILE TAB NAV */}
-          <nav className="cur-mobile-tabs" aria-label="View tabs">
-            <button
-              type="button"
-              className={`cur-mobile-tab${mobileTab === "chat" ? " active" : ""}`}
-              onClick={() => { setMobileTab("chat"); setOptionsUnread(false); }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-              <span>Chat</span>
-              {optionsUnread && <span className="cur-mobile-tab-dot" aria-hidden />}
-            </button>
-            <button
-              type="button"
-              className={`cur-mobile-tab${mobileTab === "feed" ? " active" : ""}`}
-              onClick={() => setMobileTab("feed")}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="7" height="7" />
-                <rect x="14" y="3" width="7" height="7" />
-                <rect x="3" y="14" width="7" height="7" />
-                <rect x="14" y="14" width="7" height="7" />
-              </svg>
-              <span>Feed</span>
-              {activePostCount > 0 && <span className="cur-mobile-tab-badge">{activePostCount}</span>}
-            </button>
-            <button
-              type="button"
-              className={`cur-mobile-tab${mobileTab === "tune" ? " active" : ""}`}
-              onClick={() => setMobileTab("tune")}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
-              <span>Tune</span>
-            </button>
-          </nav>
         </div>
 
         {showFeedback && (

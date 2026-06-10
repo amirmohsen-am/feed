@@ -162,6 +162,12 @@ export async function getFeedByRkey(rkey: string): Promise<DbFeed | null> {
   return res.rows[0] ? rowToFeed(res.rows[0]) : null;
 }
 
+/** No-ownership lookup — used by the public share page (/f/[feedId]). */
+export async function getFeedById(id: number): Promise<DbFeed | null> {
+  const res = await query("SELECT * FROM feeds WHERE id = $1", [id]);
+  return res.rows[0] ? rowToFeed(res.rows[0]) : null;
+}
+
 export async function getPublishedFeed(
   rkey: string,
   publisherDid?: string

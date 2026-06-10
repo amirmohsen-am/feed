@@ -376,6 +376,20 @@ export async function getFeedSkeletonPosts(
   return paginateSkeletonPosts(posts, limit, cursor);
 }
 
+/**
+ * Full post objects for the public share page (/f/[feedId]). Serves whatever
+ * is cached; cold path mirrors the skeleton xrpc (vector order, no LLM rerank)
+ * so an anonymous visit can't burn rerank tokens.
+ */
+export async function getSharedFeedPosts(
+  feedId: number,
+  limit = 30
+): Promise<FeedPreviewPost[]> {
+  const cached = await readAnyFeedCachePosts(feedId);
+  if (cached) return cached.slice(0, limit);
+  return getFeedPreviewPosts(feedId, limit, undefined, { skipRerank: true });
+}
+
 /** Pre-warm skeleton cache after publish so Bluesky's first fetch succeeds. */
 export async function warmFeedSkeletonCache(feedId: number): Promise<number> {
   const posts = await getFeedPreviewPosts(
