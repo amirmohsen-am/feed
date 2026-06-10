@@ -43,6 +43,20 @@ export const EXPENSIVE_RULES: RateRule[] = [
 ];
 
 /**
+ * Tier for the Hive AI-label route. ai-label fans out one request per
+ * image-bearing post on every feed load, so a single normal view can fire
+ * ~20-30 requests in a burst — far above LLM_RULES. The per-image Hive cache
+ * (ai_image_labels) makes the vast majority of these free cache-hits; this
+ * higher ceiling keeps normal browsing working while still bounding the
+ * cold-cache / attacker case (unique URLs → real Hive spend).
+ */
+export const HIVE_RULES: RateRule[] = [
+  { windowMs: MINUTE, max: 100 },
+  { windowMs: HOUR, max: 1000 },
+  { windowMs: DAY, max: 4000 },
+];
+
+/**
  * IPs that bypass the limiter entirely — for developers/QA testing the public
  * demo from a shared office/VPN egress (which would otherwise share one bucket
  * and exhaust it). Seeded with our office IP; extend via the

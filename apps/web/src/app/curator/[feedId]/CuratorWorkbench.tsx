@@ -875,6 +875,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         method: "POST",
         body: JSON.stringify({ message: text.trim(), feedId, interview }),
       });
+      // On a non-OK response (e.g. 429 rate limit) the body has no `messages`;
+      // bail before setMessages so we don't wipe the visible transcript. The
+      // global ServerErrorToast already surfaces the reason. Keep the user's
+      // optimistic message on screen so they can retry.
+      if (!res.ok) return;
       const d = await res.json();
       const msgs = d.messages || [];
       setMessages(msgs);

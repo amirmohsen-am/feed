@@ -3,6 +3,8 @@ export interface ApiErrorDetail {
   status: number;
   message: string;
   hint?: string;
+  /** Seconds from the `Retry-After` header, set on 429 responses. */
+  retryAfter?: number;
 }
 
 /**
@@ -48,6 +50,10 @@ export async function authedFetch(
       /* response body unparseable — keep status-line message */
     }
     const detail: ApiErrorDetail = { url, status: res.status, message, hint };
+    const retryAfter = clone.headers.get("retry-after");
+    if (retryAfter && /^\d+$/.test(retryAfter)) {
+      detail.retryAfter = parseInt(retryAfter, 10);
+    }
     window.dispatchEvent(new CustomEvent("ripple:api-error", { detail }));
   }
 
