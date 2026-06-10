@@ -100,7 +100,7 @@ Keyed on the client IP (rightmost `X-Forwarded-For` entry). Over-limit requests 
 
 **Input caps:** chat message ≤ 4000 chars, search query ≤ 1000 chars, memory import ≤ 8000 chars.
 
-**These limits are not the bill ceiling.** They blunt scripted abuse; the hard guarantee is provider-side and must be set separately: an **Anthropic** monthly spend limit, a **GCP** billing budget + **Vertex AI** request quota, and a **Hive** usage cap.
+**These limits are not the bill ceiling.** They blunt scripted abuse; the hard guarantee is provider-side and must be set separately: an **Anthropic** monthly spend limit and a **Hive** usage cap. **Vertex AI** (Gemini embeddings) is intentionally **not capped** — embeddings are low-cost, so a plain **GCP** billing budget/alert on `timelines-492720` is enough there rather than a hard request quota.
 
 > `/api/ai-label` results are cached per image URL in feed-db (`ai_image_labels`, `sql/008`) — Bluesky image URLs are content-addressed, so each unique image hits the paid Hive API at most once. Hive itself is dormant until a `hive-api-key` secret is configured.
 
