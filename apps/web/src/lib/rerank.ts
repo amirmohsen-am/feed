@@ -15,6 +15,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { ensureEnvFromSecret } from "./secrets";
+import { logLlmCall } from "./llm-log";
 import type { VectorHit } from "./vector-search";
 import { DEFAULT_RERANK_MODEL, MAX_RERANK_IMAGES } from "./defaults";
 
@@ -94,6 +95,8 @@ export async function rerank(opts: {
   // emits a private reasoning block before the JSON ranking, which can help
   // on borderline candidates at the cost of latency + tokens.
   thinkingEnabled?: boolean;
+  // Tags the llm_call log line so rerank calls are queryable per feed.
+  feedId?: number;
   // Called once when the Anthropic request is dispatched. Carries the
   // candidate/image counts so a UI can render "Ranking … 80 candidates · 87 images".
   onRequestSent?: (info: RerankPhaseInfo) => void;
@@ -177,6 +180,20 @@ export async function rerank(opts: {
   });
 
   const finalMessage = await stream.finalMessage();
+
+  logLlmCall({
+    callSite: "rerank",
+    message: finalMessage,
+    requestId: stream.request_id,
+    feedId: opts.feedId,
+    ms: performance.now() - t0,
+    extra: {
+      candidates: candidates.length,
+      images: imagesAttached,
+      thinking: thinkingEnabled,
+    },
+  });
+
   // With thinking enabled the first content block is a ThinkingBlock; the
   // JSON ranking lives in the first TextBlock that follows.
   const outputTextBlock = finalMessage.content.find((b) => b.type === "text");

@@ -11,6 +11,7 @@ import {
   clearChat,
 } from "@/lib/pg";
 import { ensureEnvFromSecret } from "@/lib/secrets";
+import { logLlmCall } from "@/lib/llm-log";
 import { hydratePostByUri, type VectorHit } from "@/lib/vector-search";
 import type { MechanicalFilters } from "@/lib/types";
 
@@ -257,6 +258,15 @@ export async function POST(req: NextRequest) {
       messages: apiMessages,
     });
     const tAfterLLM = performance.now();
+
+    logLlmCall({
+      callSite: "chat",
+      message: response,
+      requestId: response._request_id,
+      feedId,
+      ms: tAfterLLM - tBeforeLLM,
+      extra: { init: isInit, branch_init: isBranchInit, interview: interview === true },
+    });
 
     // Process content blocks: collect text, apply tool calls.
     // Tool calls are server-side side-effects; we do NOT persist tool_use

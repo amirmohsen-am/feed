@@ -199,6 +199,7 @@ export async function getFeedPreviewPosts(
           systemPrompt: feed.rerank_prompt,
           model: feed.rerank_model,
           thinkingEnabled: feed.rerank_thinking_enabled,
+          feedId,
           withImages: true,
           onRequestSent: ({ candidates, images, model }) => {
             onStage?.({
