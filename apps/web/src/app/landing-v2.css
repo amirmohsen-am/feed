@@ -35,10 +35,42 @@
 /* ---------- main pitch ---------- */
 
 .lv-main {
-  padding: 150px 0 130px;
+  position: relative;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 110px 0 120px;
   background:
     radial-gradient(110% 80% at 50% 0%, #fdf6e9 0%, var(--p-cream) 70%);
   text-align: center;
+}
+
+/* hero scroll cue — same treatment as the acts' "keep going" */
+.lv-scroll-cue {
+  position: absolute;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--rf-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(79, 67, 47, 0.55);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.lv-scroll-cue .arrow {
+  font-size: 16px;
+  animation: cue-bob 2s ease-in-out infinite;
 }
 
 .lv-title {
@@ -48,11 +80,23 @@
   letter-spacing: -0.025em;
   line-height: 1.06;
   color: var(--p-ink);
+  margin-bottom: 14px;
+}
+
+.lv-subtitle {
+  font-family: var(--rf-display);
+  font-size: clamp(24px, 3.4vw, 42px);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  color: var(--p-ink);
   margin-bottom: 64px;
 }
 
 .lv-title em,
-.lv-title .hl-em .hl-char {
+.lv-title .hl-em .hl-char,
+.lv-subtitle em,
+.lv-subtitle .hl-em .hl-char {
   font-style: normal;
   color: #b07c33;
 }
@@ -212,6 +256,7 @@
   font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  white-space: nowrap;
   color: var(--p-cream);
   background: var(--p-ink);
   border: none;
@@ -219,6 +264,80 @@
   padding: 12px 22px;
   cursor: pointer;
   transition: background 0.25s ease;
+}
+
+/* small screens: tighter hero so it fits one viewport; pill spans the
+   row, input flexes, button never wraps */
+@media (max-width: 560px) {
+  .lv-main {
+    padding: 90px 0 96px;
+  }
+
+  .lv-subtitle {
+    margin-bottom: 44px;
+  }
+
+  /* pillars become a left-aligned vertical list (icon | label/sub),
+     the group itself centered in the hero */
+  .lv-pillars {
+    flex-direction: column;
+    align-items: flex-start;
+    width: fit-content;
+    margin: 0 auto 44px;
+    gap: 18px;
+  }
+
+  .lv-pillar {
+    display: grid;
+    grid-template-columns: 52px auto;
+    column-gap: 16px;
+    row-gap: 2px;
+    align-items: center;
+    text-align: left;
+  }
+
+  .lv-pillar img {
+    grid-row: 1 / span 2;
+    width: 52px;
+    height: 52px;
+    margin-bottom: 0;
+  }
+
+  .lv-pillar-label {
+    align-self: end;
+  }
+
+  .lv-pillar-sub {
+    align-self: start;
+  }
+
+  .lv-cta-row {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .lv-cta-row .lv-demo-btn {
+    order: -1;
+  }
+
+  .lv-subscribe {
+    width: min(100%, 340px);
+  }
+
+  .lv-subscribe-pill {
+    width: 100%;
+  }
+
+  .lv-subscribe-pill input {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+
+  .lv-subscribe-pill button {
+    font-size: 11px;
+    padding: 11px 16px;
+  }
 }
 
 .lv-subscribe-pill button:hover {
@@ -244,15 +363,13 @@
 }
 
 .lv-demo-btn {
-  font-family: var(--rf-mono);
-  font-size: 12px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-family: var(--rf-body);
+  font-size: 14px;
   color: var(--p-ink);
   text-decoration: none;
   border: 1px solid rgba(79, 67, 47, 0.35);
   border-radius: 999px;
-  padding: 14px 26px;
+  padding: 12px 20px;
   background: rgba(255, 252, 244, 0.6);
   transition: background 0.25s ease, color 0.25s ease;
 }

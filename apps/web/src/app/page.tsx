@@ -45,13 +45,15 @@ function charRand(seed: number) {
 function HeadlineReveal({
   words,
   className,
+  as: Tag = "h1",
 }: {
   words: { text: string; em?: boolean }[];
   className?: string;
+  as?: "h1" | "p";
 }) {
   let charIndex = 0;
   return (
-    <h1 className={className} aria-label={words.map((w) => w.text).join(" ")}>
+    <Tag className={className} aria-label={words.map((w) => w.text).join(" ")}>
       {words.map((word, wi) => (
         <span key={wi} aria-hidden="true">
           <span className={`hl-word${word.em ? " hl-em" : ""}`}>
@@ -80,7 +82,7 @@ function HeadlineReveal({
           {wi < words.length - 1 ? " " : ""}
         </span>
       ))}
-    </h1>
+    </Tag>
   );
 }
 
@@ -147,6 +149,22 @@ function SubscribeForm() {
   );
 }
 
+function BlueskyIcon() {
+  return (
+    <svg width="17" height="15" viewBox="0 0 600 530" fill="currentColor" aria-hidden="true">
+      <path d="m135.72 44.03c66.496 49.921 138.02 151.14 164.28 205.46 26.262-54.316 97.782-155.54 164.28-205.46 47.98-36.021 125.72-63.892 125.72 24.795 0 17.712-10.155 148.79-16.111 170.07-20.703 73.984-96.144 92.854-163.25 81.433 117.3 19.964 147.14 86.092 82.697 152.22-122.39 125.59-175.91-31.511-189.63-71.766-2.514-7.3797-3.6904-10.832-3.7077-7.8964-0.017304-2.9357-1.1937 0.51669-3.7077 7.8964-13.714 40.255-67.233 197.36-189.63 71.766-64.444-66.128-34.605-132.26 82.697-152.22-67.108 11.421-142.55-7.4491-163.25-81.433-5.9562-21.282-16.111-152.36-16.111-170.07 0-88.687 77.742-60.816 125.72-24.795z" />
+    </svg>
+  );
+}
+
+function LinkedInIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
+    </svg>
+  );
+}
+
 const TEAM = [
   {
     name: "Christian Neizonek",
@@ -196,6 +214,7 @@ export default function Landing() {
   const [flyDone, setFlyDone] = useState(false);
   const [glassDone, setGlassDone] = useState(false);
   const [skipped, setSkipped] = useState(false);
+  const flyWrapRef = useRef<HTMLDivElement>(null);
   const glassWrapRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
   useScrollReveal();
@@ -204,7 +223,8 @@ export default function Landing() {
   useEffect(() => {
     if (skipped || (flyDone && glassDone)) return;
     const onScroll = () => {
-      const max = flyDone ? glassWrapRef.current?.offsetTop ?? 0 : 0;
+      const max =
+        (flyDone ? glassWrapRef.current : flyWrapRef.current)?.offsetTop ?? 0;
       if (window.scrollY > max) window.scrollTo(0, max);
     };
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -215,8 +235,14 @@ export default function Landing() {
   const skip = () => {
     setSkipped(true);
     requestAnimationFrame(() =>
-      mainRef.current?.scrollIntoView({ behavior: "smooth" })
+      document
+        .getElementById("mission")
+        ?.scrollIntoView({ behavior: "smooth" })
     );
+  };
+
+  const keepGoing = () => {
+    flyWrapRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   // one choreography for the main pitch: headline chars, then pillars,
@@ -242,29 +268,13 @@ export default function Landing() {
         <span className="proto-brand">willow</span>
       </header>
 
-      <div className="act-wrap">
-        <FlySection onCaught={() => setFlyDone(true)} />
-        {!gateOpen && (
-          <button className="act-skip" onClick={skip}>
-            skip &darr;
-          </button>
-        )}
-      </div>
-
-      <div className="act-wrap" ref={glassWrapRef}>
-        <GlassSection onInteract={() => setGlassDone(true)} />
-        {!gateOpen && (
-          <button className="act-skip" onClick={skip}>
-            skip &darr;
-          </button>
-        )}
-      </div>
-
       {/* MAIN PITCH — headline, pillars, waitlist + demo */}
       <section ref={mainRef} className="lv-main" id="feed">
         <div className="proto-wrap">
+          <HeadlineReveal className="lv-title" words={[{ text: "Willow" }]} />
           <HeadlineReveal
-            className="lv-title"
+            as="p"
+            className="lv-subtitle"
             words={[
               { text: "Transparency" },
               { text: "into" },
@@ -289,11 +299,33 @@ export default function Landing() {
           <div className="lv-cta-row">
             <SubscribeForm />
             <Link href="/curator" className="lv-demo-btn">
-              Try the demo &rarr;
+              Try it out &rarr;
             </Link>
           </div>
         </div>
+        <button className="lv-scroll-cue" onClick={keepGoing}>
+          <span>keep going</span>
+          <span className="arrow">&darr;</span>
+        </button>
       </section>
+
+      <div className="act-wrap" ref={flyWrapRef}>
+        <FlySection onCaught={() => setFlyDone(true)} />
+        {!gateOpen && (
+          <button className="act-skip" onClick={skip}>
+            skip &darr;
+          </button>
+        )}
+      </div>
+
+      <div className="act-wrap" ref={glassWrapRef}>
+        <GlassSection onInteract={() => setGlassDone(true)} />
+        {!gateOpen && (
+          <button className="act-skip" onClick={skip}>
+            skip &darr;
+          </button>
+        )}
+      </div>
 
       {/* MISSION */}
       <section className="proto-mission" id="mission">
@@ -354,15 +386,25 @@ export default function Landing() {
                 </div>
                 <h3>{member.name}</h3>
                 <p className="proto-team-role">{member.role}</p>
-                <p className="proto-team-bio">{member.bio}</p>
                 <div className="proto-team-links">
-                  <a href={member.bsky} target="_blank" rel="noopener noreferrer">
-                    Bluesky
+                  <a
+                    href={member.bsky}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`${member.name} on Bluesky`}
+                  >
+                    <BlueskyIcon />
                   </a>
-                  <a href={member.linkedin} target="_blank" rel="noopener noreferrer">
-                    LinkedIn
+                  <a
+                    href={member.linkedin}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`${member.name} on LinkedIn`}
+                  >
+                    <LinkedInIcon />
                   </a>
                 </div>
+                <p className="proto-team-bio">{member.bio}</p>
               </div>
             ))}
           </div>
