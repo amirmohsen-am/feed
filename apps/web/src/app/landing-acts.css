@@ -461,7 +461,7 @@
 
 .proto-footer {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   padding: 30px 36px;
   border-top: 1px solid rgba(79, 67, 47, 0.14);
@@ -469,4 +469,26 @@
   font-family: var(--rf-mono);
   font-size: 12px;
   color: var(--p-ink-dim);
+}
+
+.proto-footer-socials {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.proto-footer-socials a {
+  display: inline-flex;
+  color: #9b7836;
+  transition: color 0.25s ease, transform 0.25s ease;
+}
+
+.proto-footer-socials a:hover {
+  color: var(--p-ink);
+  transform: translateY(-2px);
+}
+
+.proto-footer-socials svg {
+  width: 19px;
+  height: auto;
 }
