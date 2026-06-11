@@ -42,8 +42,8 @@
   align-items: center;
   justify-content: center;
   padding: 110px 0 120px;
-  background:
-    radial-gradient(110% 80% at 50% 0%, #fdf6e9 0%, var(--p-cream) 70%);
+  /* flat wheat; .fly-section's top edge fades in from this same color */
+  background: var(--p-wheat);
   text-align: center;
 }
 

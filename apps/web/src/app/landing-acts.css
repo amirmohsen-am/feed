@@ -105,8 +105,13 @@
 .fly-section {
   position: relative;
   min-height: 100vh;
+  /* top edge starts at flat wheat (the hero's color) and the bottom
+     fades to flat paper (the color .glass-section starts with); the
+     radial keeps the act's golden glow in between */
   background:
-    radial-gradient(120% 90% at 50% 0%, #fdf3df 0%, var(--p-wheat) 78%, #efce97 100%);
+    linear-gradient(180deg, var(--p-wheat) 0%, rgba(245, 214, 160, 0) 26%),
+    linear-gradient(180deg, rgba(247, 239, 223, 0) 82%, var(--p-paper) 98%),
+    radial-gradient(120% 90% at 50% 100%, #fdf3df 0%, var(--p-wheat) 78%, #efce97 100%);
 }
 
 .fly-canvas {
@@ -245,7 +250,10 @@
   justify-content: center;
   padding: 0 24px;
   overflow: hidden;
+  /* top edge is flat paper (receives .fly-section's fade); the bottom
+     fades to flat cream — the color .proto-mission starts with */
   background:
+    linear-gradient(180deg, rgba(251, 246, 236, 0) 86%, var(--p-cream) 99%),
     radial-gradient(100% 80% at 50% 100%, #ecf3ef 0%, var(--p-paper) 70%);
 }
 
