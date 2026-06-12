@@ -190,7 +190,7 @@ function CuratorShell({
     setViewModeState(next);
     try { window.localStorage.setItem(VIEW_MODE_KEY, next); } catch { /* ignore */ }
   }, []);
-  const [showDebug, setShowDebugState] = useState<boolean>(true);
+  const [showDebug, setShowDebugState] = useState<boolean>(false);
   const setShowDebug = useCallback((next: boolean) => {
     setShowDebugState(next);
     try { window.localStorage.setItem(SHOW_DEBUG_KEY, String(next)); } catch { /* ignore */ }
@@ -204,7 +204,7 @@ function CuratorShell({
   useEffect(() => {
     try {
       if (window.localStorage.getItem(VIEW_MODE_KEY) === "embed") setViewModeState("embed");
-      if (window.localStorage.getItem(SHOW_DEBUG_KEY) === "false") setShowDebugState(false);
+      if (window.localStorage.getItem(SHOW_DEBUG_KEY) === "true") setShowDebugState(true);
       if (window.localStorage.getItem(HIDE_UNAVAIL_KEY) === "false") setHideUnavailableState(false);
     } catch { /* ignore */ }
   }, []);
@@ -479,7 +479,15 @@ function CuratorShell({
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
               </svg>
             </button>
-            <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+            <Dialog
+              open={profileOpen}
+              onOpenChange={(open) => {
+                setProfileOpen(open);
+                // On mobile the dialog is opened from inside the drawer —
+                // close the drawer so the dialog stands alone.
+                if (open) setSidebarOpen(false);
+              }}
+            >
               <DialogTrigger className="cur-profile-btn" title="Profile">
                 {profile.photoURL ? (
                   /* eslint-disable-next-line @next/next/no-img-element */

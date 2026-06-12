@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chat → Feed switch — options</title>
+<style>
+  :root{
+    --paper: #fbfaf6;
+    --paper-2: #f4f2ea;
+    --ink: #0b1814;
+    --ink-2: #2c3a34;
+    --ink-3: #5c6a63;
+    --ink-4: #97a39c;
+    --hair: rgba(11,24,20,0.08);
+    --hair-strong: rgba(11,24,20,0.16);
+    --aurora: #7dcba5;
+    --aurora-deep: #3e8a6c;
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin: 0;
+    background: #e9e6dc;
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    padding: 32px 24px 64px;
+  }
+  h1{ font-weight: 500; font-size: 22px; margin: 0 0 4px; }
+  .lead{ color: var(--ink-3); font-size: 14px; margin: 0 0 28px; max-width: 720px; line-height: 1.5; }
+  .grid{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 36px;
+    align-items: flex-start;
+  }
+  .option{ width: 300px; }
+  .option h2{
+    font-size: 15px; font-weight: 600; margin: 0 0 2px;
+  }
+  .option .tag{
+    display: inline-block;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--aurora-deep);
+    background: rgba(125,203,165,0.18);
+    border-radius: 999px;
+    padding: 2px 8px;
+    margin-bottom: 6px;
+  }
+  .option .notes{
+    font-size: 12px; color: var(--ink-3); line-height: 1.5;
+    margin: 10px 0 0;
+  }
+  .option .notes b{ color: var(--ink-2); }
+
+  /* ── phone frame ── */
+  .phone{
+    width: 300px; height: 600px;
+    border-radius: 36px;
+    border: 8px solid #181c1a;
+    background: var(--paper);
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 18px 50px rgba(11,24,20,0.25);
+    user-select: none;
+  }
+  .hint{
+    text-align: center; font-size: 11px; color: var(--ink-4);
+    margin-top: 8px;
+  }
+
+  /* fake feed behind */
+  .feed{
+    position: absolute; inset: 0;
+    padding: 52px 12px 90px;
+    overflow: hidden;
+    transition: filter 0.35s ease;
+  }
+  .topbar{
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 44px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--hair);
+    background: var(--paper);
+    font-size: 14px; font-weight: 500;
+    z-index: 2;
+    transition: filter 0.35s ease;
+  }
+  .topbar .burger{ font-size: 15px; color: var(--ink-3); }
+  .topbar .live{
+    font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--aurora-deep); border: 1px solid var(--aurora);
+    border-radius: 999px; padding: 1px 6px; margin-left: 4px;
+  }
+  .card{
+    background: #fff;
+    border: 1px solid var(--hair);
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    font-size: 11px; line-height: 1.45; color: var(--ink-2);
+  }
+  .card .who{ display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+  .card .av{ width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(135deg, var(--aurora), #c9b87a); }
+  .card .name{ font-weight: 600; font-size: 11px; color: var(--ink); }
+  .card .handle{ color: var(--ink-4); font-size: 10px; }
+
+  /* chat overlay */
+  .chat{
+    position: absolute; inset: 0;
+    background: rgba(251,250,246,0.88);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
+    z-index: 3;
+  }
+  .phone.chat-open .chat{ opacity: 1; pointer-events: auto; }
+  .phone.chat-open .feed, .phone.chat-open .topbar{ filter: blur(8px); }
+  .msgs{
+    position: absolute; top: 64px; left: 0; right: 0; bottom: 86px;
+    padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 8px;
+    overflow: hidden;
+    z-index: 4;
+    opacity: 0;
+    transform: translateY(20px);
+    pointer-events: none;
+    transition: opacity 0.35s ease, transform 0.35s ease;
+  }
+  .phone.chat-open .msgs{
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .m{ max-width: 86%; padding: 8px 12px; border-radius: 14px; font-size: 12px; line-height: 1.4; }
+  .m.user{ align-self: flex-end; background: var(--ink); color: var(--paper); border-bottom-right-radius: 4px; }
+  .m.bot{ align-self: flex-start; background: rgba(255,255,255,0.85); border: 1px solid var(--hair); border-bottom-left-radius: 4px; color: var(--ink-2); }
+
+  /* input pill (always pinned) */
+  .inputbar{
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 8px 14px 18px;
+    z-index: 6;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .pill{
+    display: flex; align-items: center;
+    background: rgba(255,255,255,0.95);
+    border: 1px solid var(--hair-strong);
+    border-radius: 999px;
+    padding: 11px 16px;
+    font-size: 12px; color: var(--ink-4);
+    box-shadow: 0 6px 24px rgba(11,24,20,0.10);
+    cursor: pointer;
+  }
+  .pill .send{
+    margin-left: auto; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--aurora-deep);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 11px;
+  }
+
+  /* ── OPTION A: segmented control at top ── */
+  .seg{
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    z-index: 5;
+    display: flex;
+    background: rgba(255,255,255,0.92);
+    border: 1px solid var(--hair-strong);
+    border-radius: 999px;
+    padding: 3px;
+    box-shadow: 0 4px 18px rgba(11,24,20,0.12);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  .phone.chat-open .seg{ opacity: 1; pointer-events: auto; }
+  .seg button{
+    border: 0; background: transparent; cursor: pointer;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+    color: var(--ink-3);
+    padding: 7px 18px; border-radius: 999px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .seg button.active{ background: var(--ink); color: var(--paper); }
+  .seg .count{
+    font-size: 9px; background: var(--aurora); color: var(--ink);
+    border-radius: 999px; padding: 1px 6px; font-weight: 700;
+  }
+
+  /* ── OPTION B: full-width "View feed" bar above input ── */
+  .viewfeed{
+    display: none;
+    align-items: center; justify-content: center; gap: 8px;
+    width: 100%;
+    border: 1px solid var(--hair-strong);
+    background: var(--ink);
+    color: var(--paper);
+    border-radius: 999px;
+    padding: 12px 16px;
+    font-size: 12.5px; font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 6px 24px rgba(11,24,20,0.18);
+  }
+  .viewfeed .count{
+    background: var(--aurora); color: var(--ink);
+    border-radius: 999px; padding: 1px 8px; font-size: 10px; font-weight: 700;
+  }
+  .phone.chat-open .viewfeed{ display: flex; }
+
+  /* ── OPTION C: sheet header with grab handle ── */
+  .sheethead{
+    position: absolute; top: 0; left: 0; right: 0;
+    z-index: 5;
+    padding: 8px 0 10px;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    background: linear-gradient(rgba(251,250,246,0.95), rgba(251,250,246,0));
+    cursor: pointer;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  .phone.chat-open .sheethead{ opacity: 1; pointer-events: auto; }
+  .sheethead .handlebar{
+    width: 44px; height: 5px; border-radius: 999px;
+    background: var(--hair-strong);
+  }
+  .sheethead .label{
+    font-size: 11px; font-weight: 600; color: var(--ink-2);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .sheethead .label .chev{ font-size: 12px; color: var(--aurora-deep); }
+
+  /* ── OPTION D: floating button bottom-right ── */
+  .fab{
+    position: absolute; right: 14px; bottom: 92px;
+    z-index: 5;
+    width: 52px; height: 52px; border-radius: 50%;
+    border: 0;
+    background: var(--ink); color: var(--paper);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    cursor: pointer;
+    box-shadow: 0 8px 26px rgba(11,24,20,0.3);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    transform: scale(0.8);
+  }
+  .phone.chat-open .fab{ opacity: 1; pointer-events: auto; transform: scale(1); }
+  .fab .badge{
+    position: absolute; top: -4px; right: -4px;
+    background: var(--aurora); color: var(--ink);
+    font-size: 9px; font-weight: 700;
+    border-radius: 999px; padding: 2px 6px;
+  }
+</style>
+</head>
+<body>
+  <h1>Chat → Feed switch on mobile</h1>
+  <p class="lead">
+    Four ways to make "go back to the feed" obvious while the chat overlay is open.
+    Every phone starts with the chat open so you can see each option's switch right away.
+    Tap the switch to go to the feed, tap the input pill to bring the chat back.
+    The current production version is the tiny chevron pill, shown last for comparison.
+  </p>
+
+  <div class="grid">
+
+    <!-- OPTION A -->
+    <div class="option">
+      <span class="tag">Option A</span>
+      <h2>Segmented control at top</h2>
+      <div class="phone" id="pA">
+        <div class="topbar"><span class="burger">≡</span> Climate feed <span class="live">live</span></div>
+        <div class="feed"></div>
+        <div class="chat"></div>
+        <div class="seg">
+          <button data-go="feed">Feed <span class="count">25</span></button>
+          <button class="active" data-go="chat">Chat</button>
+        </div>
+        <div class="msgs"></div>
+        <div class="inputbar"><div class="pill">Describe your ideal feed… <span class="send">↑</span></div></div>
+      </div>
+      <p class="hint">Tap "Feed" to switch, tap the input to reopen the chat</p>
+      <p class="notes">
+        <b>Pros:</b> always shows where you are, both states named, post count teases the feed.
+        <b>Cons:</b> takes the top slot the chevron had, slightly more chrome.
+      </p>
+    </div>
+
+    <!-- OPTION B -->
+    <div class="option">
+      <span class="tag">Option B</span>
+      <h2>"View feed" button above the input</h2>
+      <div class="phone" id="pB">
+        <div class="topbar"><span class="burger">≡</span> Climate feed <span class="live">live</span></div>
+        <div class="feed"></div>
+        <div class="chat"></div>
+        <div class="msgs"></div>
+        <div class="inputbar">
+          <button class="viewfeed" data-go="feed">↓ &nbsp;View your feed <span class="count">25 posts</span></button>
+          <div class="pill">Describe your ideal feed… <span class="send">↑</span></div>
+        </div>
+      </div>
+      <p class="hint">Tap "View your feed" to switch, tap the input to reopen the chat</p>
+      <p class="notes">
+        <b>Pros:</b> sits right where the thumb already is (next to the input), biggest tap target,
+        works even with the keyboard up.
+        <b>Cons:</b> adds height to the bottom stack, competes with option chips when they appear.
+      </p>
+    </div>
+
+    <!-- OPTION C -->
+    <div class="option">
+      <span class="tag">Option C</span>
+      <h2>Sheet header with grab handle</h2>
+      <div class="phone" id="pC">
+        <div class="topbar"><span class="burger">≡</span> Climate feed <span class="live">live</span></div>
+        <div class="feed"></div>
+        <div class="chat"></div>
+        <div class="sheethead" data-go="feed">
+          <div class="handlebar"></div>
+          <div class="label"><span class="chev">↓</span> Back to your feed</div>
+        </div>
+        <div class="msgs"></div>
+        <div class="inputbar"><div class="pill">Describe your ideal feed… <span class="send">↑</span></div></div>
+      </div>
+      <p class="hint">Tap the labeled handle to switch, tap the input to reopen the chat</p>
+      <p class="notes">
+        <b>Pros:</b> closest to the current design but labeled, the whole top strip is tappable
+        (huge hit area), reads as a sheet you can also swipe down.
+        <b>Cons:</b> top of the screen is far from the thumb on big phones.
+      </p>
+    </div>
+
+    <!-- OPTION D -->
+    <div class="option">
+      <span class="tag">Option D</span>
+      <h2>Floating feed button</h2>
+      <div class="phone" id="pD">
+        <div class="topbar"><span class="burger">≡</span> Climate feed <span class="live">live</span></div>
+        <div class="feed"></div>
+        <div class="chat"></div>
+        <button class="fab" data-go="feed">▤<span class="badge">25</span></button>
+        <div class="msgs"></div>
+        <div class="inputbar"><div class="pill">Describe your ideal feed… <span class="send">↑</span></div></div>
+      </div>
+      <p class="hint">Tap the round button to switch, tap the input to reopen the chat</p>
+      <p class="notes">
+        <b>Pros:</b> thumb-reachable, always visible, badge shows the feed is ready.
+        <b>Cons:</b> icon-only (less self-explanatory), floats over message text.
+      </p>
+    </div>
+
+    <!-- CURRENT -->
+    <div class="option">
+      <span class="tag">Current</span>
+      <h2>Chevron pill (production today)</h2>
+      <div class="phone" id="pE">
+        <div class="topbar"><span class="burger">≡</span> Climate feed <span class="live">live</span></div>
+        <div class="feed"></div>
+        <div class="chat"></div>
+        <div class="seg" style="padding:0; border-radius:999px;">
+          <button data-go="feed" style="padding: 7px 18px;">⌄</button>
+        </div>
+        <div class="msgs"></div>
+        <div class="inputbar"><div class="pill">Describe your ideal feed… <span class="send">↑</span></div></div>
+      </div>
+      <p class="hint">The small unlabeled chevron, tap it to switch</p>
+      <p class="notes">
+        <b>Problem:</b> tiny target, no label, no hint that the feed is behind the frost.
+      </p>
+    </div>
+
+  </div>
+
+<script>
+  // Build fake feed cards + chat messages in every phone.
+  const posts = [
+    ["Dr. Maya Chen", "@mayachen.bsky.social", "New paper out today: soil carbon sequestration in restored wetlands exceeded our models by 30%. Thread below."],
+    ["Field Notes", "@fieldnotes.bsky.social", "The Atlantic overturning current data from this winter is genuinely surprising. Worth a careful read before drawing conclusions."],
+    ["Sam Okafor", "@samokafor.bsky.social", "Solar + storage just undercut gas peakers in another regional auction. The cost curve keeps doing its thing."],
+    ["Climate Brief", "@climatebrief.bsky.social", "Five charts that explain this week in energy policy."]
+  ];
+  const msgs = [
+    ["user", "I want climate science but no doom posting"],
+    ["bot", "Got it. Research, energy data, and policy analysis, skipping the despair takes. Want startup and tech coverage too?"],
+    ["user", "yes, and prioritize actual scientists"]
+  ];
+  document.querySelectorAll(".phone").forEach(phone => {
+    const feed = phone.querySelector(".feed");
+    feed.innerHTML = posts.map(([n,h,t]) =>
+      `<div class="card"><div class="who"><span class="av"></span><span class="name">${n}</span><span class="handle">${h}</span></div>${t}</div>`
+    ).join("");
+    const box = phone.querySelector(".msgs");
+    box.innerHTML = msgs.map(([r,t]) => `<div class="m ${r}">${t}</div>`).join("");
+
+    phone.querySelector(".pill").addEventListener("click", () => phone.classList.add("chat-open"));
+    phone.querySelectorAll("[data-go='feed']").forEach(el =>
+      el.addEventListener("click", () => phone.classList.remove("chat-open"))
+    );
+    // Start in the chat state — the switch affordance is the thing being compared.
+    phone.classList.add("chat-open");
+  });
+</script>
+</body>
+</html>

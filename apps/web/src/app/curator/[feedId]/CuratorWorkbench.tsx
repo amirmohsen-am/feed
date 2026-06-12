@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import FilterPanel from "@/components/FilterPanel";
-import ShaderSendButton from "@/components/ShaderSendButton";
+import SendButton from "@/components/SendButton";
 import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
 import { authedFetch } from "@/lib/authed-fetch";
 import type { MechanicalFilters } from "@/lib/types";
@@ -823,8 +823,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   // Pull-to-refresh gesture wiring (mobile only). Tracks a downward drag that
-  // starts at scrollTop 0, rubber-bands the pane, and on release past the
-  // threshold fires a forced reload; everything springs back when it's done.
+  // starts with the page at the top, rubber-bands the pane, and on release
+  // past the threshold fires a forced reload; everything springs back when
+  // it's done. On mobile the document is the scroller (so Safari's URL bar
+  // collapses on scroll) — the pane itself never scrolls, so the at-top
+  // check reads window.scrollY, not pane.scrollTop.
   useEffect(() => {
     const pane = feedPaneRef.current;
     const spin = ptrSpinnerRef.current;
@@ -854,8 +857,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         `scale(${Math.min(1, 0.6 + (px / THRESHOLD) * 0.4)})`;
     };
 
+    // <= 0: iOS reports negative scrollY mid rubber-band.
+    const atTop = () => window.scrollY <= 0;
+
     const onStart = (e: TouchEvent) => {
-      if (ptrRefreshingRef.current || pane.scrollTop > 0) {
+      if (ptrRefreshingRef.current || !atTop()) {
         startY = -1;
         return;
       }
@@ -866,7 +872,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     const onMove = (e: TouchEvent) => {
       if (startY < 0 || ptrRefreshingRef.current) return;
       const dy = e.touches[0].clientY - startY;
-      if (dy <= 0 || pane.scrollTop > 0) {
+      if (dy <= 0 || !atTop()) {
         if (active) {
           active = false;
           paint(0, false);
@@ -1411,20 +1417,22 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
         {/* POSTS PANE (middle) */}
         <div className="cur-feed-posts" ref={feedPaneRef}>
-          {pipelineStage !== "idle" && (
-            <div className="cur-feed-loader">
-              <PipelineLoader
-                stage={pipelineStage}
-                candidates={pipelineCandidates}
-                hits={pipelineHits}
-                images={pipelineImages}
-                model={pipelineModel}
-                thinkingEnabled={pipelineThinkingEnabled}
-                topK={25}
-              />
-            </div>
-          )}
+          {/* One header row: pipeline status on the left, post count (and
+              Refresh on desktop) top-right — no extra row for either. */}
           <div className="cur-feed-posts-header">
+            <div className="cur-feed-loader">
+              {pipelineStage !== "idle" && (
+                <PipelineLoader
+                  stage={pipelineStage}
+                  candidates={pipelineCandidates}
+                  hits={pipelineHits}
+                  images={pipelineImages}
+                  model={pipelineModel}
+                  thinkingEnabled={pipelineThinkingEnabled}
+                  topK={25}
+                />
+              )}
+            </div>
             <span className="cur-toolbar-count">
               {posts.length > 0 && `${posts.length} post${posts.length === 1 ? "" : "s"}`}
             </span>
@@ -1783,7 +1791,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                     type="button"
                     className="cur-feed-end-btn cur-feed-end-refresh"
                     onClick={() => {
+                      // Desktop scrolls the pane; mobile scrolls the document.
                       document.querySelector('.cur-feed-posts')?.scrollTo({ top: 0 });
+                      window.scrollTo({ top: 0 });
                       setTimeout(() => loadPosts(feedId, { force: true }), 50);
                     }}
                   >
@@ -1808,12 +1818,16 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         <div className="cur-chat-pane" style={{ ["--cur-right-w" as string]: `${rightWidth}px` }}>
           {/* MOBILE: dismiss the chat — blur first so the keyboard drops,
               then the overlay fades down. Down-arrow at the top centre,
-              like a sheet's pull-down affordance. */}
+              like a sheet's pull-down affordance. Acts on pointer-down:
+              when the iOS keyboard is collapsing, the viewport shift between
+              touchstart and touchend makes Safari cancel the click, so an
+              onClick handler intermittently never fires. */}
           <button
             type="button"
             className="cur-chat-close"
             aria-label="Close chat"
-            onClick={() => {
+            onPointerDown={(e) => {
+              e.preventDefault(); // don't steal focus / fire a ghost click
               inputRef.current?.blur();
               setRightPane("chat");
               setMobileTab("feed");
@@ -2019,7 +2033,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 }
                 disabled={loading}
               />
-              <ShaderSendButton
+              <SendButton
                 disabled={
                   loading ||
                   (lastParsed?.options.length

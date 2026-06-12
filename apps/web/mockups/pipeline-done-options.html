@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Step dots — done-state transitions</title>
+<style>
+  :root{
+    --paper: #fbfaf6;
+    --paper-3: #ece8de;
+    --ink: #0b1814;
+    --ink-2: #3a4a44;
+    --ink-3: #6a7570;
+    --ink-4: #a8b0ab;
+    --hair: rgba(11,24,20,0.08);
+    --hair-strong: rgba(11,24,20,0.16);
+    --aurora: #7dcba5;
+    --aurora-deep: #3e8a6c;
+    --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin: 0; background: #e9e6dc;
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); padding: 32px 24px 64px;
+  }
+  h1{ font-weight: 500; font-size: 22px; margin: 0 0 4px; }
+  .lead{ color: var(--ink-3); font-size: 14px; margin: 0 0 28px; max-width: 760px; line-height: 1.5; }
+  .grid{ display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
+  .option{ width: 360px; }
+  .option .tag{
+    display: inline-block; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--aurora-deep); background: rgba(125,203,165,0.18);
+    border-radius: 999px; padding: 2px 8px; margin-bottom: 6px;
+  }
+  .option h2{ font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+  .option .notes{ font-size: 12px; color: var(--ink-3); line-height: 1.5; margin: 10px 0 0; }
+  .option .notes b{ color: var(--ink-2); }
+  .frame{
+    background: var(--paper); border: 1px solid var(--hair-strong);
+    border-radius: 14px; padding: 14px 16px 16px; min-height: 200px;
+  }
+  .replay{
+    margin-top: 8px; font-size: 11px; color: var(--ink-3);
+    background: none; border: 1px solid var(--hair-strong); border-radius: 999px;
+    padding: 4px 12px; cursor: pointer;
+  }
+  .replay:hover{ color: var(--ink); }
+  .posts{ margin-top: 12px; border-top: 1px solid var(--hair); padding-top: 10px; }
+  .post{
+    background: #fff; border: 1px solid var(--hair); border-radius: 10px;
+    padding: 9px 11px; margin-bottom: 7px;
+    font-size: 11px; line-height: 1.4; color: var(--ink-2);
+    transition: opacity 0.3s;
+  }
+  .running .post{ opacity: 0.35; }
+
+  /* ── loader line (shared, step-dots design) ── */
+  .pl{
+    font-family: var(--mono); font-size: 11px; color: var(--ink-3);
+    cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent;
+  }
+  .pl-line{ display: flex; align-items: center; gap: 8px; min-height: 22px; }
+  .pl-time{ margin-left: auto; font-variant-numeric: tabular-nums; color: var(--ink-4); }
+  .pl-chev{
+    width: 9px; height: 9px; flex-shrink: 0; color: var(--ink-4);
+    transition: transform 0.2s;
+  }
+  .pl.open .pl-chev{ transform: rotate(180deg); }
+  .pl-detail{ display: none; padding: 8px 0 2px 2px; font-size: 10px; line-height: 1.5; }
+  .pl.open .pl-detail{ display: block; }
+  .pl-row{ display: flex; gap: 10px; align-items: baseline; }
+  .pl-row .k{ width: 76px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.07em; font-size: 9px; color: var(--ink-4); }
+  .pl-row .t{ width: 36px; flex-shrink: 0; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .pl-row .d{ color: var(--ink-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pl-row.live .k{ color: var(--aurora-deep); }
+
+  /* glyph zone: dots + (per option) check. Fixed width while running so the
+     text doesn't shimmy; collapses when an option removes the glyph. */
+  .glyph{
+    position: relative;
+    display: inline-flex; align-items: center;
+    width: 23px; height: 10px;
+    flex-shrink: 0;
+    transition: width 0.4s cubic-bezier(0.3, 0.8, 0.3, 1);
+  }
+  .c-dots{ display: inline-flex; gap: 4px; align-items: center; position: absolute; left: 0; }
+  .c-dots i{
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--paper-3);
+    transition: background 0.3s, transform 0.4s cubic-bezier(0.3, 0.8, 0.3, 1), opacity 0.35s;
+  }
+  .c-dots i.on{ background: var(--aurora-deep); }
+  .c-dots i.now{ background: var(--aurora-deep); animation: pulse 1.2s infinite; }
+  @keyframes pulse{ 0%,100%{ opacity: 1; } 50%{ opacity: 0.35; } }
+  .pl-text{ transition: color 0.3s; }
+  .pl.done .pl-text{ color: var(--ink-3); }
+
+  /* ── A: dots merge into one status light ── */
+  .pl[data-opt="A"].done .c-dots i:nth-child(1){ transform: translateX(9px); opacity: 0; }
+  .pl[data-opt="A"].done .c-dots i:nth-child(3){ transform: translateX(-9px); opacity: 0; }
+  .pl[data-opt="A"].done .c-dots i:nth-child(2){ background: var(--aurora-deep); animation: settle 0.5s ease 0.25s; }
+  .pl[data-opt="A"].done .glyph{ width: 14px; }
+  @keyframes settle{ 0%{ transform: scale(1); } 40%{ transform: scale(1.5); } 100%{ transform: scale(1); } }
+
+  /* ── B: dots morph into a check ── */
+  .pl .check{
+    position: absolute; left: 4px; top: 50%;
+    width: 11px; height: 11px;
+    margin-top: -5.5px;
+    color: var(--aurora-deep);
+    opacity: 0; transform: scale(0.4) rotate(-20deg);
+    transition: opacity 0.3s ease 0.25s, transform 0.4s cubic-bezier(0.2, 1.4, 0.4, 1) 0.25s;
+  }
+  .pl[data-opt="B"].done .c-dots i{ transform: scale(0.2); opacity: 0; }
+  .pl[data-opt="B"].done .check{ opacity: 1; transform: scale(1) rotate(0deg); }
+  .pl[data-opt="B"].done .glyph{ width: 17px; }
+
+  /* ── C: dots dissolve, text only ── */
+  .pl[data-opt="C"].done .c-dots i{ transform: scale(0.2); opacity: 0; }
+  .pl[data-opt="C"].done .glyph{ width: 0; }
+
+  /* ── D: dots dissolve, outcome counts up ── */
+  .pl[data-opt="D"].done .c-dots i{ transform: scale(0.2); opacity: 0; }
+  .pl[data-opt="D"].done .glyph{ width: 0; }
+  .pl[data-opt="D"] .pl-text b{ font-weight: 400; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+  <h1>Step dots: what the done state becomes</h1>
+  <p class="lead">
+    The run keeps the step-dots progress you picked (filled = done, pulsing = current). The question
+    is the landing: what the three dots turn into when the run finishes. Four answers below, each
+    auto plays. The line stays tappable for the breakdown, during the run and after.
+  </p>
+
+  <div class="grid">
+
+    <div class="option">
+      <span class="tag">Option A</span>
+      <h2>Merge into one status light</h2>
+      <div class="frame">
+        <div class="pl" data-opt="A">
+          <div class="pl-line">
+            <span class="glyph"><span class="c-dots"><i></i><i></i><i></i></span></span>
+            <span class="pl-text">Searching</span>
+            <svg class="pl-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span class="pl-time">0.0s</span>
+          </div>
+          <div class="pl-detail"></div>
+        </div>
+        <div class="posts"></div>
+      </div>
+      <button class="replay">Replay</button>
+      <p class="notes">
+        The side dots slide into the middle one, which gives a little pop and stays as a single
+        green light: <b>"● Curated in 8.4s"</b>. Reads like a status LED, matches the
+        <b>live</b> badge language in the topbar.
+      </p>
+    </div>
+
+    <div class="option">
+      <span class="tag">Option B</span>
+      <h2>Morph into a check</h2>
+      <div class="frame">
+        <div class="pl" data-opt="B">
+          <div class="pl-line">
+            <span class="glyph">
+              <span class="c-dots"><i></i><i></i><i></i></span>
+              <svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </span>
+            <span class="pl-text">Searching</span>
+            <svg class="pl-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span class="pl-time">0.0s</span>
+          </div>
+          <div class="pl-detail"></div>
+        </div>
+        <div class="posts"></div>
+      </div>
+      <button class="replay">Replay</button>
+      <p class="notes">
+        The dots shrink away and a small check springs in where they were:
+        <b>"✓ Curated in 8.4s"</b>. The most conventional "task finished" signal, slightly louder
+        than A.
+      </p>
+    </div>
+
+    <div class="option">
+      <span class="tag">Option C</span>
+      <h2>Dissolve, text only</h2>
+      <div class="frame">
+        <div class="pl" data-opt="C">
+          <div class="pl-line">
+            <span class="glyph"><span class="c-dots"><i></i><i></i><i></i></span></span>
+            <span class="pl-text">Searching</span>
+            <svg class="pl-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span class="pl-time">0.0s</span>
+          </div>
+          <div class="pl-detail"></div>
+        </div>
+        <div class="posts"></div>
+      </div>
+      <button class="replay">Replay</button>
+      <p class="notes">
+        The dots dissolve and the text slides over: just <b>"Curated in 8.4s"</b> in muted mono,
+        like message metadata. The quietest option, the loader stops asking for attention the
+        moment the posts land.
+      </p>
+    </div>
+
+    <div class="option">
+      <span class="tag">Option D</span>
+      <h2>Dissolve, outcome counts up</h2>
+      <div class="frame">
+        <div class="pl" data-opt="D">
+          <div class="pl-line">
+            <span class="glyph"><span class="c-dots"><i></i><i></i><i></i></span></span>
+            <span class="pl-text">Searching</span>
+            <svg class="pl-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span class="pl-time">0.0s</span>
+          </div>
+          <div class="pl-detail"></div>
+        </div>
+        <div class="posts"></div>
+      </div>
+      <button class="replay">Replay</button>
+      <p class="notes">
+        Dots dissolve and the line becomes the result, with the number counting up:
+        <b>"25 posts in 8.4s"</b>. The payoff is the outcome itself rather than a glyph,
+        and it doubles as the post count readout.
+      </p>
+    </div>
+
+  </div>
+
+<script>
+  const STAGES = [
+    { key: "searching", dur: 1200, detail: "embed · ANN · hydrate" },
+    { key: "thinking",  dur: 2200, detail: "80 / 117 candidates · claude-haiku-4-5" },
+    { key: "ranking",   dur: 1500, detail: "top 25 · streaming output" },
+  ];
+  const LABEL = { searching: "Searching", thinking: "Thinking", ranking: "Ranking" };
+  const posts = [
+    "Soil carbon sequestration in restored wetlands exceeded model predictions by 30%.",
+    "Solar plus storage undercut gas peakers in another regional capacity auction.",
+    "Five charts that explain this week in energy policy.",
+  ];
+
+  document.querySelectorAll(".option").forEach(card => {
+    const pl = card.querySelector(".pl");
+    const opt = pl.dataset.opt;
+    const frame = card.querySelector(".frame");
+    const textEl = pl.querySelector(".pl-text");
+    const timeEl = pl.querySelector(".pl-time");
+    const detailEl = pl.querySelector(".pl-detail");
+    const dots = pl.querySelectorAll(".c-dots i");
+    card.querySelector(".posts").innerHTML = posts.map(p => `<div class="post">${p}</div>`).join("");
+
+    let t0 = 0, raf = 0, timings = [], stageIdx = -1, stageStart = 0, running = false, countTimer = 0;
+    const fmt = ms => (ms / 1000).toFixed(1) + "s";
+
+    function renderDetail(){
+      detailEl.innerHTML = STAGES.map((s, i) => {
+        const live = i === stageIdx && running;
+        const t = timings[i] ? fmt(timings[i]) : live ? fmt(performance.now() - stageStart) : "";
+        const d = timings[i] !== undefined || live ? s.detail : (running ? "queued" : "skipped");
+        return `<div class="pl-row ${live ? "live" : ""}"><span class="k">${s.key}</span><span class="t">${t}</span><span class="d">${d}</span></div>`;
+      }).join("");
+    }
+
+    function setStage(i){
+      stageIdx = i; stageStart = performance.now();
+      textEl.textContent = LABEL[STAGES[i].key];
+      dots.forEach((d, j) => { d.className = j < i ? "on" : j === i ? "now" : ""; });
+      if (pl.classList.contains("open")) renderDetail();
+    }
+
+    function finish(){
+      running = false;
+      const total = fmt(performance.now() - t0);
+      dots.forEach(d => d.className = "on");
+      pl.classList.add("done");
+      frame.classList.remove("running");
+      timeEl.textContent = "";
+      if (opt === "D"){
+        let n = 0;
+        textEl.innerHTML = `<b>0</b> posts in ${total}`;
+        clearInterval(countTimer);
+        countTimer = setInterval(() => {
+          n = Math.min(25, n + 3);
+          textEl.querySelector("b").textContent = n;
+          if (n === 25) clearInterval(countTimer);
+        }, 40);
+      } else {
+        textEl.textContent = `Curated in ${total}`;
+      }
+      renderDetail();
+    }
+
+    function tick(){
+      const now = performance.now();
+      timeEl.textContent = fmt(now - t0);
+      if (pl.classList.contains("open")) renderDetail();
+      if (now - stageStart >= STAGES[stageIdx].dur){
+        timings[stageIdx] = now - stageStart;
+        if (stageIdx === STAGES.length - 1){ finish(); return; }
+        setStage(stageIdx + 1);
+      }
+      raf = requestAnimationFrame(tick);
+    }
+
+    function run(){
+      cancelAnimationFrame(raf); clearInterval(countTimer);
+      running = true; timings = []; t0 = performance.now();
+      pl.classList.remove("done");
+      frame.classList.add("running");
+      setStage(0);
+      raf = requestAnimationFrame(tick);
+    }
+
+    pl.addEventListener("click", () => { pl.classList.toggle("open"); renderDetail(); });
+    card.querySelector(".replay").addEventListener("click", run);
+    setTimeout(run, 400 + Math.random() * 600);
+  });
+</script>
+</body>
+</html>

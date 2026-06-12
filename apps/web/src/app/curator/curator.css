@@ -706,42 +706,37 @@
 .cur-send:hover{ background: var(--aurora-deep); }
 .cur-send:disabled{ opacity: 0.3; cursor: default; }
 
-/* ── SHADER SEND BUTTON ─────────────────────── */
-.shader-send-btn{
-  position: relative;
+/* ── SEND BUTTON ────────────────────────────── */
+/* Solid aurora circle — the composer's one saturated accent, matching the
+   live badge and the pipeline status light. */
+.send-btn{
   width: 42px;
   height: 42px;
   border-radius: 50%;
   border: none;
   cursor: pointer;
-  overflow: hidden;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.2s, opacity 0.2s;
-  background: linear-gradient(135deg, var(--aurora-deep), var(--aurora));
-}
-.shader-send-btn:hover{ transform: scale(1.06); }
-.shader-send-btn:active{ transform: scale(0.95); }
-.shader-send-btn:disabled{
-  opacity: 0.3;
-  cursor: default;
-  transform: none;
-}
-.shader-send-bg{
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  overflow: hidden;
-  pointer-events: none;
-}
-.shader-send-bg canvas{ border-radius: 50%; }
-.shader-send-icon{
-  position: relative;
-  z-index: 1;
+  padding: 0;
+  background: var(--aurora-deep);
   color: #fff;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.25));
+  box-shadow: 0 2px 10px rgba(62,138,108,0.35);
+  transition: background 0.18s ease, box-shadow 0.18s ease,
+              transform 0.18s ease, opacity 0.18s ease;
+}
+.send-btn svg{ transition: transform 0.18s ease; }
+.send-btn:hover:not(:disabled){
+  background: #347a5e;
+  box-shadow: 0 3px 14px rgba(62,138,108,0.45);
+}
+.send-btn:hover:not(:disabled) svg{ transform: translateY(-1.5px); }
+.send-btn:active:not(:disabled){ transform: scale(0.94); }
+.send-btn:disabled{
+  opacity: 0.35;
+  cursor: default;
+  box-shadow: none;
 }
 
 /* ── POSTS VIEW ──────────────────────────────── */
@@ -1416,7 +1411,9 @@
 }
 
 .cur-feed-posts-header{
-  display: flex; align-items: center; justify-content: space-between;
+  /* flex-start (not center): the expanded pipeline breakdown grows the row
+     downward; the count and Refresh stay pinned to the top right. */
+  display: flex; align-items: flex-start;
   padding: 8px 0;
   border-bottom: 1px solid var(--hair);
   margin-bottom: 4px;
@@ -1430,14 +1427,14 @@
   font-family: var(--rf-mono);
   font-size: 11px; letter-spacing: 0.04em;
   color: var(--ink-3);
-  min-height: 18px;
+  line-height: 22px; /* match the pipeline line height */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-/* Pipeline loader row sits above the header, full column width. */
+/* Pipeline loader lives inside the header row, taking the left side. */
 .cur-feed-loader{
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 4px 0 8px;
-  border-bottom: 1px solid var(--hair);
+  flex: 1;
+  min-width: 0;
 }
 .cur-toolbar{
   display: flex; align-items: center; gap: 4px;
@@ -1664,74 +1661,112 @@
    a small column with a top row (dot + label) and a sub row (timer/count).
    Sub row has reserved height so the layout doesn't reflow as stages
    advance. See PipelineLoader.tsx and loader-design.html. */
+/* Single-line pipeline status, chatbot style: stage text swaps in place
+   next to three step dots (filled = done, pulsing = current) and a live
+   timer. On completion the side dots merge into one green status light and
+   the text settles to "Curated in Xs". The whole line is the tap target for
+   the per-stage breakdown — no button chrome. Same design on desktop and
+   mobile. */
 .cur-pl{
-  display: inline-grid;
-  grid-auto-flow: column;
-  align-items: start;
-  column-gap: 18px;
   font-family: var(--rf-mono);
-  padding: 14px 0 18px;
-}
-.cur-pl-step{
-  display: grid;
-  grid-template-rows: auto auto;
-  row-gap: 4px;
-  min-width: 120px;
-}
-.cur-pl-top{
-  display: inline-flex; align-items: center; gap: 7px;
   font-size: 11px;
-  letter-spacing: 0.1em;
+  color: var(--ink-3);
+  /* No own padding — the header row it lives in provides the spacing. */
+  padding: 0;
+}
+.cur-pl-line{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 22px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.cur-pl-line:hover .cur-pl-text{ color: var(--ink); }
+.cur-pl-text{
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  transition: color 0.3s;
+}
+.cur-pl.is-done .cur-pl-text{ color: var(--ink-3); }
+.cur-pl-time{
+  margin-left: auto;
+  color: var(--ink-4);
+  font-variant-numeric: tabular-nums;
+}
+.cur-pl-chevron{
+  flex-shrink: 0;
+  color: var(--ink-4);
+  transition: transform 0.2s;
+}
+.cur-pl.open .cur-pl-chevron{ transform: rotate(180deg); }
+
+/* Step dots → merged status light. The glyph box shrinks when the side dots
+   fold into the centre one so the text slides over smoothly. */
+.cur-pl-glyph{
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: 23px;
+  height: 10px;
+  flex-shrink: 0;
+  transition: width 0.4s cubic-bezier(0.3, 0.8, 0.3, 1);
+}
+.cur-pl.is-done .cur-pl-glyph{ width: 14px; }
+.cur-pl-pdot{
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--paper-3);
+  flex-shrink: 0;
+  transition:
+    background 0.3s,
+    transform 0.4s cubic-bezier(0.3, 0.8, 0.3, 1),
+    opacity 0.35s;
+}
+.cur-pl-pdot.on{ background: var(--aurora-deep); }
+.cur-pl-pdot.now{ background: var(--aurora-deep); animation: cur-pl-pulse 1.2s infinite; }
+.cur-pl.is-done .cur-pl-pdot:nth-child(1){ transform: translateX(9px); opacity: 0; }
+.cur-pl.is-done .cur-pl-pdot:nth-child(3){ transform: translateX(-9px); opacity: 0; }
+.cur-pl.is-done .cur-pl-pdot:nth-child(2){ animation: cur-pl-settle 0.5s ease 0.25s; }
+@keyframes cur-pl-pulse{ 0%, 100%{ opacity: 1; } 50%{ opacity: 0.35; } }
+@keyframes cur-pl-settle{ 0%{ transform: scale(1); } 40%{ transform: scale(1.5); } 100%{ transform: scale(1); } }
+
+/* Expandable per-stage breakdown */
+.cur-pl-detail{
+  padding: 8px 0 2px 2px;
+  font-size: 10px;
+  line-height: 1.6;
+}
+.cur-pl-row{ display: flex; gap: 10px; align-items: baseline; min-width: 0; }
+.cur-pl-k{
+  width: 76px; flex-shrink: 0;
   text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 9px;
   color: var(--ink-4);
 }
-.cur-pl-dot{
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--paper-3);
-  transition: background 0.25s;
-  flex-shrink: 0;
-}
-.cur-pl-step.done .cur-pl-top{ color: var(--ink-2); }
-.cur-pl-step.done .cur-pl-dot{ background: var(--aurora-deep); }
-.cur-pl-step.active .cur-pl-top{ color: var(--ink); }
-.cur-pl-step.active .cur-pl-dot{
-  background: var(--aurora-deep);
-  animation: pulse 1.4s infinite;
-}
-.cur-pl-step.active.gen .cur-pl-dot{
-  background: conic-gradient(var(--aurora-deep) 0deg 180deg, var(--paper-3) 180deg 360deg);
-  animation: rotate 1.2s linear infinite;
-}
-.cur-pl-sub{
-  margin-left: 14px;
-  color: var(--ink-3);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: none;
+.cur-pl-row.live .cur-pl-k{ color: var(--aurora-deep); }
+.cur-pl-t{
+  width: 40px; flex-shrink: 0;
+  color: var(--ink-2);
   font-variant-numeric: tabular-nums;
-  line-height: 1.4;
-  min-height: 14px;
 }
-.cur-pl-accent{ color: var(--ink-2); }
-.cur-pl-muted{ color: var(--ink-4); }
-.cur-pl-detail{ display: block; font-size: 9.5px; color: var(--ink-4); }
-.cur-pl-sep{
-  align-self: center;
-  width: 22px; height: 1px;
-  background: var(--hair);
-  margin-top: -8px;
+.cur-pl-d{
+  color: var(--ink-4);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.cur-pl-sep.filled{ background: var(--aurora-deep); opacity: 0.5; }
-.cur-pl-timer{
-  align-self: start;
-  margin-left: 4px;
-  font-size: 10px;
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-  padding-top: 1px;
-}
-
-@keyframes rotate{ 0%{ transform: rotate(0) } 100%{ transform: rotate(360deg) } }
 
 .cur-post-debug-flag{
   display: inline-block;
@@ -2047,6 +2082,13 @@
   cursor: pointer;
   align-items: center;
   justify-content: center;
+  touch-action: manipulation;
+}
+/* Invisible halo so near-misses still register on touch. */
+.cur-chat-close::after{
+  content: "";
+  position: absolute;
+  inset: -14px;
 }
 .cur-chat-close:active{ color: var(--ink); background: #fff; }
 
@@ -2706,12 +2748,28 @@
   /* Resizers don't make sense on mobile */
   .cur-resizer{ display: none; }
 
-  /* Prevent page-level horizontal scroll */
+  /* BODY SCROLL: on mobile the document is the scroller (not an inner pane)
+     so iOS Safari collapses its URL bar on scroll. The shell grows with
+     content; horizontal clipping uses `clip` because `hidden` would turn
+     these boxes into scroll containers and break both body scroll and the
+     sticky topbar. */
+  .curator-shell{
+    height: auto;
+    min-height: 100dvh;
+  }
   .curator-shell,
   .cur-main,
   .cur-workbench{
     overflow-x: hidden;
+    overflow-x: clip;
     max-width: 100%;
+  }
+  /* Freeze the page behind full-screen layers (chat overlay, sidebar drawer).
+     The lock must sit on html — Chrome/Safari scroll the viewport via the
+     root element, so overflow:hidden on body alone doesn't stop it. */
+  html:has(.cur-main[data-mobile-tab="chat"]),
+  html:has(.cur-sidebar.is-open){
+    overflow: hidden;
   }
 
   /* Sidebar becomes a slide-in drawer — above the chat pane / pinned input
@@ -2736,6 +2794,10 @@
     padding: 0 12px;
     gap: 8px;
     min-width: 0;
+    /* Stays put while the document scrolls beneath. */
+    position: sticky;
+    top: 0;
+    z-index: 30;
   }
   .cur-topbar-left h2{ font-size: 18px; }
   .cur-topbar-right{
@@ -2793,7 +2855,14 @@
   }
 
   /* Feed is the only base view on mobile; chat is a slide-up overlay. */
-  .cur-workbench{ flex-direction: column; flex: 1; min-height: 0; }
+  .cur-workbench{
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    /* Base style is overflow:hidden — that would cage the body scroll. */
+    overflow: visible;
+    overflow-x: clip;
+  }
   .ctrl-tower{ display: none; }
   /* When tune is active on mobile (via topbar icon), show tune inside the
      chat overlay. Hide chat content; position tune over the overlay. */
@@ -2824,14 +2893,14 @@
     flex-direction: column;
     flex: 1;
     min-width: 0;
-    min-height: 0;
+    /* Not a scroller on mobile — content flows into the document so the
+       body scrolls and Safari collapses its chrome. Short feeds still fill
+       the viewport below the sticky topbar. */
+    min-height: calc(100dvh - var(--cur-header-h));
     /* Bottom padding clears the floating input pill. */
     padding: 12px 12px calc(88px + env(safe-area-inset-bottom));
-    overflow-x: hidden;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    /* our own pull-to-refresh owns the top overscroll gesture */
-    overscroll-behavior-y: contain;
+    overflow: visible;
+    overflow-x: clip;
     transition: filter 0.42s cubic-bezier(0.65, 0, 0.35, 1);
   }
 
@@ -2985,44 +3054,6 @@
     zoom: 1;
   }
 
-  /* Pipeline loader: one compact horizontal row — dot + label per stage,
-     detail sub-lines hidden, total timer pushed to the right. */
-  .cur-pl{
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 8px 0;
-  }
-  .cur-pl-step{
-    display: flex;
-    min-width: 0;
-    width: auto;
-    flex-shrink: 0;
-  }
-  .cur-pl-top{
-    font-size: 9.5px;
-    letter-spacing: 0.06em;
-    gap: 5px;
-  }
-  .cur-pl-dot{ width: 6px; height: 6px; }
-  .cur-pl-sub{ display: none; }
-  .cur-pl-sep{
-    display: block;
-    flex: 0 1 16px;
-    min-width: 6px;
-    margin-top: 0;
-    align-self: center;
-  }
-  .cur-pl-timer{
-    margin: 0 0 0 auto;
-    padding: 0;
-    border-top: none;
-    align-self: center;
-    font-size: 10px;
-  }
-
   /* Hide desktop topbar-right on mobile entirely — the mobile-only icons
      (tune, publish-bsky, share) replace them. */
   .cur-topbar-right{ display: none !important; }
@@ -3032,6 +3063,8 @@
   .cur-chat-pane .cur-chat-area{
     padding: calc(54px + env(safe-area-inset-top)) 12px 12px;
     min-height: 0;
+    /* Don't chain chat scrolling into the page behind the overlay. */
+    overscroll-behavior-y: contain;
   }
   .cur-chat-inner{ max-width: 100%; }
   .cur-msg-user{ max-width: 92%; font-size: 13px; }
