@@ -319,6 +319,7 @@ export default function Landing() {
     <div className="proto lv">
       <header className="proto-nav">
         <span className="proto-brand">willow</span>
+        <span className="proto-alpha">alpha</span>
       </header>
 
       {/* MAIN PITCH — headline, pillars, waitlist + demo */}
