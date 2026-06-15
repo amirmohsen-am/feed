@@ -1,7 +1,8 @@
 import { getSecret } from "./secrets";
 import { getCachedImageLabels, upsertImageLabels, type CachedImageLabel } from "./pg";
 
-const HIVE_API_URL = "https://api.thehive.ai/api/v2/task/sync";
+const HIVE_API_URL =
+  "https://api.thehive.ai/api/v3/hive/ai-generated-and-deepfake-content-detection";
 
 export interface HiveImageResult {
   ai_generated: boolean;
@@ -24,8 +25,8 @@ async function getHiveApiKey(): Promise<string | null> {
 }
 
 /**
- * Check a single image URL against Hive's AI-generated content detection.
- * Uses the `ai_generated_image_classification` model.
+ * Check a single media URL against Hive's v3 AI-generated content detection.
+ * Works for both images and video thumbnails (any image URL).
  *
  * Returns `null` on a transient failure (HTTP error / unparseable response) so
  * the caller does NOT cache it — a successful 200 (even "not flagged") is a
@@ -38,10 +39,12 @@ export async function checkImageAiGenerated(
   const res = await fetch(HIVE_API_URL, {
     method: "POST",
     headers: {
-      Authorization: `Token ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ url: imageUrl }),
+    body: JSON.stringify({
+      input: [{ media_url: imageUrl }],
+    }),
   });
 
   if (!res.ok) {
@@ -51,15 +54,13 @@ export async function checkImageAiGenerated(
 
   const json = await res.json();
 
-  // Hive response: status[].response.output[].classes[]
-  // Look for the "ai_generated" class across all outputs.
+  // v3 response: { output: [{ classes: [{ class, value }, ...] }] }
   try {
-    const outputs =
-      json?.status?.[0]?.response?.output ?? [];
+    const outputs = json?.output ?? [];
     for (const output of outputs) {
       for (const cls of output.classes ?? []) {
         if (cls.class === "ai_generated") {
-          const score = typeof cls.score === "number" ? cls.score : 0;
+          const score = typeof cls.value === "number" ? cls.value : 0;
           return { ai_generated: score >= 0.5, score };
         }
       }
