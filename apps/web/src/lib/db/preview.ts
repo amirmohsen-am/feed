@@ -37,9 +37,11 @@ export interface FeedPreviewPost {
   external_thumb: string | null;
   quote_uri: string | null;
   has_images: boolean;
+  has_video: boolean;
   image_count: number;
   image_alts: string[];
   image_urls: string[];
+  video_thumbnail: string | null;
   is_reply: boolean;
   reply_parent_uri: string | null;
 }
@@ -272,9 +274,11 @@ export async function getFeedPreviewPosts(
         external_thumb: h.external_thumb,
         quote_uri: h.quote_uri,
         has_images: h.has_images,
+        has_video: h.has_video,
         image_count: h.image_count,
         image_alts: h.image_alts,
         image_urls: h.image_urls,
+        video_thumbnail: h.video_thumbnail,
         is_reply: h.is_reply,
         reply_parent_uri: h.reply_parent_uri,
       };

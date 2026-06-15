@@ -118,6 +118,9 @@ export interface VectorHit {
   image_urls: string[];
   // Link-card thumbnail from AppView embed.external.thumb (when present).
   external_thumb: string | null;
+  // Video thumbnail from AppView embed (app.bsky.embed.video#view).
+  // A single frame from the video, used for AI-generated content detection.
+  video_thumbnail: string | null;
 }
 
 export interface SearchFilter {
@@ -357,6 +360,7 @@ function rowToHit(r: PgRow): VectorHit {
     like_nsfw: false,
     image_urls: [],
     external_thumb: null,
+    video_thumbnail: null,
   };
 }
 
@@ -487,6 +491,7 @@ interface AppViewMeta {
   labels: string[];
   imageUrls: string[];
   externalThumb: string | null;
+  videoThumbnail: string | null;
 }
 
 interface AppViewPostView {
@@ -496,11 +501,16 @@ interface AppViewPostView {
     $type?: string;
     external?: { thumb?: string };
     images?: Array<{ thumb?: string; fullsize?: string }>;
+    // Video embed (app.bsky.embed.video#view).
+    thumbnail?: string;
+    playlist?: string;
     // recordWithMedia nests the media one level deeper.
     media?: {
       $type?: string;
       external?: { thumb?: string };
       images?: Array<{ thumb?: string; fullsize?: string }>;
+      thumbnail?: string;
+      playlist?: string;
     };
   };
 }
@@ -512,6 +522,23 @@ function extractImageUrls(p: AppViewPostView): string[] {
   return all
     .map((img) => img.thumb ?? img.fullsize ?? null)
     .filter((u): u is string => typeof u === "string" && u.length > 0);
+}
+
+function extractVideoThumbnail(p: AppViewPostView): string | null {
+  const embed = p.embed;
+  if (!embed) return null;
+  if (embed.$type === "app.bsky.embed.video#view") {
+    const thumb = embed.thumbnail;
+    return typeof thumb === "string" && thumb.length > 0 ? thumb : null;
+  }
+  if (
+    embed.$type === "app.bsky.embed.recordWithMedia#view" &&
+    embed.media?.$type === "app.bsky.embed.video#view"
+  ) {
+    const thumb = embed.media.thumbnail;
+    return typeof thumb === "string" && thumb.length > 0 ? thumb : null;
+  }
+  return null;
 }
 
 function extractExternalThumb(p: AppViewPostView): string | null {
@@ -585,6 +612,7 @@ async function fetchAppViewMeta(
         labels: (p.labels ?? []).map((l) => l.val),
         imageUrls: extractImageUrls(p),
         externalThumb: extractExternalThumb(p),
+        videoThumbnail: extractVideoThumbnail(p),
       });
     }
   }
@@ -735,6 +763,7 @@ export async function searchPosts(opts: SearchOpts): Promise<VectorHit[]> {
       if (!meta) continue;
       if (wantImages && meta.imageUrls.length > 0) h.image_urls = meta.imageUrls;
       if (meta.externalThumb) h.external_thumb = meta.externalThumb;
+      if (meta.videoThumbnail) h.video_thumbnail = meta.videoThumbnail;
     }
   }
 

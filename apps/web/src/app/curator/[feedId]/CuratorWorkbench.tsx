@@ -45,9 +45,11 @@ interface Post {
   external_thumb: string | null;
   quote_uri: string | null;
   has_images: boolean;
+  has_video: boolean;
   image_count: number;
   image_alts: string[];
   image_urls: string[];
+  video_thumbnail: string | null;
   is_reply: boolean;
   reply_parent_uri: string | null;
 }
@@ -304,20 +306,25 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [lightbox]);
 
-  // Fetch AI-generated labels for posts with images
+  // Fetch AI-generated labels for posts with images or video
   useEffect(() => {
     if (posts.length === 0) return;
-    const imagePosts = posts.filter((p) => p.has_images && p.image_urls.length > 0);
-    if (imagePosts.length === 0) return;
+    const mediaPosts = posts.filter(
+      (p) => (p.has_images && p.image_urls.length > 0) || (p.has_video && p.video_thumbnail)
+    );
+    if (mediaPosts.length === 0) return;
     let cancelled = false;
     (async () => {
       const results = await Promise.all(
-        imagePosts.map(async (p) => {
+        mediaPosts.map(async (p) => {
           try {
-            const params = new URLSearchParams({
-              uri: p.uri,
-              image_urls: p.image_urls.join(","),
-            });
+            const params = new URLSearchParams({ uri: p.uri });
+            if (p.image_urls.length > 0) {
+              params.set("image_urls", p.image_urls.join(","));
+            }
+            if (p.has_video && p.video_thumbnail) {
+              params.set("video_thumbnail", p.video_thumbnail);
+            }
             const res = await authedFetch(`/api/ai-label?${params}`);
             if (!res.ok) return null;
             const data = await res.json();
@@ -1729,6 +1736,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                       <div className="cur-post-images-note">
                         {post.image_count} image{post.image_count === 1 ? "" : "s"}
                       </div>
+                    )}
+
+                    {/* AI label for video-only posts (image posts show it in the images-wrap above) */}
+                    {!post.has_images && post.has_video && aiLabels[post.uri]?.ai_generated && (
+                      <span className="cur-ai-label">AI Generated</span>
                     )}
 
                     {showDebug && (
