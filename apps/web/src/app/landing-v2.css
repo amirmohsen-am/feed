@@ -19,8 +19,8 @@
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--p-ink-dim);
-  background: rgba(255, 252, 244, 0.55);
-  border: 1px solid rgba(79, 67, 47, 0.25);
+  background: rgba(248, 247, 255, 0.55);
+  border: 1px solid rgba(42, 37, 80, 0.25);
   border-radius: 999px;
   padding: 9px 18px;
   cursor: pointer;
@@ -29,7 +29,7 @@
 
 .act-skip:hover {
   color: var(--p-ink);
-  background: rgba(255, 252, 244, 0.95);
+  background: rgba(248, 247, 255, 0.95);
 }
 
 /* ---------- main pitch ---------- */
@@ -43,8 +43,7 @@
   justify-content: center;
   /* heavier bottom padding floats the content above true center */
   padding: 80px 0 170px;
-  /* flat wheat; .fly-section's top edge fades in from this same color */
-  background: var(--p-wheat);
+  background: linear-gradient(180deg, #f0f3ff 0%, #c8d8f8 35%, #7E9BEC 100%);
   text-align: center;
 }
 
@@ -62,7 +61,7 @@
   font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(79, 67, 47, 0.55);
+  color: rgba(42, 37, 80, 0.55);
   background: none;
   border: none;
   padding: 0;
@@ -94,12 +93,23 @@
   margin-bottom: 88px;
 }
 
+.lv-title-logo-char {
+  /* logo image sits on the text baseline, sized to cap-height */
+  vertical-align: -0.08em;
+}
+
+.lv-title-logo-char img {
+  display: block;
+  height: 0.88em;
+  width: auto;
+}
+
 .lv-title em,
 .lv-title .hl-em .hl-char,
 .lv-subtitle em,
 .lv-subtitle .hl-em .hl-char {
   font-style: normal;
-  color: #b07c33;
+  color: #4a5ec8;
 }
 
 /* ouro-style per-character masked reveal: chars slide up out of each
@@ -229,11 +239,11 @@
 .lv-subscribe-pill {
   display: flex;
   align-items: center;
-  background: #fffdf7;
-  border: 1px solid rgba(79, 67, 47, 0.3);
+  background: #faf9ff;
+  border: 1px solid rgba(42, 37, 80, 0.3);
   border-radius: 999px;
   padding: 5px 5px 5px 20px;
-  box-shadow: 0 10px 28px -16px rgba(79, 67, 47, 0.35);
+  box-shadow: 0 10px 28px -16px rgba(42, 37, 80, 0.35);
 }
 
 .lv-subscribe-pill input {
@@ -247,7 +257,7 @@
 }
 
 .lv-subscribe-pill input::placeholder {
-  color: rgba(79, 67, 47, 0.4);
+  color: rgba(42, 37, 80, 0.4);
 }
 
 .lv-subscribe-pill button {
@@ -356,13 +366,13 @@
 }
 
 .lv-subscribe-pill button:hover {
-  background: #6b5a40;
+  background: #3040a0;
 }
 
 .lv-subscribe-error {
   margin-top: 10px;
   font-size: 13px;
-  color: #a85c4a;
+  color: #6050a0;
 }
 
 .lv-subscribe-success {
@@ -374,7 +384,7 @@
 }
 
 .lv-subscribe-success span {
-  color: #b07c33;
+  color: #4a5ec8;
 }
 
 .lv-demo-btn {
@@ -382,10 +392,10 @@
   font-size: 14px;
   color: var(--p-ink);
   text-decoration: none;
-  border: 1px solid rgba(79, 67, 47, 0.35);
+  border: 1px solid rgba(42, 37, 80, 0.35);
   border-radius: 999px;
   padding: 12px 20px;
-  background: rgba(255, 252, 244, 0.6);
+  background: rgba(248, 247, 255, 0.6);
   transition: background 0.25s ease, color 0.25s ease;
 }
 

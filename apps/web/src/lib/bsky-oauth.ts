@@ -143,7 +143,7 @@ export function getBskyOAuthClient(): NodeOAuthClient {
     clientMetadata: IS_LOCAL_DEV
       ? {
           client_id: `http://localhost?redirect_uri=${encodeURIComponent(`${publicUrl}/oauth/callback`)}&scope=${encodeURIComponent(BSKY_OAUTH_SCOPE)}`,
-          client_name: "Willow Feed (dev)",
+          client_name: "amadi (dev)",
           client_uri: publicUrl,
           redirect_uris: [`${publicUrl}/oauth/callback`],
           grant_types: ["authorization_code", "refresh_token"],
@@ -155,7 +155,7 @@ export function getBskyOAuthClient(): NodeOAuthClient {
         }
       : {
           client_id: `${publicUrl}/oauth/client-metadata.json`,
-          client_name: "Willow Feed",
+          client_name: "amadi",
           client_uri: publicUrl,
           redirect_uris: [`${publicUrl}/oauth/callback`],
           grant_types: ["authorization_code", "refresh_token"],

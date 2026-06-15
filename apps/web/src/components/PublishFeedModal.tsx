@@ -446,7 +446,7 @@ export default function PublishFeedModal({
           <div>
             <p style={{ ...textBody, marginBottom: 16 }}>
               Register &ldquo;{feedName}&rdquo; as a custom feed on your Bluesky
-              account. Bluesky will fetch posts from Willow whenever someone opens
+              account. Bluesky will fetch posts from amadi whenever someone opens
               the feed.
             </p>
 

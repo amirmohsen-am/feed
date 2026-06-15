@@ -1,19 +1,19 @@
 /* ============================================================
-   Landing prototype — light pastel theme.
-   Wheat rgb(245,214,160) is the anchor color; everything else
-   stays soft: cream paper, warm brown ink, pastel sky blues.
+   Landing prototype — light periwinkle theme.
+   Periwinkle #7E9BEC is the anchor color; everything else
+   stays soft: lavender paper, dark ink, pale sky blues.
    ============================================================ */
 
 .proto {
-  --p-wheat: rgb(245, 214, 160);
-  --p-wheat-deep: #e8c184;
-  --p-cream: #fbf6ec;
-  --p-paper: #f7efdf;
-  --p-ink: #4f432f;
-  --p-ink-dim: #8a7a60;
-  --p-sky: #aadcf2;
-  --p-sky-deep: #7ec3e8;
-  --p-sage: #b9cdb4;
+  --p-wheat: #7E9BEC;
+  --p-wheat-deep: #5a70d8;
+  --p-cream: #f8f7ff;
+  --p-paper: #f3f1fc;
+  --p-ink: #2a2550;
+  --p-ink-dim: #6860a0;
+  --p-sky: #c4d8f8;
+  --p-sky-deep: #9ab8f0;
+  --p-sage: #b4bce0;
 
   font-family: var(--rf-body);
   color: var(--p-ink);
@@ -47,6 +47,12 @@
   font-size: 24px;
   letter-spacing: -0.02em;
   color: var(--p-ink);
+}
+
+.proto-brand-logo {
+  height: 28px;
+  width: auto;
+  display: block;
 }
 
 .proto-tag {
@@ -88,7 +94,7 @@
 .proto-head .hairline {
   flex: 1;
   height: 1px;
-  background: rgba(79, 67, 47, 0.18);
+  background: rgba(42, 37, 80, 0.18);
 }
 
 .proto-head .label {
@@ -122,9 +128,9 @@
      fades to flat paper (the color .glass-section starts with); the
      radial keeps the act's golden glow in between */
   background:
-    linear-gradient(180deg, var(--p-wheat) 0%, rgba(245, 214, 160, 0) 26%),
-    linear-gradient(180deg, rgba(247, 239, 223, 0) 82%, var(--p-paper) 98%),
-    radial-gradient(120% 90% at 50% 100%, #fdf3df 0%, var(--p-wheat) 78%, #efce97 100%);
+    linear-gradient(180deg, var(--p-wheat) 0%, rgba(126, 155, 236, 0) 26%),
+    linear-gradient(180deg, rgba(243, 241, 252, 0) 82%, var(--p-paper) 98%),
+    radial-gradient(120% 90% at 50% 100%, #e8eeff 0%, var(--p-wheat) 78%, #9ab5ee 100%);
 }
 
 .fly-canvas {
@@ -148,7 +154,7 @@
   font-family: var(--rf-mono);
   font-size: 12px;
   letter-spacing: 0.18em;
-  color: rgba(79, 67, 47, 0.5);
+  color: rgba(42, 37, 80, 0.5);
   opacity: 0;
   transition: opacity 1.4s ease;
   pointer-events: none;
@@ -213,7 +219,7 @@
 }
 
 .fly-reveal h1 em {
-  color: #b07c33;
+  color: #4a5ec8;
 }
 
 .fly-sub {
@@ -237,7 +243,7 @@
   font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(79, 67, 47, 0.55);
+  color: rgba(42, 37, 80, 0.55);
 }
 
 .fly-scroll-cue .arrow {
@@ -266,7 +272,7 @@
   /* top edge is flat paper (receives .fly-section's fade); the bottom
      fades to flat cream — the color .proto-mission starts with */
   background:
-    linear-gradient(180deg, rgba(251, 246, 236, 0) 86%, var(--p-cream) 99%),
+    linear-gradient(180deg, rgba(248, 247, 255, 0) 86%, var(--p-cream) 99%),
     radial-gradient(100% 80% at 50% 100%, #ecf3ef 0%, var(--p-paper) 70%);
 }
 
@@ -277,11 +283,11 @@
   border-radius: 22px;
   overflow: hidden;
   /* window frame */
-  border: 1px solid rgba(79, 67, 47, 0.22);
+  border: 1px solid rgba(42, 37, 80, 0.22);
   box-shadow:
     0 0 0 10px rgba(248, 242, 230, 0.9),
-    0 0 0 11px rgba(79, 67, 47, 0.16),
-    0 30px 70px -30px rgba(79, 67, 47, 0.4);
+    0 0 0 11px rgba(42, 37, 80, 0.16),
+    0 30px 70px -30px rgba(42, 37, 80, 0.4);
   background: #f3ede1;
 }
 
@@ -308,7 +314,7 @@
   font-family: var(--rf-mono);
   font-size: 12px;
   letter-spacing: 0.18em;
-  color: rgba(79, 67, 47, 0.55);
+  color: rgba(42, 37, 80, 0.55);
   opacity: 0;
   transition: opacity 1s ease;
   pointer-events: none;
@@ -333,7 +339,7 @@
   font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(79, 67, 47, 0.55);
+  color: rgba(42, 37, 80, 0.55);
   opacity: 0;
   transition: opacity 1s ease 0.4s;
   pointer-events: none;
@@ -368,7 +374,7 @@
 }
 
 .proto-mission h2 em {
-  color: #b07c33;
+  color: #4a5ec8;
 }
 
 .proto-mission-body {
@@ -419,7 +425,7 @@
   border-radius: 50%;
   overflow: hidden;
   border: 3px solid var(--p-wheat);
-  box-shadow: 0 12px 30px -14px rgba(79, 67, 47, 0.45);
+  box-shadow: 0 12px 30px -14px rgba(42, 37, 80, 0.45);
 }
 
 .proto-team-photo img {
@@ -477,7 +483,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 30px 36px;
-  border-top: 1px solid rgba(79, 67, 47, 0.14);
+  border-top: 1px solid rgba(42, 37, 80, 0.14);
   background: var(--p-paper);
   font-family: var(--rf-mono);
   font-size: 12px;

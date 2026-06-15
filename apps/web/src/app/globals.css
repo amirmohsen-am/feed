@@ -5,29 +5,29 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --void:        #060f0b;
-  --midnight:    #0b1814;
-  --twilight:    #11241c;
-  --jade:        #1c3a2e;
-  --moss:        #2a5244;
-  --sage:        #6b9381;
-  --sage-dim:    #8fa89b;
+  --void:        #07080f;
+  --midnight:    #0d0e1c;
+  --twilight:    #131428;
+  --jade:        #1c1f3e;
+  --moss:        #252864;
+  --sage:        #5868b0;
+  --sage-dim:    #8090c4;
 
-  --aurora:      #7dcba5;
-  --aurora-deep: #3e8a6c;
-  --mist:        #a8d5bd;
+  --aurora:      #7E9BEC;
+  --aurora-deep: #5A3E9E;
+  --mist:        #b8ccf8;
 
-  --ember:       #e09575;
-  --gold:        #d4a574;
-  --amber:       #e8b988;
-  --rose:        #d88575;
+  --ember:       #7070d0;
+  --gold:        #8a9ee8;
+  --amber:       #7E9BEC;
+  --rose:        #9880d4;
 
-  --cream:       #f3ecdd;
-  --parchment:   #e6dcc7;
-  --parchment-dim:#a8b5a8;
+  --cream:       #f0edf8;
+  --parchment:   #dcd8f0;
+  --parchment-dim:#9090c0;
 
-  --hair:        rgba(243,236,221,0.14);
-  --hair-strong: rgba(243,236,221,0.28);
+  --hair:        rgba(180,190,240,0.14);
+  --hair-strong: rgba(180,190,240,0.28);
 
   /* Big titles/headings use Space Grotesk; body/UI use Geist.
      'Instrument Serif'/'Merriweather' stay loaded only for the brand wordmarks. */

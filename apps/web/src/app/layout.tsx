@@ -10,7 +10,7 @@ const geistMono = Geist_Mono({subsets:['latin'],variable:'--font-geist-mono'});
 const spaceGrotesk = Space_Grotesk({subsets:['latin'],variable:'--font-display'});
 
 export const metadata: Metadata = {
-  title: "Willow — A quieter, more intentional feed.",
+  title: "amadi — A quieter, more intentional feed.",
   description: "Curate your Bluesky feed with AI. In the same way you curate what you eat, now curate what you read.",
 };
 
@@ -22,8 +22,8 @@ export default function RootLayout({
   return (
     <html lang="en" className={cn("h-full antialiased", "font-sans", geist.variable, geistMono.variable, spaceGrotesk.variable)}>
       <head>
-        {/* Editorial brand wordmarks only: Instrument Serif (landing "willow"),
-            Merriweather (curator "Willow" logo). All UI/body/mono type is Geist. */}
+        {/* Editorial brand wordmarks only: Instrument Serif (landing "amadi"),
+            Merriweather (curator "amadi" logo). All UI/body/mono type is Geist. */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
