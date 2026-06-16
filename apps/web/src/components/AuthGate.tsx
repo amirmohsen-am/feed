@@ -86,7 +86,7 @@ export default function AuthGate({
             width: 28,
             height: 28,
             border: "2px solid #ece8de",
-            borderTopColor: "#3e8a6c",
+            borderTopColor: "#5A3E9E",
             borderRadius: "50%",
             animation: "authgate-spin 0.8s linear infinite",
           }}
@@ -130,7 +130,7 @@ export default function AuthGate({
               letterSpacing: "-0.01em",
             }}
           >
-            Sign in to Willow
+            Sign in to amadi
           </div>
           <p
             style={{
@@ -145,9 +145,9 @@ export default function AuthGate({
             <a
               href="/"
               style={{
-                color: "#3e8a6c",
+                color: "#5A3E9E",
                 textDecoration: "none",
-                borderBottom: "1px dotted #3e8a6c",
+                borderBottom: "1px dotted #5A3E9E",
               }}
             >
               the landing page

@@ -110,7 +110,7 @@ function Wordmark({ height = 32, shimmer = true }: { height?: number; shimmer?: 
 
   const fillColor = shimmer
     ? `url(#shimmer-${id})`
-    : "var(--cream, #f3ecdd)";
+    : "var(--cream, #f0edf8)";
 
   return (
     <motion.svg
@@ -132,10 +132,10 @@ function Wordmark({ height = 32, shimmer = true }: { height?: number; shimmer?: 
           x2={gradientX2}
           y2="0"
         >
-          <stop offset="0%" stopColor="var(--parchment-dim, #a8b5a8)" />
-          <stop offset="40%" stopColor="var(--amber, #e8b988)" />
-          <stop offset="60%" stopColor="var(--cream, #f3ecdd)" />
-          <stop offset="100%" stopColor="var(--parchment-dim, #a8b5a8)" />
+          <stop offset="0%" stopColor="var(--parchment-dim, #9090c0)" />
+          <stop offset="40%" stopColor="var(--amber, #7E9BEC)" />
+          <stop offset="60%" stopColor="var(--cream, #f0edf8)" />
+          <stop offset="100%" stopColor="var(--parchment-dim, #9090c0)" />
         </motion.linearGradient>
       </defs>
       <text
@@ -149,7 +149,7 @@ function Wordmark({ height = 32, shimmer = true }: { height?: number; shimmer?: 
         textLength="150"
         lengthAdjust="spacingAndGlyphs"
       >
-        Willow
+        amadi
       </text>
     </motion.svg>
   );

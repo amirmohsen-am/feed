@@ -41,8 +41,8 @@ export async function generateMetadata({
   const feed = Number.isFinite(id) ? await getFeedById(id) : null;
   const name = feed?.name || "A curated feed";
   return {
-    title: `${name} — Willow`,
-    description: `A feed curated on Willow${
+    title: `${name} — amadi`,
+    description: `A feed curated on amadi${
       feed?.subqueries.length ? `: ${feed.subqueries.slice(0, 3).join(", ")}` : ""
     }. Built with AI, served from Bluesky.`,
   };
@@ -72,7 +72,7 @@ export default async function SharedFeedPage({
       <div className="sf-shell">
         <div className="sf-topbar">
           <Link href="/" className="sf-wordmark">
-            Willow
+            amadi
           </Link>
           <Link href="/curator" className="sf-cta">
             Build your own
@@ -82,7 +82,7 @@ export default async function SharedFeedPage({
         <div className="sf-kicker">A shared feed</div>
         <h1 className="sf-title">{feed.name}</h1>
         <p className="sf-sub">
-          Curated on Willow · {posts.length} post{posts.length === 1 ? "" : "s"}
+          Curated on amadi · {posts.length} post{posts.length === 1 ? "" : "s"}
         </p>
         {feed.subqueries.length > 0 && (
           <div className="sf-chips">
@@ -163,7 +163,7 @@ export default async function SharedFeedPage({
         )}
 
         <div className="sf-footer">
-          <p>This feed was curated on Willow — describe what you want to read, and AI builds the feed.</p>
+          <p>This feed was curated on amadi — describe what you want to read, and AI builds the feed.</p>
           <Link href="/curator" className="sf-cta">
             Make your own feed
           </Link>

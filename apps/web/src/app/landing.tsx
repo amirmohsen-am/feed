@@ -146,7 +146,7 @@ function SubscribeForm() {
           disabled={status === "loading"}
         />
         <button type="submit" disabled={status === "loading"}>
-          {status === "loading" ? "Joining…" : "Join the waitlist"}
+          {status === "loading" ? "Joining…" : "Get Updates"}
         </button>
       </div>
       {status === "error" && <div className="lv-subscribe-error">{message}</div>}
@@ -318,22 +318,59 @@ export default function Landing() {
   return (
     <div className="proto lv">
       <header className="proto-nav">
-        <span className="proto-brand">willow</span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/images/logo_periwinkle.svg" alt="amadi" className="proto-brand-logo" />
         <span className="proto-alpha">alpha</span>
       </header>
 
       {/* MAIN PITCH — headline, pillars, waitlist + demo */}
       <section ref={mainRef} className="lv-main" id="feed">
         <div className="proto-wrap">
-          <HeadlineReveal className="lv-title" words={[{ text: "Willow" }]} />
+          <h1 className="lv-title" aria-label="amadi">
+            <span aria-hidden="true">
+              <span className="hl-word">
+                {/* logo mark stands in for the "a" — charIndex 0 */}
+                <span
+                  className="hl-char lv-title-logo-char"
+                  style={{
+                    "--cdel": `${(charRand(1) * 0.26).toFixed(2)}s`,
+                    "--cd": `${(0.75 + charRand(32) * 0.55).toFixed(2)}s`,
+                    "--cr": `${((charRand(68) - 0.5) * 5).toFixed(1)}deg`,
+                  } as React.CSSProperties}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/images/logo_periwinkle.svg" alt="" />
+                </span>
+                {/* "madi" — charIndices 1–4 */}
+                {Array.from("madi").map((ch, ci) => {
+                  const i = ci + 1;
+                  const delay = charRand(i + 1) * 0.26;
+                  const dur = 0.75 + charRand(i + 31) * 0.55;
+                  const rot = (charRand(i + 67) - 0.5) * 5;
+                  return (
+                    <span
+                      key={ci}
+                      className="hl-char"
+                      style={{
+                        "--cdel": `${delay.toFixed(2)}s`,
+                        "--cd": `${dur.toFixed(2)}s`,
+                        "--cr": `${rot.toFixed(1)}deg`,
+                      } as React.CSSProperties}
+                    >
+                      {ch}
+                    </span>
+                  );
+                })}
+              </span>
+            </span>
+          </h1>
           <HeadlineReveal
             as="p"
             className="lv-subtitle"
             words={[
-              { text: "Transparency" },
-              { text: "into" },
+              { text: "Own" },
               { text: "your", em: true },
-              { text: "feed." },
+              { text: "scroll" },
             ]}
           />
           <div className="lv-pillars">
@@ -472,7 +509,8 @@ export default function Landing() {
       </section>
 
       <footer className="proto-footer">
-        <span className="proto-brand">willow</span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/images/logo_periwinkle.svg" alt="amadi" className="proto-brand-logo" />
         <div className="proto-footer-socials">
           {SOCIALS.map((s) => (
             <a
@@ -480,7 +518,7 @@ export default function Landing() {
               href={s.href}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label={`Willow on ${s.name}`}
+              aria-label={`amadi on ${s.name}`}
             >
               {s.icon}
             </a>

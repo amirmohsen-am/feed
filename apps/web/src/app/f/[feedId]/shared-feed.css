@@ -8,8 +8,8 @@
   --ink-3: #6b7a72;
   --hair: rgba(11, 24, 20, 0.08);
   --hair-strong: rgba(11, 24, 20, 0.16);
-  --aurora: #7dcba5;
-  --aurora-deep: #3e8a6c;
+  --aurora: #7E9BEC;
+  --aurora-deep: #5A3E9E;
 
   min-height: 100dvh;
   background: var(--paper);
