@@ -1,0 +1,102 @@
+/* Swipe-to-tune: makes feed cards draggable left/right. A swipe pulls the
+   post's context into the main chat (no separate surface). Scoped to the
+   curator workbench. */
+
+.cur-swipe-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+  cursor: grab;
+  will-change: transform;
+  /* allow vertical scroll, let framer-motion own horizontal drag */
+  touch-action: pan-y;
+}
+.cur-swipe-wrap:active {
+  cursor: grabbing;
+}
+.cur-swipe-content {
+  position: relative;
+  z-index: 1;
+}
+
+/* Swipe message rendered in the chat: a verdict tag above a branch-style card
+   showing the reacted-to post. */
+.cur-swipe-card {
+  align-items: stretch !important;
+  gap: 6px;
+}
+.cur-swipe-card-tag {
+  align-self: flex-start;
+  font-family: var(--rf-mono, monospace);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.cur-swipe-card-tag-approve {
+  background: rgba(62, 138, 108, 0.14);
+  color: var(--aurora-deep, #3e8a6c);
+}
+.cur-swipe-card-tag-reject {
+  background: rgba(216, 133, 117, 0.18);
+  color: #b35a48;
+}
+
+/* A flung card translates well past the viewport edge — clip horizontally so
+   it never creates a horizontal scrollbar (especially on mobile, where the
+   document itself is the scroller). overflow-x: clip leaves vertical scroll
+   untouched. */
+.cur-feed-posts-inner {
+  overflow-x: clip;
+}
+
+/* directional wash behind the card content */
+.cur-swipe-tint {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border-radius: 18px;
+  pointer-events: none;
+}
+.cur-swipe-tint-keep {
+  background: linear-gradient(
+    180deg,
+    rgba(125, 203, 165, 0.55),
+    rgba(62, 138, 108, 0.35)
+  );
+}
+.cur-swipe-tint-nope {
+  background: linear-gradient(
+    180deg,
+    rgba(216, 133, 117, 0.55),
+    rgba(224, 149, 117, 0.35)
+  );
+}
+
+/* KEEP / NOPE stamps */
+.cur-swipe-stamp {
+  position: absolute;
+  top: 18px;
+  z-index: 6;
+  padding: 6px 14px;
+  border: 3px solid currentColor;
+  border-radius: 10px;
+  font-family: var(--rf-mono, monospace);
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.55);
+}
+.cur-swipe-keep {
+  left: 18px;
+  color: var(--aurora-deep);
+  transform: rotate(-12deg);
+}
+.cur-swipe-nope {
+  right: 18px;
+  color: var(--rose);
+  transform: rotate(12deg);
+}

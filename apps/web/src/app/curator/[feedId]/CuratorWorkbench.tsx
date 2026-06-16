@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
+import SwipeableCard, { type SwipeVerdict } from "@/components/SwipeableCard";
+import "../swipe-card.css";
 import FilterPanel from "@/components/FilterPanel";
 import SendButton from "@/components/SendButton";
 import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
@@ -155,6 +157,33 @@ function parseMessage(content: string) {
   return { text: textLines.join("\n").trim(), options };
 }
 
+// A swipe sends a user message prefixed with ⟦swipe:<verdict>:<uri>⟧ so the
+// chat can render the reacted-to post as a card (instead of the raw text the
+// agent reads). Author + snippet are parsed from the body as a reload-safe
+// fallback when the in-session post cache is gone.
+function parseSwipeMessage(content: string): {
+  verdict: "approve" | "reject";
+  uri: string;
+  displayName: string | null;
+  text: string | null;
+} | null {
+  const m = content.match(/^\u27e6swipe:(approve|reject):(.+?)\u27e7\s*(.*)$/s);
+  if (!m) return null;
+  const body = m[3];
+  const b = body.match(/ by (.+?): "([\s\S]*?)"\./);
+  return {
+    verdict: m[1] as "approve" | "reject",
+    uri: m[2],
+    displayName: b ? b[1] : null,
+    text: b ? b[2] : null,
+  };
+}
+
+function bskyUrlFromUri(uri: string): string | undefined {
+  const m = uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+  return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : undefined;
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -293,6 +322,56 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const interviewModeRef = useRef(false);
   const [posts, setPosts] = useState<Post[]>([]);
   const [postCount, setPostCount] = useState(0);
+
+  // Swipe-to-tune: cards in the feed can be dragged left (skip) or right
+  // (keep). A swiped card is hidden and its context is pulled straight into the
+  // main chat (the same one that opens from "Describe your ideal feed").
+  const [swipedUris, setSwipedUris] = useState<Set<string>>(() => new Set());
+  // In-session lookup so swipe messages can render the reacted post as a card.
+  const [swipedPostCache, setSwipedPostCache] = useState<
+    Record<string, { displayName: string; handle: string | null; text: string }>
+  >({});
+
+  function authorLabel(post: Post): string {
+    return (
+      post.author_display_name?.trim() ||
+      (post.author_handle ? `@${post.author_handle}` : "someone")
+    );
+  }
+
+  function handleCardSwipe(post: Post, verdict: SwipeVerdict) {
+    setSwipedUris((prev) => {
+      const next = new Set(prev);
+      next.add(post.uri);
+      return next;
+    });
+    setSwipedPostCache((prev) => ({
+      ...prev,
+      [post.uri]: {
+        displayName:
+          post.author_display_name?.trim() ||
+          post.author_handle ||
+          post.author_did.slice(0, 16) + "\u2026",
+        handle: post.author_handle,
+        text: post.text,
+      },
+    }));
+    // Post the verdict into the chat. The message is prefixed with a parseable
+    // token so the chat renders the post as a card; the rest is what the agent
+    // reads. We explicitly ask the agent to collect a reason (with options)
+    // before tuning, rather than just acknowledging.
+    const author = authorLabel(post);
+    const raw = post.text.replace(/\s+/g, " ").trim();
+    const snippet = `${raw.slice(0, 200)}${raw.length > 200 ? "\u2026" : ""}`;
+    const token = `\u27e6swipe:${verdict}:${post.uri}\u27e7`;
+    const instruction =
+      verdict === "approve"
+        ? `I kept this post (I want more like it) by ${author}: "${snippet}". Before you tune anything, ask me one quick follow-up about what specifically landed for me — give me 2-4 concrete options to pick from — then update the feed to surface more like it.`
+        : `I skipped this post (not interested) by ${author}: "${snippet}". Before you tune anything, ask me one quick follow-up about why this kind of post misses for me — give me 2-4 concrete reasons to pick from — then update the feed to show less like it.`;
+    setRightPane("chat");
+    openMobileChat();
+    void send(`${token} ${instruction}`);
+  }
   const [aiLabels, setAiLabels] = useState<Record<string, { ai_generated: boolean; scores: number[] }>>({});
   const [lightbox, setLightbox] = useState<{ urls: string[]; index: number } | null>(null);
   useEffect(() => {
@@ -775,6 +854,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               setPipelineStage(ev.cached ? "idle" : "done");
               const nextCount = ev.total_stored || (ev.posts?.length ?? 0);
               setPosts(ev.posts || []);
+              setSwipedUris(new Set());
               setPostCount(nextCount);
               setActivePostCount(nextCount);
               if (ev.mechanical_filters) setMechanicalFilters(ev.mechanical_filters);
@@ -849,6 +929,8 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     // alive while we drive transform inline.
     const FILTER_T = "filter 0.42s cubic-bezier(0.65, 0, 0.35, 1)";
     let startY = -1;
+    let startX = -1;
+    let axisLock: "none" | "horizontal" | "vertical" = "none";
     let pull = 0;
     let active = false;
 
@@ -873,12 +955,24 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         return;
       }
       startY = e.touches[0].clientY;
+      startX = e.touches[0].clientX;
+      axisLock = "none";
       active = false;
       pull = 0;
     };
     const onMove = (e: TouchEvent) => {
       if (startY < 0 || ptrRefreshingRef.current) return;
       const dy = e.touches[0].clientY - startY;
+      // Lock the gesture to an axis on first meaningful movement. A
+      // horizontal-dominant gesture is a card swipe (handled by framer-motion),
+      // so bail out and never claim it for pull-to-refresh.
+      if (axisLock === "none") {
+        const dx = e.touches[0].clientX - startX;
+        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+          axisLock = Math.abs(dx) > Math.abs(dy) ? "horizontal" : "vertical";
+        }
+      }
+      if (axisLock === "horizontal") return;
       if (dy <= 0 || !atTop()) {
         if (active) {
           active = false;
@@ -1557,6 +1651,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               })
             ) : (
               posts.map((post) => {
+                if (swipedUris.has(post.uri)) return null;
                 const bskyUrl = (() => {
                   const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
                   return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
@@ -1580,6 +1675,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 })();
                 return (
                   <div key={post.uri} className="cur-post-item">
+                  <SwipeableCard onSwipe={(v) => handleCardSwipe(post, v)}>
                   <article className="cur-post-card">
                     {post.is_reply && (
                       <div className="cur-post-reply-banner">
@@ -1783,6 +1879,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                     {renderEngageFooter(post, bskyUrl)}
                     {branchZone(post.uri)}
                   </article>
+                  </SwipeableCard>
                   </div>
                 );
               })
@@ -1916,7 +2013,44 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               )}
               {messages.map((msg, i) => {
                 const isUser = msg.role === "user";
+                const swipe = isUser ? parseSwipeMessage(msg.content) : null;
                 const parsed = !isUser ? parseMessage(msg.content) : null;
+                if (isUser && swipe) {
+                  const cached = swipedPostCache[swipe.uri];
+                  const name = cached?.displayName ?? swipe.displayName;
+                  const handle = cached?.handle ?? null;
+                  const text = cached?.text ?? swipe.text;
+                  const url = bskyUrlFromUri(swipe.uri);
+                  return (
+                    <div key={i} className="cur-msg cur-swipe-card">
+                      <span
+                        className={`cur-swipe-card-tag cur-swipe-card-tag-${swipe.verdict}`}
+                      >
+                        {swipe.verdict === "approve"
+                          ? "\u2713 More like this"
+                          : "\u2715 Less like this"}
+                      </span>
+                      <a
+                        className="cur-branch-source-card"
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <div className="cur-branch-source-author">
+                          {name || "A post"}
+                          {handle && (
+                            <span className="cur-branch-source-handle">
+                              @{handle}
+                            </span>
+                          )}
+                        </div>
+                        {text && (
+                          <div className="cur-branch-source-text">{text}</div>
+                        )}
+                      </a>
+                    </div>
+                  );
+                }
                 return (
                   <div key={i} className="cur-msg">
                     {isUser ? (

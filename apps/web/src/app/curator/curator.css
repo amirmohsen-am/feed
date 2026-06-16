@@ -671,7 +671,7 @@
   flex: 1;
   background: #fff;
   border: 1px solid var(--hair-strong);
-  border-radius: 18px;
+  border-radius: 12px;
   padding: 11px 18px;
   color: var(--ink);
   font-family: var(--rf-body);
@@ -688,7 +688,6 @@
 .cur-input::placeholder{ color: var(--ink-4); }
 .cur-input:focus{
   border-color: var(--aurora-deep);
-  box-shadow: 0 0 0 3px rgba(125,203,165,0.16);
 }
 .cur-send{
   padding: 11px 22px;
@@ -3115,10 +3114,10 @@
   .cur-input-wrap{ gap: 8px; }
   .cur-input{
     font-size: 16px; /* avoid iOS zoom-on-focus */
-    padding: 11px 18px;
+    padding: 12px 16px;
     min-height: 42px;
     max-height: 120px;
-    border-radius: 999px;
+    border-radius: 14px;
     background: rgba(255,255,255,0.94);
     box-shadow: 0 6px 24px rgba(11,24,20,0.1);
   }
