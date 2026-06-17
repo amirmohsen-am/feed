@@ -1,0 +1,513 @@
+/* ============================================================
+   Landing prototype — light periwinkle theme.
+   Periwinkle #7E9BEC is the anchor color; everything else
+   stays soft: lavender paper, dark ink, pale sky blues.
+   ============================================================ */
+
+.proto {
+  --p-wheat: #7E9BEC;
+  --p-wheat-deep: #5a70d8;
+  --p-cream: #f8f7ff;
+  --p-paper: #f3f1fc;
+  --p-ink: #2a2550;
+  --p-ink-dim: #6860a0;
+  --p-sky: #c4d8f8;
+  --p-sky-deep: #9ab8f0;
+  --p-sage: #b4bce0;
+
+  font-family: var(--rf-body);
+  color: var(--p-ink);
+  background: var(--p-cream);
+  overflow-x: hidden;
+}
+
+/* emphasis is color only, never italic */
+.proto em {
+  font-style: normal;
+}
+
+/* ---------- nav ---------- */
+
+.proto-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 22px 36px;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+
+.proto-brand {
+  font-family: "Instrument Serif", var(--rf-display), serif;
+  font-size: 24px;
+  letter-spacing: -0.02em;
+  color: var(--p-ink);
+}
+
+.proto-brand-logo {
+  height: 28px;
+  width: auto;
+  display: block;
+}
+
+.proto-tag {
+  font-family: var(--rf-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--p-ink-dim);
+}
+
+.proto-alpha {
+  align-self: center;
+  font-family: var(--rf-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: #fff;
+  background: var(--p-wheat-deep);
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+/* ---------- shared bits ---------- */
+
+.proto-wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 36px;
+}
+
+.proto-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 56px;
+}
+
+.proto-head .hairline {
+  flex: 1;
+  height: 1px;
+  background: rgba(42, 37, 80, 0.18);
+}
+
+.proto-head .label {
+  font-family: var(--rf-mono);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--p-ink-dim);
+  white-space: nowrap;
+}
+
+.p-reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.9s ease, transform 0.9s ease;
+}
+
+.p-reveal.in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ============================================================
+   ACT I — the fly (attention)
+   ============================================================ */
+
+.fly-section {
+  position: relative;
+  min-height: 100vh;
+  /* top edge starts at flat wheat (the hero's color) and the bottom
+     fades to flat paper (the color .glass-section starts with); the
+     radial keeps the act's golden glow in between */
+  background:
+    linear-gradient(180deg, var(--p-wheat) 0%, rgba(126, 155, 236, 0) 26%),
+    linear-gradient(180deg, rgba(243, 241, 252, 0) 82%, var(--p-paper) 98%),
+    radial-gradient(120% 90% at 50% 100%, #e8eeff 0%, var(--p-wheat) 78%, #9ab5ee 100%);
+}
+
+.fly-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.fly-section.caught .fly-canvas {
+  pointer-events: none;
+}
+
+.fly-hint {
+  white-space: nowrap;
+  position: absolute;
+  bottom: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--rf-mono);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  color: rgba(42, 37, 80, 0.5);
+  opacity: 0;
+  transition: opacity 1.4s ease;
+  pointer-events: none;
+}
+
+.fly-hint.visible {
+  opacity: 1;
+  animation: hint-breathe 3s ease-in-out infinite;
+}
+
+@keyframes hint-breathe {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.95; }
+}
+
+.fly-reveal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 28px;
+  pointer-events: none;
+}
+
+.fly-reveal > * {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 1.1s ease, transform 1.1s ease;
+}
+
+.fly-section.caught .fly-reveal > * {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.fly-section.caught .fly-eyebrow { transition-delay: 0.5s; }
+.fly-section.caught h1 { transition-delay: 1.1s; }
+.fly-section.caught .fly-sub { transition-delay: 1.9s; }
+.fly-section.caught .fly-scroll-cue { transition-delay: 2.9s; }
+
+.fly-eyebrow {
+  font-family: var(--rf-mono);
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--p-ink-dim);
+  margin-bottom: 22px;
+}
+
+.fly-reveal h1 {
+  font-family: var(--rf-display);
+  font-size: clamp(34px, 5.4vw, 64px);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+  color: var(--p-ink);
+  max-width: 760px;
+  margin-bottom: 26px;
+}
+
+.fly-reveal h1 em {
+  color: #4a5ec8;
+}
+
+.fly-sub {
+  font-size: clamp(16px, 1.8vw, 20px);
+  line-height: 1.65;
+  color: var(--p-ink-dim);
+  max-width: 560px;
+}
+
+.fly-sub em {
+  color: var(--p-ink);
+}
+
+.fly-scroll-cue {
+  margin-top: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--rf-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(42, 37, 80, 0.55);
+}
+
+.fly-scroll-cue .arrow {
+  font-size: 16px;
+  animation: cue-bob 2s ease-in-out infinite;
+}
+
+@keyframes cue-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(7px); }
+}
+
+/* ============================================================
+   ACT III — the dirty glass (transparency)
+   ============================================================ */
+
+.glass-section {
+  position: relative;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  overflow: hidden;
+  /* top edge is flat paper (receives .fly-section's fade); the bottom
+     fades to flat cream — the color .proto-mission starts with */
+  background:
+    linear-gradient(180deg, rgba(248, 247, 255, 0) 86%, var(--p-cream) 99%),
+    radial-gradient(100% 80% at 50% 100%, #ecf3ef 0%, var(--p-paper) 70%);
+}
+
+.glass-window {
+  position: relative;
+  width: min(1020px, 92vw);
+  height: min(620px, 72vh);
+  border-radius: 22px;
+  overflow: hidden;
+  /* window frame */
+  border: 1px solid rgba(42, 37, 80, 0.22);
+  box-shadow:
+    0 0 0 10px rgba(248, 242, 230, 0.9),
+    0 0 0 11px rgba(42, 37, 80, 0.16),
+    0 30px 70px -30px rgba(42, 37, 80, 0.4);
+  background: #f3ede1;
+}
+
+.glass-grime {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: grab;
+  transition: opacity 1.4s ease;
+}
+
+.glass-grime:active {
+  cursor: grabbing;
+}
+
+.glass-hint {
+  white-space: nowrap;
+  position: absolute;
+  bottom: 74px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--rf-mono);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  color: rgba(42, 37, 80, 0.55);
+  opacity: 0;
+  transition: opacity 1s ease;
+  pointer-events: none;
+}
+
+.glass-hint.visible {
+  opacity: 1;
+  animation: hint-breathe 3s ease-in-out infinite;
+}
+
+.glass-scroll-cue {
+  white-space: nowrap;
+  position: absolute;
+  bottom: 38px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--rf-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(42, 37, 80, 0.55);
+  opacity: 0;
+  transition: opacity 1s ease 0.4s;
+  pointer-events: none;
+}
+
+.glass-scroll-cue.visible {
+  opacity: 1;
+}
+
+.glass-scroll-cue .arrow {
+  font-size: 16px;
+  animation: cue-bob 2s ease-in-out infinite;
+}
+
+/* ============================================================
+   Mission + team (calm, light, no metaphors)
+   ============================================================ */
+
+.proto-mission {
+  padding: 140px 0 110px;
+  background: var(--p-cream);
+}
+
+.proto-mission h2 {
+  font-family: var(--rf-display);
+  font-size: clamp(34px, 5vw, 58px);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+  text-align: center;
+  margin-bottom: 56px;
+}
+
+.proto-mission h2 em {
+  color: #4a5ec8;
+}
+
+.proto-mission-body {
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.proto-mission-body p {
+  font-size: 17px;
+  line-height: 1.75;
+  color: #6b5c44;
+}
+
+.proto-mission-body em {
+  color: var(--p-ink);
+}
+
+.proto-team {
+  padding: 90px 0 130px;
+  background: linear-gradient(180deg, var(--p-cream) 0%, var(--p-paper) 100%);
+}
+
+.proto-team-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 40px;
+}
+
+@media (max-width: 860px) {
+  .proto-team-grid {
+    grid-template-columns: 1fr;
+    max-width: 420px;
+    margin: 0 auto;
+  }
+}
+
+.proto-team-card {
+  text-align: center;
+}
+
+.proto-team-photo {
+  width: 128px;
+  height: 128px;
+  margin: 0 auto 20px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid var(--p-wheat);
+  box-shadow: 0 12px 30px -14px rgba(42, 37, 80, 0.45);
+}
+
+.proto-team-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.proto-team-card h3 {
+  font-family: var(--rf-display);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+
+.proto-team-role {
+  font-family: var(--rf-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--p-ink-dim);
+  margin-bottom: 10px;
+}
+
+.proto-team-bio {
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: #6b5c44;
+  margin-bottom: 16px;
+}
+
+.proto-team-links {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.proto-team-links a {
+  display: inline-flex;
+  color: #9b7836;
+  transition: color 0.25s ease;
+}
+
+.proto-team-links a:hover {
+  color: var(--p-ink);
+}
+
+/* ---------- footer ---------- */
+
+.proto-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30px 36px;
+  border-top: 1px solid rgba(42, 37, 80, 0.14);
+  background: var(--p-paper);
+  font-family: var(--rf-mono);
+  font-size: 12px;
+  color: var(--p-ink-dim);
+}
+
+.proto-footer-socials {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.proto-footer-socials a {
+  display: inline-flex;
+  color: #9b7836;
+  transition: color 0.25s ease, transform 0.25s ease;
+}
+
+.proto-footer-socials a:hover {
+  color: var(--p-ink);
+  transform: translateY(-2px);
+}
+
+.proto-footer-socials svg {
+  width: 19px;
+  height: auto;
+}

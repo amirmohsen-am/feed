@@ -1,0 +1,18 @@
+-- Keep planner stats fresh on bsky.posts.
+--
+-- The table is append-only and the read path's hottest filter is a MOVING
+-- trailing-time window (e.g. created_at_us >= now-24h). Rows ingested after
+-- the last ANALYZE sit past the edge of the created_at_us histogram, so the
+-- planner underestimates trailing-window row counts more and more as the
+-- stats age (observed 5.5x low at ~20h stale).
+--
+-- At the default autovacuum_analyze_scale_factor = 0.1, autoanalyze fires
+-- every ~2.5M row modifications ≈ every ~32h at current ingest+prune volume,
+-- and the interval grows with the table. 0.02 brings that to ~550k mods
+-- ≈ every ~6-7h. ANALYZE samples a fixed ~30k rows regardless of table size,
+-- so the extra runs are cheap.
+--
+-- Note this only narrows the estimation error; the KNN read path additionally
+-- pins its plan with SET LOCAL enable_sort = off (apps/web vector-search.ts)
+-- so plan choice never depends on stats freshness.
+ALTER TABLE bsky.posts SET (autovacuum_analyze_scale_factor = 0.02);

@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Send button — designs</title>
+<style>
+  :root{
+    --paper: #fbfaf6;
+    --ink: #0b1814;
+    --ink-2: #3a4a44;
+    --ink-3: #6a7570;
+    --ink-4: #a8b0ab;
+    --hair: rgba(11,24,20,0.08);
+    --hair-strong: rgba(11,24,20,0.16);
+    --aurora: #7dcba5;
+    --aurora-deep: #3e8a6c;
+    --amber: #e8b988;
+    --rose: #d98a8a;
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin: 0; background: #e9e6dc;
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); padding: 32px 24px 64px;
+  }
+  h1{ font-weight: 500; font-size: 22px; margin: 0 0 4px; }
+  .lead{ color: var(--ink-3); font-size: 14px; margin: 0 0 28px; max-width: 760px; line-height: 1.5; }
+  .grid{ display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+  .option{ width: 340px; }
+  .option .tag{
+    display: inline-block; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--aurora-deep); background: rgba(125,203,165,0.18);
+    border-radius: 999px; padding: 2px 8px; margin-bottom: 6px;
+  }
+  .option h2{ font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+  .option .notes{ font-size: 12px; color: var(--ink-3); line-height: 1.5; margin: 10px 0 0; }
+  .option .notes b{ color: var(--ink-2); }
+  .frame{
+    background: var(--paper);
+    border: 1px solid var(--hair-strong);
+    border-radius: 14px;
+    padding: 18px 16px;
+    display: flex; flex-direction: column; gap: 16px; align-items: center;
+  }
+  /* in-context: input pill + 42px button, like the app */
+  .ctx{
+    display: flex; align-items: center; gap: 8px; width: 100%;
+  }
+  .pill{
+    flex: 1;
+    background: rgba(255,255,255,0.94);
+    border: 1px solid var(--hair-strong);
+    border-radius: 999px;
+    padding: 11px 18px;
+    font-size: 13px; color: var(--ink-4);
+    box-shadow: 0 6px 24px rgba(11,24,20,0.1);
+  }
+  .btn{
+    position: relative;
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    border: none; cursor: pointer;
+    overflow: hidden;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+    background: var(--ink);
+    transition: transform 0.2s;
+  }
+  .btn:hover{ transform: scale(1.06); }
+  .btn .bg{ position: absolute; inset: 0; border-radius: 50%; overflow: hidden; pointer-events: none; }
+  .btn .bg canvas{ border-radius: 50%; width: 100% !important; height: 100% !important; }
+  .btn svg{ position: relative; z-index: 2; }
+  .big{ width: 84px; height: 84px; }
+  .big svg{ width: 30px; height: 30px; }
+
+  /* arrow treatments */
+  .arr-white{ color: #fff; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.25)); }
+  .arr-white-strong{ color: #fff; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.55)) drop-shadow(0 0 6px rgba(0,0,0,0.35)); }
+  .arr-ink{ color: var(--ink); filter: drop-shadow(0 1px 1px rgba(255,255,255,0.35)); }
+  .arr-cream{ color: #fdf8ee; filter: drop-shadow(0 1px 2px rgba(4,18,12,0.6)) drop-shadow(0 0 5px rgba(4,18,12,0.35)); }
+  /* contrast plate behind the arrow */
+  .plate{
+    position: absolute; z-index: 1;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: rgba(8,14,11,0.42);
+    backdrop-filter: blur(2px);
+    left: 50%; top: 50%; transform: translate(-50%, -50%);
+  }
+  .big .plate{ width: 50px; height: 50px; }
+
+  /* E: holographic conic (CSS only) */
+  .holo{
+    background:
+      radial-gradient(120% 120% at 30% 25%, rgba(255,255,255,0.5), rgba(255,255,255,0) 42%),
+      conic-gradient(from 210deg,
+        #3e8a6c, #58b88e, #c9b87a, #e8b988, #d98a8a, #9a86c9, #58a8b8, #3e8a6c);
+    animation: holo-spin 6s linear infinite;
+  }
+  @keyframes holo-spin{
+    0%{ filter: hue-rotate(0deg) saturate(1); }
+    50%{ filter: hue-rotate(28deg) saturate(1.25); }
+    100%{ filter: hue-rotate(0deg) saturate(1); }
+  }
+
+  /* F: glow ring on ink */
+  .ring{ overflow: visible; background: var(--ink); }
+  .ring::before{
+    content: "";
+    position: absolute; inset: -3px;
+    border-radius: 50%;
+    background: conic-gradient(from var(--a, 0deg),
+      var(--aurora-deep), var(--amber), var(--rose), var(--aurora), var(--aurora-deep));
+    animation: ring-rot 3.2s linear infinite;
+    z-index: 0;
+  }
+  .ring::after{
+    content: "";
+    position: absolute; inset: -7px;
+    border-radius: 50%;
+    background: conic-gradient(from var(--a, 0deg),
+      var(--aurora-deep), var(--amber), var(--rose), var(--aurora), var(--aurora-deep));
+    filter: blur(7px);
+    opacity: 0.55;
+    animation: ring-rot 3.2s linear infinite;
+    z-index: -1;
+  }
+  .ring .core{
+    position: absolute; inset: 0; border-radius: 50%;
+    background: var(--ink); z-index: 1;
+  }
+  @property --a{ syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+  @keyframes ring-rot{ to{ --a: 360deg; } }
+</style>
+</head>
+<body>
+  <h1>Send button: keep it exotic, fix the read</h1>
+  <p class="lead">
+    Six takes. A to D keep the same liquid metal shader the button uses today (the real library,
+    live below) and only change its colors and the arrow treatment. E and F trade the shader for
+    other kinds of exotic. Each card shows the button in context next to the input pill, plus a 2x
+    close-up.
+  </p>
+
+  <div class="grid">
+
+    <div class="option">
+      <span class="tag">Current</span>
+      <h2>Warm dark + amber (today)</h2>
+      <div class="frame">
+        <div class="ctx"><div class="pill">Describe your ideal feed…</div>
+          <button class="btn" data-shader="current"><span class="bg"></span><svg class="arr-white" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
+        <button class="btn big" data-shader="current"><span class="bg"></span><svg class="arr-white" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <p class="notes"><b>The problem:</b> the amber midtones sit close to the arrow's white at this size, and the 2px stroke dissolves into the swirl.</p>
+    </div>
+
+    <div class="option">
+      <span class="tag">Option A</span>
+      <h2>Same metal, arrow on a plate</h2>
+      <div class="frame">
+        <div class="ctx"><div class="pill">Describe your ideal feed…</div>
+          <button class="btn" data-shader="current"><span class="bg"></span><span class="plate"></span><svg class="arr-white-strong" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
+        <button class="btn big" data-shader="current"><span class="bg"></span><span class="plate"></span><svg class="arr-white-strong" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <p class="notes"><b>Minimal change:</b> exact same shader, but a frosted dark disc sits under a thicker arrow. The metal keeps swirling around the edges; the centre is always readable.</p>
+    </div>
+
+    <div class="option">
+      <span class="tag">Option B</span>
+      <h2>Chrome, dark arrow</h2>
+      <div class="frame">
+        <div class="ctx"><div class="pill">Describe your ideal feed…</div>
+          <button class="btn" data-shader="chrome"><span class="bg"></span><svg class="arr-ink" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
+        <button class="btn big" data-shader="chrome"><span class="bg"></span><svg class="arr-ink" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <p class="notes"><b>The liquid-logo look:</b> bright silver chrome (the classic Paper Shaders demo aesthetic) flips the contrast problem, a near-black arrow on bright metal is always visible.</p>
+    </div>
+
+    <div class="option">
+      <span class="tag">Option C</span>
+      <h2>Aurora metal (brand greens)</h2>
+      <div class="frame">
+        <div class="ctx"><div class="pill">Describe your ideal feed…</div>
+          <button class="btn" data-shader="aurora"><span class="bg"></span><svg class="arr-cream" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
+        <button class="btn big" data-shader="aurora"><span class="bg"></span><svg class="arr-cream" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <p class="notes"><b>On brand:</b> deep ink-green base with the aurora green as the metal tint, ties the button to the live badge and the pipeline dot. Cream arrow with a dark halo for the read.</p>
+    </div>
+
+    <div class="option">
+      <span class="tag">Option D</span>
+      <h2>Molten gold, ink arrow</h2>
+      <div class="frame">
+        <div class="ctx"><div class="pill">Describe your ideal feed…</div>
+          <button class="btn" data-shader="gold"><span class="bg"></span><svg class="arr-ink" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
+        <button class="btn big" data-shader="gold"><span class="bg"></span><svg class="arr-ink" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <p class="notes"><b>Same warmth, more light:</b> keeps today's amber family but pushes the tint much brighter so the metal reads gold instead of murky bronze, and the arrow goes dark.</p>
+    </div>
+
+    <div class="option">
+      <span class="tag">Option E</span>
+      <h2>Holographic foil (CSS only)</h2>
+      <div class="frame">
+        <div class="ctx"><div class="pill">Describe your ideal feed…</div>
+          <button class="btn holo"><svg class="arr-white-strong" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
+        <button class="btn big holo"><svg class="arr-white-strong" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <p class="notes"><b>No WebGL:</b> a conic gradient through the palette with a slow hue breathe, holographic foil feel. Cheaper than the shader and never fails to load, but less alive up close.</p>
+    </div>
+
+    <div class="option">
+      <span class="tag">Option F</span>
+      <h2>Ink core, glow ring</h2>
+      <div class="frame">
+        <div class="ctx"><div class="pill">Describe your ideal feed…</div>
+          <button class="btn ring"><span class="core"></span><svg class="arr-white" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
+        <button class="btn big ring"><span class="core"></span><svg class="arr-white" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <p class="notes"><b>Apple Intelligence energy:</b> solid ink centre for a perfectly crisp arrow, with a rotating aurora-to-amber gradient ring and soft outer glow carrying the exotic. Maximum legibility.</p>
+    </div>
+
+  </div>
+
+<script type="module">
+  // The real shader library the app uses, same version line.
+  import { ShaderMount, liquidMetalFragmentShader } from "https://esm.sh/@paper-design/shaders@0.0.76";
+
+  const PRESETS = {
+    // exactly today's uniforms
+    current: {
+      u_colorBack: [0.14, 0.06, 0.02, 1.0],
+      u_colorTint: [0.91, 0.725, 0.533, 0.7],
+      u_repetition: 4, u_softness: 0.7,
+    },
+    // bright silver chrome, the liquid-logo demo look
+    chrome: {
+      u_colorBack: [0.07, 0.08, 0.08, 1.0],
+      u_colorTint: [1.0, 1.0, 1.0, 1.0],
+      u_repetition: 3, u_softness: 0.6,
+    },
+    // ink-green base, aurora tint
+    aurora: {
+      u_colorBack: [0.027, 0.075, 0.055, 1.0],
+      u_colorTint: [0.49, 0.796, 0.647, 0.95],
+      u_repetition: 4, u_softness: 0.7,
+    },
+    // bright molten gold
+    gold: {
+      u_colorBack: [0.16, 0.09, 0.02, 1.0],
+      u_colorTint: [1.0, 0.84, 0.55, 1.0],
+      u_repetition: 3, u_softness: 0.55,
+    },
+  };
+
+  const BASE = {
+    u_shiftRed: 0.0, u_shiftBlue: 0.15,
+    u_distortion: 0.4, u_contour: 0.5,
+    u_angle: 135, u_shape: 1, u_isImage: false,
+    u_scale: 1.0, u_rotation: 0,
+    u_offsetX: 0, u_offsetY: 0, u_originX: 0.5, u_originY: 0.5,
+    u_worldWidth: 48, u_worldHeight: 48, u_fit: 2,
+  };
+
+  document.querySelectorAll("[data-shader]").forEach(btn => {
+    const preset = PRESETS[btn.dataset.shader];
+    const host = btn.querySelector(".bg");
+    try {
+      new ShaderMount(host, liquidMetalFragmentShader, { ...BASE, ...preset }, undefined, 0.5, 0, 1);
+    } catch (e) {
+      host.style.background = "linear-gradient(135deg, #444, #999)";
+      console.warn("shader failed", e);
+    }
+  });
+</script>
+</body>
+</html>

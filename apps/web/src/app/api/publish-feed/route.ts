@@ -7,7 +7,12 @@ import {
   isFeedgenPublishable,
   feedgenPublishBlockedMessage,
 } from "@/lib/feedgen";
-import { getFeedForUser, getUserById, updateFeed, warmFeedSkeletonCache } from "@/lib/pg";
+import {
+  getFeedForUser,
+  getPublishSnapshotState,
+  getUserById,
+  updateFeed,
+} from "@/lib/pg";
 import { restoreBskySession } from "@/lib/bsky-oauth";
 
 /**
@@ -37,6 +42,20 @@ export async function POST(req: NextRequest) {
   if (feed.subqueries.length === 0) {
     return NextResponse.json(
       { error: "Configure your feed before publishing" },
+      { status: 400 }
+    );
+  }
+
+  // The published skeleton only ever serves the precomputed snapshot, so
+  // publishing requires a non-empty preview of the current config.
+  const snapshotState = await getPublishSnapshotState(feed);
+  if (snapshotState !== "ready") {
+    const error =
+      snapshotState === "empty"
+        ? "Your feed currently matches no posts. Adjust it and preview again before publishing."
+        : "Preview your feed before publishing, so the published feed has posts to serve.";
+    return NextResponse.json(
+      { error, code: "preview_required" },
       { status: 400 }
     );
   }
@@ -128,19 +147,9 @@ export async function POST(req: NextRequest) {
 
     await updateFeed(feedId, { published_rkey: rkey, is_active: true });
 
-    // Warm skeleton cache before Bluesky's first fetch (avoids timeout on cold rerank).
-    try {
-      const warmed = await warmFeedSkeletonCache(feedId);
-      console.log(
-        `[publish-feed] skeleton cache warmed feedId=${feedId} posts=${warmed}`
-      );
-    } catch (e) {
-      console.warn(
-        "[publish-feed] skeleton cache warm failed:",
-        e instanceof Error ? e.message : e
-      );
-    }
-
+    // No warm step: the preview_required gate above guarantees a non-empty
+    // snapshot for the current config already exists, and the skeleton
+    // serves exactly that.
     const feedUri = `at://${publisherDid}/app.bsky.feed.generator/${rkey}`;
 
     return NextResponse.json({

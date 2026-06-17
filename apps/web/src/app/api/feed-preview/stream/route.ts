@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { enforceRateLimit, LLM_RULES } from "@/lib/rate-limit";
 import {
   getFeedForUser,
   getFeedPreviewPosts,
@@ -20,6 +21,8 @@ import {
  * line and the stream is closed.
  */
 export async function GET(req: NextRequest) {
+  const limited = enforceRateLimit(req, "feed-preview", LLM_RULES);
+  if (limited) return limited;
   const auth = await requireAuth();
 
   const feedId = Number(req.nextUrl.searchParams.get("feedId"));
@@ -30,8 +33,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // ?refresh=1 forces a fresh recompute and overwrites the cached result.
-  // Any other load is cache-eligible (served if <1h old, see getFeedPreviewPosts).
+  // ?refresh=1 forces a fresh recompute and overwrites the cached snapshot.
+  // Any other load is cache-eligible (served if <24h old, see getFeedPreviewPosts).
   const forceFresh = req.nextUrl.searchParams.get("refresh") === "1";
 
   const feed = await getFeedForUser(feedId, auth.userId);

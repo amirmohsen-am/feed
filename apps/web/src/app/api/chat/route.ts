@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { requireAuth } from "@/lib/auth";
+import { enforceRateLimit, LLM_RULES } from "@/lib/rate-limit";
 import {
   getFeedForUser,
   getFeed,
@@ -10,6 +11,7 @@ import {
   clearChat,
 } from "@/lib/pg";
 import { ensureEnvFromSecret } from "@/lib/secrets";
+import { logLlmCall } from "@/lib/llm-log";
 import { hydratePostByUri, type VectorHit } from "@/lib/vector-search";
 import type { MechanicalFilters } from "@/lib/types";
 
@@ -161,6 +163,8 @@ function toChatSourcePost(hit: VectorHit): ChatSourcePost {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = enforceRateLimit(req, "chat", LLM_RULES);
+  if (limited) return limited;
   const t0 = performance.now();
   const auth = await requireAuth();
   const tAuth = performance.now();
@@ -185,6 +189,14 @@ export async function POST(req: NextRequest) {
     if (!message || typeof message !== "string") {
       return NextResponse.json(
         { error: "Message required" },
+        { status: 400 }
+      );
+    }
+    // Bound input size: the user message is interpolated into the Claude
+    // request, so cap it to keep per-call token cost predictable.
+    if (message.length > 4000) {
+      return NextResponse.json(
+        { error: "Message too long (max 4000 characters)" },
         { status: 400 }
       );
     }
@@ -246,6 +258,15 @@ export async function POST(req: NextRequest) {
       messages: apiMessages,
     });
     const tAfterLLM = performance.now();
+
+    logLlmCall({
+      callSite: "chat",
+      message: response,
+      requestId: response._request_id,
+      feedId,
+      ms: tAfterLLM - tBeforeLLM,
+      extra: { init: isInit, branch_init: isBranchInit, interview: interview === true },
+    });
 
     // Process content blocks: collect text, apply tool calls.
     // Tool calls are server-side side-effects; we do NOT persist tool_use

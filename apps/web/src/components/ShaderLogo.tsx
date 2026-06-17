@@ -5,7 +5,7 @@ interface ShaderLogoProps {
   color?: string;
 }
 
-export default function ShaderLogo({ height = 200, color = "#e8b988" }: ShaderLogoProps) {
+export default function ShaderLogo({ height = 200, color = "#7E9BEC" }: ShaderLogoProps) {
   const aspect = 150 / 33.4;
   const width = Math.round(height * aspect);
   const fontSize = Math.round(height * 0.86);
@@ -30,7 +30,7 @@ export default function ShaderLogo({ height = 200, color = "#e8b988" }: ShaderLo
         textLength={width}
         lengthAdjust="spacingAndGlyphs"
       >
-        Willow
+        amadi
       </text>
     </svg>
   );

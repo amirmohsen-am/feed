@@ -208,6 +208,17 @@ export async function repostPost(
   });
 }
 
+export async function unrepostPostWrite(
+  userId: string,
+  repostUri: string
+): Promise<void> {
+  const rkey = repostUri.split("/").pop();
+  if (!rkey) throw new BskyWriteError("Invalid repost URI", 400);
+  await withBskyWriter(userId, async (w) => {
+    await w.deleteRecord("app.bsky.feed.repost", rkey);
+  });
+}
+
 export async function replyToPost(
   userId: string,
   postUri: string,

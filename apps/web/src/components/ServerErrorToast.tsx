@@ -44,6 +44,18 @@ export default function ServerErrorToast() {
     }
   })();
 
+  // A 429 is an expected rate-limit, not a server fault — render it as a calm
+  // amber "slow down" notice instead of the alarming red error banner.
+  const isRateLimit = current.status === 429;
+  const accent = isRateLimit ? "#d8b075" : "#d88575";
+  const background = isRateLimit ? "#19140c" : "#1a0e0c";
+  const title = isRateLimit ? "Easy there" : `${current.status} ${pathName}`;
+  const tag = isRateLimit ? "rate limit" : "server error";
+  const retryHint =
+    isRateLimit && current.retryAfter
+      ? `Try again in about ${current.retryAfter} second${current.retryAfter === 1 ? "" : "s"}.`
+      : current.hint;
+
   return (
     <div
       role="alert"
@@ -55,8 +67,8 @@ export default function ServerErrorToast() {
         zIndex: 10000,
         maxWidth: 560,
         width: "calc(100% - 32px)",
-        background: "#1a0e0c",
-        border: "1px solid rgba(216,133,117,.55)",
+        background,
+        border: `1px solid ${isRateLimit ? "rgba(216,176,117,.55)" : "rgba(216,133,117,.55)"}`,
         borderRadius: 8,
         padding: "12px 16px",
         color: "#f3ecdd",
@@ -78,9 +90,7 @@ export default function ServerErrorToast() {
             marginBottom: 4,
           }}
         >
-          <strong style={{ color: "#d88575" }}>
-            {current.status} {pathName}
-          </strong>
+          <strong style={{ color: accent }}>{title}</strong>
           <span
             style={{
               fontFamily:
@@ -89,11 +99,11 @@ export default function ServerErrorToast() {
               color: "#a8b5a8",
             }}
           >
-            server error
+            {tag}
           </span>
         </div>
         <div style={{ color: "#e6dcc7" }}>{current.message}</div>
-        {current.hint && (
+        {retryHint && (
           <div
             style={{
               marginTop: 6,
@@ -102,7 +112,7 @@ export default function ServerErrorToast() {
               fontStyle: "normal",
             }}
           >
-            {current.hint}
+            {retryHint}
           </div>
         )}
       </div>

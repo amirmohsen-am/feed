@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pipeline loader — in-place designs</title>
+<style>
+  :root{
+    --paper: #fbfaf6;
+    --paper-2: #f5f2e9;
+    --paper-3: #ece8de;
+    --ink: #0b1814;
+    --ink-2: #3a4a44;
+    --ink-3: #6a7570;
+    --ink-4: #a8b0ab;
+    --hair: rgba(11,24,20,0.08);
+    --hair-strong: rgba(11,24,20,0.16);
+    --aurora: #7dcba5;
+    --aurora-deep: #3e8a6c;
+    --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin: 0;
+    background: #e9e6dc;
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    padding: 32px 24px 64px;
+  }
+  h1{ font-weight: 500; font-size: 22px; margin: 0 0 4px; }
+  .lead{ color: var(--ink-3); font-size: 14px; margin: 0 0 28px; max-width: 760px; line-height: 1.5; }
+  .grid{ display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
+  .option{ width: 360px; }
+  .option .tag{
+    display: inline-block; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--aurora-deep); background: rgba(125,203,165,0.18);
+    border-radius: 999px; padding: 2px 8px; margin-bottom: 6px;
+  }
+  .option h2{ font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+  .option .notes{ font-size: 12px; color: var(--ink-3); line-height: 1.5; margin: 10px 0 0; }
+  .option .notes b{ color: var(--ink-2); }
+  .frame{
+    background: var(--paper);
+    border: 1px solid var(--hair-strong);
+    border-radius: 14px;
+    padding: 14px 16px 16px;
+    min-height: 240px;
+  }
+  .replay{
+    margin-top: 8px;
+    font-size: 11px; color: var(--ink-3);
+    background: none; border: 1px solid var(--hair-strong); border-radius: 999px;
+    padding: 4px 12px; cursor: pointer;
+  }
+  .replay:hover{ color: var(--ink); }
+
+  /* fake feed below the loader */
+  .posts{ margin-top: 12px; border-top: 1px solid var(--hair); padding-top: 10px; }
+  .post{
+    background: #fff; border: 1px solid var(--hair); border-radius: 10px;
+    padding: 9px 11px; margin-bottom: 7px;
+    font-size: 11px; line-height: 1.4; color: var(--ink-2);
+    transition: opacity 0.3s;
+  }
+  .running .post{ opacity: 0.35; }
+
+  /* ── shared loader line ── */
+  .pl{
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-3);
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .pl-line{
+    display: flex; align-items: center; gap: 8px;
+    min-height: 22px;
+  }
+  .pl-time{
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-4);
+  }
+  .pl-chev{
+    width: 9px; height: 9px; flex-shrink: 0;
+    color: var(--ink-4);
+    transition: transform 0.2s;
+  }
+  .pl.open .pl-chev{ transform: rotate(180deg); }
+
+  /* expanded breakdown (shared) */
+  .pl-detail{
+    display: none;
+    padding: 8px 0 2px 2px;
+    font-size: 10px;
+    line-height: 1.5;
+  }
+  .pl.open .pl-detail{ display: block; }
+  .pl-row{ display: flex; gap: 10px; align-items: baseline; }
+  .pl-row .k{ width: 76px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.07em; font-size: 9px; color: var(--ink-4); }
+  .pl-row .t{ width: 36px; flex-shrink: 0; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .pl-row .d{ color: var(--ink-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pl-row.live .k{ color: var(--aurora-deep); }
+  .pl-row.skip .t, .pl-row.skip .d{ color: var(--ink-4); opacity: 0.7; }
+
+  /* ── A: shimmer text ── */
+  .shimmer{
+    background: linear-gradient(90deg, var(--ink-4) 0%, var(--ink) 50%, var(--ink-4) 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shimmer 1.6s linear infinite;
+  }
+  @keyframes shimmer{ 0%{ background-position: 120% 0; } 100%{ background-position: -80% 0; } }
+
+  /* ── B: rolling word swap ── */
+  .roll{
+    display: inline-block; height: 15px; overflow: hidden; line-height: 15px;
+  }
+  .roll-inner{ display: block; transition: transform 0.35s cubic-bezier(0.3, 0.9, 0.3, 1); }
+  .roll-inner span{ display: block; height: 15px; }
+  .b-dot{
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--aurora-deep); flex-shrink: 0;
+    animation: pulse 1.4s infinite;
+  }
+  .pl.done .b-dot{ animation: none; }
+  @keyframes pulse{ 0%,100%{ opacity: 1; } 50%{ opacity: 0.35; } }
+
+  /* ── C: step dots ── */
+  .c-dots{ display: inline-flex; gap: 4px; align-items: center; }
+  .c-dots i{
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--paper-3); transition: background 0.3s;
+  }
+  .c-dots i.on{ background: var(--aurora-deep); }
+  .c-dots i.now{ background: var(--aurora-deep); animation: pulse 1.2s infinite; }
+
+  /* ── D: hairline progress underline ── */
+  .d-wrap{ position: relative; padding-bottom: 7px; }
+  .d-bar{
+    position: absolute; left: 0; right: 0; bottom: 0;
+    height: 2px; border-radius: 2px;
+    background: var(--paper-3);
+    overflow: hidden;
+  }
+  .d-fill{
+    height: 100%; width: 0%;
+    background: var(--aurora-deep);
+    border-radius: 2px;
+    transition: width 0.6s cubic-bezier(0.3, 0.8, 0.3, 1);
+  }
+  .pl.done .d-bar{ opacity: 0; transition: opacity 0.6s ease 0.4s; }
+</style>
+</head>
+<body>
+  <h1>Pipeline loader, updating in place</h1>
+  <p class="lead">
+    One line that swaps its text as the run moves through searching, thinking, and ranking, the way
+    chatbot status lines do. Time is always visible, details stay hidden until you tap the line
+    (the whole line is the tap target, no button chrome). Each card auto plays; tap the line at any
+    point, during the run or after, to open the breakdown. Each option also tries a different
+    wording for the finished state instead of "Ready in".
+  </p>
+
+  <div class="grid">
+
+    <div class="option">
+      <span class="tag">Option A</span>
+      <h2>Shimmer status, "Curated in 8.4s"</h2>
+      <div class="frame">
+        <div class="pl" data-opt="A">
+          <div class="pl-line">
+            <span class="pl-text shimmer">Searching the firehose</span>
+            <svg class="pl-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span class="pl-time">0.0s</span>
+          </div>
+          <div class="pl-detail"></div>
+        </div>
+        <div class="posts"></div>
+      </div>
+      <button class="replay">Replay</button>
+      <p class="notes">
+        <b>In progress:</b> the stage phrase shimmers like a chatbot thinking line and swaps in place.
+        <b>Done:</b> shimmer stops, settles into quiet plain text. The verb matches the product:
+        the feed was curated.
+      </p>
+    </div>
+
+    <div class="option">
+      <span class="tag">Option B</span>
+      <h2>Rolling swap, "✓ 8.4s · 25 posts"</h2>
+      <div class="frame">
+        <div class="pl" data-opt="B">
+          <div class="pl-line">
+            <span class="b-dot"></span>
+            <span class="roll"><span class="roll-inner">
+              <span>Searching</span><span>Thinking</span><span>Ranking</span><span>✓ 25 posts</span>
+            </span></span>
+            <svg class="pl-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span class="pl-time">0.0s</span>
+          </div>
+          <div class="pl-detail"></div>
+        </div>
+        <div class="posts"></div>
+      </div>
+      <button class="replay">Replay</button>
+      <p class="notes">
+        <b>In progress:</b> the stage word rolls vertically into the next one, odometer style, next to a
+        pulsing dot. <b>Done:</b> time-first and outcome-first, no sentence at all. The timer that was
+        ticking is the same one you read at the end.
+      </p>
+    </div>
+
+    <div class="option">
+      <span class="tag">Option C</span>
+      <h2>Step dots, "Done · 8.4s"</h2>
+      <div class="frame">
+        <div class="pl" data-opt="C">
+          <div class="pl-line">
+            <span class="c-dots"><i></i><i></i><i></i></span>
+            <span class="pl-text">Searching</span>
+            <svg class="pl-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span class="pl-time">0.0s</span>
+          </div>
+          <div class="pl-detail"></div>
+        </div>
+        <div class="posts"></div>
+      </div>
+      <button class="replay">Replay</button>
+      <p class="notes">
+        <b>In progress:</b> three tiny dots show where you are in the run (filled = done, pulsing = now)
+        next to the crossfading stage word. <b>Done:</b> all dots filled, plain "Done · 8.4s".
+        The dots give the "how much is left" cue the single line otherwise loses.
+      </p>
+    </div>
+
+    <div class="option">
+      <span class="tag">Option D</span>
+      <h2>Hairline progress, "25 posts in 8.4s"</h2>
+      <div class="frame">
+        <div class="pl" data-opt="D">
+          <div class="d-wrap">
+            <div class="pl-line">
+              <span class="pl-text">Searching</span>
+              <svg class="pl-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              <span class="pl-time">0.0s</span>
+            </div>
+            <div class="d-bar"><div class="d-fill"></div></div>
+          </div>
+          <div class="pl-detail"></div>
+        </div>
+        <div class="posts"></div>
+      </div>
+      <button class="replay">Replay</button>
+      <p class="notes">
+        <b>In progress:</b> a 2px underline fills a third per stage under the swapping text, then fades
+        out when finished. <b>Done:</b> outcome plus time, "25 posts in 8.4s", which answers what you
+        got and what it cost in one glance.
+      </p>
+    </div>
+
+  </div>
+
+<script>
+  // Shared fake run: stage name, duration (ms), detail line for the breakdown.
+  const STAGES = [
+    { key: "searching", label: { A: "Searching the firehose", C: "Searching", D: "Searching" }, dur: 1300, detail: "embed · ANN · hydrate" },
+    { key: "thinking",  label: { A: "Thinking over 117 candidates", C: "Thinking", D: "Thinking" }, dur: 2400, detail: "80 / 117 candidates · claude-haiku-4-5" },
+    { key: "ranking",   label: { A: "Ranking your top 25", C: "Ranking", D: "Ranking" }, dur: 1700, detail: "top 25 · streaming output" },
+  ];
+  const DONE_TEXT = { A: "Curated in", B: "", C: "Done ·", D: "25 posts in" };
+  const posts = [
+    "Soil carbon sequestration in restored wetlands exceeded model predictions by 30%.",
+    "Solar plus storage undercut gas peakers in another regional capacity auction.",
+    "Five charts that explain this week in energy policy.",
+  ];
+
+  document.querySelectorAll(".option").forEach(card => {
+    const pl = card.querySelector(".pl");
+    const opt = pl.dataset.opt;
+    const frame = card.querySelector(".frame");
+    const textEl = pl.querySelector(".pl-text");
+    const timeEl = pl.querySelector(".pl-time");
+    const detailEl = pl.querySelector(".pl-detail");
+    const rollInner = pl.querySelector(".roll-inner");
+    const cDots = pl.querySelectorAll(".c-dots i");
+    const dFill = pl.querySelector(".d-fill");
+    card.querySelector(".posts").innerHTML = posts.map(p => `<div class="post">${p}</div>`).join("");
+
+    let t0 = 0, raf = 0, timings = [], stageIdx = -1, running = false;
+
+    function fmt(ms){ return (ms / 1000).toFixed(1) + "s"; }
+
+    function renderDetail(){
+      const rows = STAGES.map((s, i) => {
+        const tm = timings[i];
+        const live = i === stageIdx && running;
+        const t = tm ? fmt(tm) : live ? fmt(performance.now() - stageStart) : "";
+        const cls = live ? "live" : tm === undefined && !running ? "skip" : "";
+        const d = tm !== undefined || live ? s.detail : (running ? "queued" : "skipped");
+        return `<div class="pl-row ${cls}"><span class="k">${s.key}</span><span class="t">${t}</span><span class="d">${d}</span></div>`;
+      }).join("");
+      detailEl.innerHTML = rows;
+    }
+
+    let stageStart = 0;
+    function setStage(i){
+      stageIdx = i;
+      stageStart = performance.now();
+      if (opt === "A"){ textEl.textContent = STAGES[i].label.A; textEl.classList.add("shimmer"); }
+      if (opt === "B"){ rollInner.style.transform = `translateY(-${i * 15}px)`; }
+      if (opt === "C"){
+        textEl.textContent = STAGES[i].label.C;
+        cDots.forEach((d, j) => { d.className = j < i ? "on" : j === i ? "now" : ""; });
+      }
+      if (opt === "D"){ textEl.textContent = STAGES[i].label.D; dFill.style.width = `${(i / 3) * 100 + 12}%`; }
+      if (pl.classList.contains("open")) renderDetail();
+    }
+
+    function finish(){
+      running = false;
+      const total = fmt(performance.now() - t0);
+      pl.classList.add("done");
+      frame.classList.remove("running");
+      timeEl.textContent = total;
+      if (opt === "A"){ textEl.classList.remove("shimmer"); textEl.textContent = `${DONE_TEXT.A} ${total}`; timeEl.textContent = ""; }
+      if (opt === "B"){ rollInner.style.transform = `translateY(-45px)`; }
+      if (opt === "C"){ textEl.textContent = `${DONE_TEXT.C} ${total}`; timeEl.textContent = ""; cDots.forEach(d => d.className = "on"); }
+      if (opt === "D"){ dFill.style.width = "100%"; textEl.textContent = `${DONE_TEXT.D} ${total}`; timeEl.textContent = ""; }
+      renderDetail();
+    }
+
+    function tick(){
+      const now = performance.now();
+      timeEl.textContent = fmt(now - t0);
+      if (pl.classList.contains("open")) renderDetail();
+      const elapsedInStage = now - stageStart;
+      if (stageIdx < STAGES.length && elapsedInStage >= STAGES[stageIdx].dur){
+        timings[stageIdx] = elapsedInStage;
+        if (stageIdx === STAGES.length - 1){ finish(); return; }
+        setStage(stageIdx + 1);
+      }
+      raf = requestAnimationFrame(tick);
+    }
+
+    function run(){
+      cancelAnimationFrame(raf);
+      running = true; timings = []; t0 = performance.now();
+      pl.classList.remove("done");
+      frame.classList.add("running");
+      timeEl.textContent = "0.0s";
+      setStage(0);
+      raf = requestAnimationFrame(tick);
+    }
+
+    pl.addEventListener("click", () => { pl.classList.toggle("open"); renderDetail(); });
+    card.querySelector(".replay").addEventListener("click", run);
+    setTimeout(run, 400 + Math.random() * 600);
+  });
+</script>
+</body>
+</html>

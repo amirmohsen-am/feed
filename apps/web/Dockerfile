@@ -27,6 +27,6 @@ COPY --from=base /app/public ./public
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-ENV NEXT_PUBLIC_URL="https://willownet.co"
+ENV NEXT_PUBLIC_URL="https://amadi.social"
 
 CMD ["node", "server.js"]

@@ -11,7 +11,7 @@ export interface SavedFeed {
   createdAt: string;
 }
 
-export type MobileTab = "chat" | "feed" | "tune";
+export type MobileTab = "chat" | "feed";
 
 export type ViewMode = "card" | "embed";
 
@@ -39,6 +39,9 @@ export interface CuratorContextValue {
   // mirrored up from the workbench so the settings dialog can show it.
   unavailableCount: number;
   setUnavailableCount: (n: number) => void;
+  openPublish: () => void;
+  openTune: () => void;
+  registerOpenTune: (fn: () => void) => void;
 }
 
 const CuratorContext = createContext<CuratorContextValue | null>(null);

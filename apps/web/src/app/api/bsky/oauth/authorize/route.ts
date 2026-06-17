@@ -6,6 +6,7 @@ import {
   setPendingOAuthSessionId,
 } from "@/lib/bsky-oauth";
 import { SESSION_COOKIE } from "@/lib/session";
+import { jsonError } from "@/lib/api";
 
 /**
  * POST /api/bsky/oauth/authorize
@@ -48,8 +49,6 @@ export async function POST(req: NextRequest) {
     });
     return res;
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.warn("[bsky/oauth/authorize] error:", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return jsonError(e, "bsky/oauth/authorize");
   }
 }

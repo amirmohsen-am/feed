@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import FilterPanel from "@/components/FilterPanel";
-import ShaderSendButton from "@/components/ShaderSendButton";
+import SendButton from "@/components/SendButton";
 import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
 import { authedFetch } from "@/lib/authed-fetch";
 import type { MechanicalFilters } from "@/lib/types";
@@ -45,9 +45,11 @@ interface Post {
   external_thumb: string | null;
   quote_uri: string | null;
   has_images: boolean;
+  has_video: boolean;
   image_count: number;
   image_alts: string[];
   image_urls: string[];
+  video_thumbnail: string | null;
   is_reply: boolean;
   reply_parent_uri: string | null;
 }
@@ -202,11 +204,14 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     reloadFeeds,
     setActivePostCount,
     mobileTab,
+    setMobileTab,
     setOptionsUnread,
     viewMode,
     showDebug,
     hideUnavailable,
     setUnavailableCount,
+    openPublish,
+    registerOpenTune,
   } = useCurator();
 
   const [rightPane, setRightPane] = useState<"chat" | "tune">("chat");
@@ -250,6 +255,38 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     router.replace(pathname);
   }, [promptParam, pathname, router]);
 
+  // Pull-to-refresh (mobile): drag down from the top of the feed to re-query,
+  // with rubber-band resistance and a springy snap-back. Replaces the toolbar
+  // Refresh button on small screens.
+  const feedPaneRef = useRef<HTMLDivElement | null>(null);
+  const ptrSpinnerRef = useRef<HTMLDivElement | null>(null);
+  const ptrRefreshingRef = useRef(false);
+  const [ptrRefreshing, setPtrRefreshing] = useState(false);
+
+  // Register the openTune callback so the top-bar tune icon can switch to the
+  // tune pane from outside the workbench (especially on mobile).
+  useEffect(() => {
+    registerOpenTune(() => {
+      setRightPane("tune");
+      setMobileTab("chat");
+    });
+    return () => registerOpenTune(() => {});
+  }, [registerOpenTune, setMobileTab]);
+
+  // On mobile the chat input bar is always pinned at the bottom of the screen
+  // (it IS the box you see over the feed). Focusing it raises the frosted
+  // chat overlay behind it — same input, no hand-off between two boxes.
+  function openMobileChat() {
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 767px)").matches &&
+      mobileTab !== "chat"
+    ) {
+      setMobileTab("chat");
+      setOptionsUnread(false);
+    }
+  }
+
   // Interview mode is a hint to the agent for the *next* request only; the
   // agent picks up the pattern from history after that. Set true by the
   // "Help me build my prompt" button, false by "Cancel questions".
@@ -269,20 +306,25 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [lightbox]);
 
-  // Fetch AI-generated labels for posts with images
+  // Fetch AI-generated labels for posts with images or video
   useEffect(() => {
     if (posts.length === 0) return;
-    const imagePosts = posts.filter((p) => p.has_images && p.image_urls.length > 0);
-    if (imagePosts.length === 0) return;
+    const mediaPosts = posts.filter(
+      (p) => (p.has_images && p.image_urls.length > 0) || (p.has_video && p.video_thumbnail)
+    );
+    if (mediaPosts.length === 0) return;
     let cancelled = false;
     (async () => {
       const results = await Promise.all(
-        imagePosts.map(async (p) => {
+        mediaPosts.map(async (p) => {
           try {
-            const params = new URLSearchParams({
-              uri: p.uri,
-              image_urls: p.image_urls.join(","),
-            });
+            const params = new URLSearchParams({ uri: p.uri });
+            if (p.image_urls.length > 0) {
+              params.set("image_urls", p.image_urls.join(","));
+            }
+            if (p.has_video && p.video_thumbnail) {
+              params.set("video_thumbnail", p.video_thumbnail);
+            }
             const res = await authedFetch(`/api/ai-label?${params}`);
             if (!res.ok) return null;
             const data = await res.json();
@@ -304,11 +346,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   // Bluesky like state: uri → { liked, likeUri, pending }
   const [likeState, setLikeState] = useState<Record<string, { liked: boolean; likeUri?: string; pending: boolean }>>({});
-  const [engagePending, setEngagePending] = useState<
-    Record<string, Partial<Record<"reply" | "repost" | "quote", boolean>>>
-  >({});
+  const [repostState, setRepostState] = useState<Record<string, { reposted: boolean; repostUri?: string; pending: boolean }>>({});
   const [countDelta, setCountDelta] = useState<
-    Record<string, { replies?: number; reposts?: number; quotes?: number }>
+    Record<string, { replies?: number; quotes?: number }>
   >({});
   const [composer, setComposer] = useState<{ uri: string; kind: "reply" | "quote" } | null>(null);
   const [composerText, setComposerText] = useState("");
@@ -325,22 +365,35 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     return true;
   }
 
-  async function handleRepost(postUri: string) {
+  async function toggleRepost(postUri: string, currentlyReposted: boolean, currentRepostUri?: string) {
     if (!ensureBskyAuth()) return;
-    setEngagePending((s) => ({ ...s, [postUri]: { ...s[postUri], repost: true } }));
+    const prev = repostState[postUri];
+    // Optimistic update
+    setRepostState((s) => ({
+      ...s,
+      [postUri]: { reposted: !currentlyReposted, repostUri: currentlyReposted ? undefined : currentRepostUri, pending: true },
+    }));
     try {
       const res = await authedFetch("/api/bsky/repost", {
         method: "POST",
-        body: JSON.stringify({ uri: postUri }),
+        body: JSON.stringify({
+          uri: postUri,
+          action: currentlyReposted ? "unrepost" : "repost",
+          ...(currentlyReposted && currentRepostUri ? { repostUri: currentRepostUri } : {}),
+        }),
       });
       if (res.ok) {
-        setCountDelta((s) => ({
+        const data = await res.json();
+        setRepostState((s) => ({
           ...s,
-          [postUri]: { ...s[postUri], reposts: (s[postUri]?.reposts ?? 0) + 1 },
+          [postUri]: { reposted: !currentlyReposted, repostUri: data.repostUri, pending: false },
         }));
+      } else {
+        // Revert on failure
+        setRepostState((s) => ({ ...s, [postUri]: prev ?? { reposted: currentlyReposted, repostUri: currentRepostUri, pending: false } }));
       }
-    } finally {
-      setEngagePending((s) => ({ ...s, [postUri]: { ...s[postUri], repost: false } }));
+    } catch {
+      setRepostState((s) => ({ ...s, [postUri]: prev ?? { reposted: currentlyReposted, repostUri: currentRepostUri, pending: false } }));
     }
   }
 
@@ -451,7 +504,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           type="button"
           className="cur-post-stat cur-post-engage-btn"
           title="Reply"
-          disabled={engagePending[post.uri]?.reply}
           onClick={() => openComposer(post.uri, "reply")}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -461,10 +513,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         </button>
         <button
           type="button"
-          className={`cur-post-stat cur-post-engage-btn${(countDelta[post.uri]?.reposts ?? 0) > 0 ? " cur-post-reposted" : ""}`}
-          title="Repost"
-          disabled={engagePending[post.uri]?.repost}
-          onClick={() => handleRepost(post.uri)}
+          className={`cur-post-stat cur-post-engage-btn${repostState[post.uri]?.reposted ? " cur-post-reposted" : ""}`}
+          title={repostState[post.uri]?.reposted ? "Undo repost" : "Repost"}
+          disabled={repostState[post.uri]?.pending}
+          onClick={() => toggleRepost(post.uri, !!repostState[post.uri]?.reposted, repostState[post.uri]?.repostUri)}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <polyline points="17 1 21 5 17 9" />
@@ -472,7 +524,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
             <polyline points="7 23 3 19 7 15" />
             <path d="M21 13v2a4 4 0 0 1-4 4H3" />
           </svg>
-          {formatCount(post.repost_count + (countDelta[post.uri]?.reposts ?? 0))}
+          {formatCount(post.repost_count + (repostState[post.uri]?.reposted ? 1 : 0))}
         </button>
         <button
           type="button"
@@ -490,7 +542,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           type="button"
           className="cur-post-stat cur-post-engage-btn"
           title="Quote"
-          disabled={engagePending[post.uri]?.quote}
           onClick={() => openComposer(post.uri, "quote")}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -546,11 +597,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const [branchOptionsLoading, setBranchOptionsLoading] = useState(false);
   const [branchSelected, setBranchSelected] = useState<Set<number>>(new Set());
   const [branchCreating, setBranchCreating] = useState(false);
-  // Refs for the "Explore" branching-tree reveal: a trunk grows down the
-  // centre of the tree canvas and boughs curl out to each topic chip.
-  const branchTreeRef = useRef<HTMLDivElement | null>(null);
-  const branchWiresRef = useRef<SVGSVGElement | null>(null);
-  const branchTracePlayedRef = useRef<string>("");
 
   const endRef = useRef<HTMLDivElement>(null);
   // Single signature of the fields that, when changed, should re-fetch posts.
@@ -783,6 +829,118 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
+  // Pull-to-refresh gesture wiring (mobile only). Tracks a downward drag that
+  // starts with the page at the top, rubber-bands the pane, and on release
+  // past the threshold fires a forced reload; everything springs back when
+  // it's done. On mobile the document is the scroller (so Safari's URL bar
+  // collapses on scroll) — the pane itself never scrolls, so the at-top
+  // check reads window.scrollY, not pane.scrollTop.
+  useEffect(() => {
+    const pane = feedPaneRef.current;
+    const spin = ptrSpinnerRef.current;
+    if (!pane || !spin) return;
+    if (!window.matchMedia("(max-width: 767px)").matches) return;
+
+    const THRESHOLD = 58; // post-resistance px needed to trigger
+    const MAX = 110;
+    const HOLD = 52; // pane offset held while refreshing
+    const SPRING = "transform 0.5s cubic-bezier(0.2, 1.4, 0.4, 1)";
+    // Keep the pane's CSS filter transition (chat-overlay gaussian blur)
+    // alive while we drive transform inline.
+    const FILTER_T = "filter 0.42s cubic-bezier(0.65, 0, 0.35, 1)";
+    let startY = -1;
+    let pull = 0;
+    let active = false;
+
+    const paint = (px: number, spring: boolean) => {
+      pane.style.transition = `${spring ? SPRING : "transform 0s"}, ${FILTER_T}`;
+      pane.style.transform = px > 0 ? `translateY(${px}px)` : "";
+      spin.style.transition = spring
+        ? `${SPRING}, opacity 0.25s ease`
+        : "opacity 0.15s ease";
+      spin.style.opacity = px > 6 ? String(Math.min(1, px / THRESHOLD)) : "0";
+      spin.style.transform =
+        `translate(-50%, ${px * 0.7}px) rotate(${px * 2.6}deg) ` +
+        `scale(${Math.min(1, 0.6 + (px / THRESHOLD) * 0.4)})`;
+    };
+
+    // <= 0: iOS reports negative scrollY mid rubber-band.
+    const atTop = () => window.scrollY <= 0;
+
+    const onStart = (e: TouchEvent) => {
+      if (ptrRefreshingRef.current || !atTop()) {
+        startY = -1;
+        return;
+      }
+      startY = e.touches[0].clientY;
+      active = false;
+      pull = 0;
+    };
+    const onMove = (e: TouchEvent) => {
+      if (startY < 0 || ptrRefreshingRef.current) return;
+      const dy = e.touches[0].clientY - startY;
+      if (dy <= 0 || !atTop()) {
+        if (active) {
+          active = false;
+          paint(0, false);
+        }
+        return;
+      }
+      active = true;
+      e.preventDefault(); // keep the browser from scrolling/native-refreshing
+      pull = Math.min(dy * 0.45, MAX); // rubber-band resistance
+      paint(pull, false);
+    };
+    const onEnd = () => {
+      if (startY < 0) return;
+      startY = -1;
+      if (!active) return;
+      active = false;
+      if (pull >= THRESHOLD) {
+        ptrRefreshingRef.current = true;
+        setPtrRefreshing(true);
+        paint(HOLD, true);
+        spin.classList.add("spinning");
+        loadPosts(feedId, { force: true });
+      } else {
+        paint(0, true);
+      }
+      pull = 0;
+    };
+
+    pane.addEventListener("touchstart", onStart, { passive: true });
+    pane.addEventListener("touchmove", onMove, { passive: false });
+    pane.addEventListener("touchend", onEnd, { passive: true });
+    pane.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => {
+      pane.removeEventListener("touchstart", onStart);
+      pane.removeEventListener("touchmove", onMove);
+      pane.removeEventListener("touchend", onEnd);
+      pane.removeEventListener("touchcancel", onEnd);
+      pane.style.transform = "";
+      pane.style.transition = "";
+    };
+  }, [feedId, loadPosts]);
+
+  // When the forced reload finishes, spring the pane + spinner back.
+  useEffect(() => {
+    if (!ptrRefreshing || postsLoading) return;
+    ptrRefreshingRef.current = false;
+    setPtrRefreshing(false);
+    const pane = feedPaneRef.current;
+    const spin = ptrSpinnerRef.current;
+    if (pane) {
+      pane.style.transition =
+        "transform 0.5s cubic-bezier(0.2, 1.4, 0.4, 1), filter 0.42s cubic-bezier(0.65, 0, 0.35, 1)";
+      pane.style.transform = "";
+    }
+    if (spin) {
+      spin.classList.remove("spinning");
+      spin.style.opacity = "0";
+      spin.style.transform = "translate(-50%, 0) scale(0.6)";
+    }
+  }, [ptrRefreshing, postsLoading]);
+
   // Re-scan Bluesky embeds when the visible post set changes.
   useEffect(() => {
     if (viewMode !== "embed") return;
@@ -791,6 +949,65 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     const t = setTimeout(scan, 300);
     return () => clearTimeout(t);
   }, [viewMode, posts, hideUnavailable, unavailableUris]);
+
+  // Card view: hydrate quoted posts via the public AppView so the quote block
+  // shows the actual quoted content (author + text), not just a link out.
+  // null = fetch failed / post gone; undefined = not loaded yet.
+  const [quotedPosts, setQuotedPosts] = useState<
+    Record<string, { text: string; handle: string | null; displayName: string | null; avatar: string | null } | null>
+  >({});
+  useEffect(() => {
+    if (viewMode !== "card") return;
+    const missing = [
+      ...new Set(
+        posts
+          .map((p) => p.quote_uri)
+          .filter((u): u is string => !!u && quotedPosts[u] === undefined)
+      ),
+    ];
+    if (missing.length === 0) return;
+
+    const ac = new AbortController();
+    (async () => {
+      // app.bsky.feed.getPosts caps at 25 URIs per call
+      for (let i = 0; i < missing.length; i += 25) {
+        const batch = missing.slice(i, i + 25);
+        const params = new URLSearchParams();
+        for (const u of batch) params.append("uris", u);
+        try {
+          const res = await fetch(
+            `https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts?${params}`,
+            { signal: ac.signal }
+          );
+          const data = res.ok
+            ? ((await res.json()) as {
+                posts?: {
+                  uri: string;
+                  author?: { handle?: string; displayName?: string; avatar?: string };
+                  record?: { text?: string };
+                }[];
+              })
+            : { posts: [] };
+          setQuotedPosts((prev) => {
+            const next = { ...prev };
+            for (const u of batch) next[u] = null; // default: unavailable
+            for (const p of data.posts ?? []) {
+              next[p.uri] = {
+                text: p.record?.text ?? "",
+                handle: p.author?.handle ?? null,
+                displayName: p.author?.displayName ?? null,
+                avatar: p.author?.avatar ?? null,
+              };
+            }
+            return next;
+          });
+        } catch {
+          if (ac.signal.aborted) return;
+        }
+      }
+    })();
+    return () => ac.abort();
+  }, [viewMode, posts, quotedPosts]);
 
   // Detect unavailable posts via the public AT Proto API.
   useEffect(() => {
@@ -874,6 +1091,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         method: "POST",
         body: JSON.stringify({ message: text.trim(), feedId, interview }),
       });
+      // On a non-OK response (e.g. 429 rate limit) the body has no `messages`;
+      // bail before setMessages so we don't wipe the visible transcript. The
+      // global ServerErrorToast already surfaces the reason. Keep the user's
+      // optimistic message on screen so they can retry.
+      if (!res.ok) return;
       const d = await res.json();
       const msgs = d.messages || [];
       setMessages(msgs);
@@ -1018,7 +1240,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   }, [feedId]);
 
   function openBranch(postUri: string) {
-    branchTracePlayedRef.current = "";
     if (branchPanelUri === postUri) {
       setBranchPanelUri(null);
       return;
@@ -1062,275 +1283,109 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     finally { setBranchCreating(false); }
   }
 
-  // Sequential "Explore" reveal. Once the topic chips render, a trunk grows
-  // down the centre of the tree canvas, then boughs curl out to each chip in
-  // turn — chips are paired right/left descending row by row, each in its own
-  // row+side so a line never runs under another card. Chip positions are set
-  // imperatively (need the measured canvas width) and survive React re-renders
-  // because they're applied as inline styles, not via React props; the side
-  // class lives in the rendered className. Honours prefers-reduced-motion.
-  // Runs once per (post + options) load, guarded by branchTracePlayedRef.
-  useEffect(() => {
-    const NS = "http://www.w3.org/2000/svg";
-    const tree = branchTreeRef.current;
-    const svg = branchWiresRef.current;
-    if (!branchPanelUri || !branchOptions || branchOptions.length === 0) return;
-    if (!tree || !svg) return;
-
-    const key = `${branchPanelUri}:${branchOptions.length}`;
-    if (branchTracePlayedRef.current === key) return;
-    branchTracePlayedRef.current = key;
-
-    const chips = Array.from(
-      tree.querySelectorAll<HTMLElement>(".cur-branch-chip")
-    );
-    if (chips.length === 0) return;
-
-    const reduce = window.matchMedia?.(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-
-    const W = tree.clientWidth || 480;
-    // Two chips per row when there's room; on narrow/mobile widths stack one
-    // per row (alternating sides). The trunk stays centred either way so it
-    // lines up under the button.
-    const single = W < 420;
-    const perRow = single ? 1 : 2;
-    const centerX = W / 2;
-    // Keep the boughs in a tight central channel — short horizontal reach.
-    const OFFSET = single ? Math.min(20, W * 0.06) : Math.min(38, W * 0.08);
-    const chipMaxW = Math.min(240, Math.floor(W / 2 - OFFSET - 10));
-    const HEAD = 14; // top margin inside the canvas
-    const GAP = 16; // vertical gap between rows
-    const TRUNK = 260, BOUGH = 320, STEP = 280;
-    const rowCount = Math.ceil(chips.length / perRow);
-
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
-
-    const drawPath = (
-      d: string,
-      width: number,
-      dur: number,
-      delay: number
-    ) => {
-      const p = document.createElementNS(NS, "path");
-      p.setAttribute("d", d);
-      p.setAttribute("fill", "none");
-      p.setAttribute("stroke", "var(--aurora-deep)");
-      p.setAttribute("stroke-width", String(width));
-      p.setAttribute("stroke-linecap", "round");
-      svg.appendChild(p);
-      if (reduce) return;
-      const len = p.getTotalLength();
-      p.style.strokeDasharray = String(len);
-      p.style.strokeDashoffset = String(len);
-      p.animate(
-        [{ strokeDashoffset: len }, { strokeDashoffset: 0 }],
-        { duration: dur, delay, easing: "cubic-bezier(.5,.05,.2,1)", fill: "forwards" }
-      );
-    };
-
-    // Phase 1: size + horizontally place each chip, then measure its rendered
-    // height (chips wrap, so rows can't use a fixed step or they'd overlap).
-    const meta = chips.map((chip, i) => {
-      const side = i % 2 === 0 ? 1 : -1; // even → right, odd → left
-      const chipX = centerX + side * OFFSET; // chip inner edge
-      chip.style.left = `${chipX}px`;
-      chip.style.maxWidth = `${chipMaxW}px`;
-      return { chip, i, side, chipX, row: Math.floor(i / perRow) };
-    });
-    const heights = meta.map((m) => m.chip.offsetHeight || 44);
-
-    // Phase 2: stack each row by its tallest chip, centring chips on the row.
-    const rowH: number[] = [];
-    for (let r = 0; r < rowCount; r++) {
-      let h = 0;
-      for (let k = r * perRow; k < Math.min((r + 1) * perRow, chips.length); k++) {
-        h = Math.max(h, heights[k]);
-      }
-      rowH[r] = h;
-    }
-    const rowCenterY: number[] = [];
-    let cursor = HEAD;
-    for (let r = 0; r < rowCount; r++) {
-      rowCenterY[r] = cursor + rowH[r] / 2;
-      cursor += rowH[r] + GAP;
-    }
-    const trunkEndY = rowCenterY[rowCount - 1];
-    tree.style.height = `${cursor + 4}px`; // exact height for this layout
-
-    // trunk grows down the spine (starts above the canvas, reaching the button)
-    drawPath(`M ${centerX} -30 L ${centerX} ${trunkEndY}`, 2.6, TRUNK, 0);
-
-    meta.forEach(({ chip, i, side, chipX, row }) => {
-      const chipY = rowCenterY[row];
-      const y0 = chipY - 22; // bough taps the trunk a little above the chip
-      const delay = TRUNK + i * STEP;
-
-      chip.style.top = `${chipY}px`;
-
-      // Bough leaves the trunk going straight down, then curls out and arrives
-      // HORIZONTALLY into the chip's inner edge (no vertical end-curl).
-      const d = `M ${centerX} ${y0} C ${centerX} ${chipY}, ${centerX} ${chipY}, ${chipX} ${chipY}`;
-      drawPath(d, 2.1, BOUGH, delay);
-
-      const dot = document.createElementNS(NS, "circle");
-      dot.setAttribute("cx", String(chipX));
-      dot.setAttribute("cy", String(chipY));
-      dot.setAttribute("fill", "var(--aurora)");
-      svg.appendChild(dot);
-
-      const base =
-        side > 0 ? "translate(0,-50%)" : "translate(-100%,-50%)";
-      if (reduce) {
-        dot.setAttribute("r", "3.2");
-        chip.style.opacity = "1";
-        chip.style.transform = base;
-        return;
-      }
-      dot.setAttribute("r", "0");
-      dot.animate([{ r: 0 }, { r: 3.2 }], {
-        duration: 200,
-        delay: delay + BOUGH * 0.82,
-        easing: "ease-out",
-        fill: "forwards",
-      });
-      chip.animate(
-        [
-          { opacity: 0, transform: `${base} scale(.7)` },
-          { opacity: 1, transform: `${base} scale(1.06)`, offset: 0.7 },
-          { opacity: 1, transform: `${base} scale(1)` },
-        ],
-        {
-          duration: 320,
-          delay: delay + BOUGH * 0.84,
-          easing: "cubic-bezier(.2,.8,.3,1.2)",
-          fill: "forwards",
-        }
-      );
-    });
-  }, [branchPanelUri, branchOptions]);
-
-  // Branch button + panel, shared by both the custom-card and embed views so
-  // the affordance is identical in either mode.
-  function branchButton(postUri: string) {
+  // Branch affordance: a small icon button pinned to the card's top-right.
+  // Clicking it floods the card with an overlay (clip-path circle expanding
+  // from the button corner) that lists the potential branch directions.
+  function branchZone(postUri: string) {
+    const open = branchPanelUri === postUri;
     return (
-      <button
-        type="button"
-        className={`cur-post-branch${branchPanelUri === postUri ? " active" : ""}`}
-        onClick={() => openBranch(postUri)}
-        title="Explore from this post"
-        aria-expanded={branchPanelUri === postUri}
-      >
-        <svg className="cur-branch-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          {/* a node that diverges into branches; the boughs unfurl on click */}
-          <circle cx="12" cy="5" r="2.2" />
-          <path d="M12 7v4" />
-          <path className="cur-ex-sprout" d="M12 11 C 12 15, 6 14, 5.5 18.5" />
-          <path className="cur-ex-sprout" d="M12 11 V 18.5" />
-          <path className="cur-ex-sprout" d="M12 11 C 12 15, 18 14, 18.5 18.5" />
-        </svg>
-        {branchOptionsLoading && branchPanelUri === postUri ? (
-          <>Loading<span className="cur-dots-inline"><span /><span /><span /></span></>
-        ) : (
-          "Explore"
-        )}
-      </button>
-    );
-  }
-
-  function branchPanel(postUri: string) {
-    if (branchPanelUri !== postUri) return null;
-    // While options load, the Explore button itself shows the loading state —
-    // no separate panel/status until we have directions to show.
-    if (branchOptionsLoading) return null;
-    return (
-      <div className="cur-branch-panel">
-        {branchOptions && branchOptions.length > 0 ? (
-          <>
-            <div
-              className="cur-branch-tree"
-              ref={branchTreeRef}
-              style={{
-                // Pre-layout reservation only — the trace effect sets the exact
-                // height once chips are measured (see branchTreeRef effect). Keep
-                // this at/below the single-line content height so it never adds
-                // dead space below the chips before the button.
-                minHeight: Math.ceil(branchOptions.length / 2) * 62 + 14,
-              }}
-            >
-              <svg className="cur-branch-wires" ref={branchWiresRef} aria-hidden />
-              {branchOptions.map((opt, i) => {
-                const checked = branchSelected.has(i);
-                const atCap = !checked && branchSelected.size >= MAX_BRANCH_TOPICS;
-                const side = i % 2 === 0 ? "right" : "left";
-                return (
+      <>
+        <button
+          type="button"
+          className={`cur-post-branch-fab${open ? " active" : ""}`}
+          onClick={() => openBranch(postUri)}
+          title="Explore branches from this post"
+          aria-label="Explore branches from this post"
+          aria-expanded={open}
+        >
+          {open ? (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+              <line x1="6" y1="6" x2="18" y2="18" />
+              <line x1="18" y1="6" x2="6" y2="18" />
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <circle cx="12" cy="5" r="2.2" />
+              <path d="M12 7v4" />
+              <path d="M12 11 C 12 15, 6 14, 5.5 18.5" />
+              <path d="M12 11 V 18.5" />
+              <path d="M12 11 C 12 15, 18 14, 18.5 18.5" />
+            </svg>
+          )}
+        </button>
+        {open && (
+          <div className="cur-branch-overlay">
+            <div className="cur-branch-overlay-head">Branch into a new feed</div>
+            {branchOptionsLoading ? (
+              <div className="cur-branch-status">
+                Finding directions
+                <span className="cur-dots-inline"><span /><span /><span /></span>
+              </div>
+            ) : branchOptions && branchOptions.length > 0 ? (
+              <>
+                <div className="cur-branch-overlay-grid">
+                  {branchOptions.map((opt, i) => {
+                    const checked = branchSelected.has(i);
+                    const atCap = !checked && branchSelected.size >= MAX_BRANCH_TOPICS;
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        className={`cur-branch-chip${checked ? " selected" : ""}`}
+                        data-kind={opt.kind}
+                        style={{ ["--i" as string]: i }}
+                        disabled={atCap || branchCreating}
+                        onClick={() => toggleBranchSelect(i)}
+                        title={opt.subquery}
+                      >
+                        <span className="cur-branch-chip-kind">
+                          {opt.kind === "deeper" ? "↳ deeper" : "→ adjacent"}
+                        </span>
+                        <span className="cur-branch-chip-label">
+                          {checked ? "✓ " : ""}{opt.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="cur-branch-actions">
                   <button
-                    key={i}
                     type="button"
-                    className={`cur-branch-chip ${side}${checked ? " selected" : ""}`}
-                    data-kind={opt.kind}
-                    disabled={atCap || branchCreating}
-                    onClick={() => toggleBranchSelect(i)}
-                    title={opt.subquery}
+                    className="cur-branch-create"
+                    disabled={branchSelected.size === 0 || branchCreating}
+                    onClick={() => createBranch(postUri)}
                   >
-                    <span className="cur-branch-chip-kind">
-                      {opt.kind === "deeper" ? "↳ deeper" : "→ adjacent"}
-                    </span>
-                    <span className="cur-branch-chip-label">
-                      {checked ? "✓ " : ""}{opt.label}
-                    </span>
+                    {branchCreating
+                      ? "Creating…"
+                      : branchSelected.size > 0
+                        ? `Create feed from ${branchSelected.size} topic${branchSelected.size === 1 ? "" : "s"}`
+                        : "Create feed"}
                   </button>
-                );
-              })}
-            </div>
-            <div className="cur-branch-actions">
-              <button
-                type="button"
-                className="cur-branch-create"
-                disabled={branchSelected.size === 0 || branchCreating}
-                onClick={() => createBranch(postUri)}
-              >
-                {branchCreating
-                  ? "Creating…"
-                  : branchSelected.size > 0
-                    ? `Create feed from ${branchSelected.size} topic${branchSelected.size === 1 ? "" : "s"}`
-                    : "Create feed"}
-              </button>
-              <button
-                type="button"
-                className="cur-branch-cancel"
-                onClick={() => setBranchPanelUri(null)}
-                disabled={branchCreating}
-              >
-                Cancel
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="cur-branch-status">
-            Couldn&rsquo;t find directions.{" "}
-            <button
-              type="button"
-              className="cur-branch-retry"
-              onClick={() => fetchBranchOptions(postUri)}
-            >
-              Retry
-            </button>
+                  <button
+                    type="button"
+                    className="cur-branch-cancel"
+                    onClick={() => setBranchPanelUri(null)}
+                    disabled={branchCreating}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="cur-branch-status">
+                Couldn&rsquo;t find directions.{" "}
+                <button
+                  type="button"
+                  className="cur-branch-retry"
+                  onClick={() => fetchBranchOptions(postUri)}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
           </div>
         )}
-      </div>
-    );
-  }
-
-  // The branch zone is just the Explore button + its panel. The tree SVG that
-  // draws the trunk + boughs lives inside the panel's .cur-branch-tree canvas.
-  function branchZone(postUri: string) {
-    return (
-      <div className="cur-branch-zone">
-        <div className="cur-post-branch-row">{branchButton(postUri)}</div>
-        {branchPanel(postUri)}
-      </div>
+      </>
     );
   }
 
@@ -1358,22 +1413,33 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         onLoad={() => window.bluesky?.scan?.()}
       />
       <div className="cur-workbench" data-right-pane={rightPane}>
+        {/* MOBILE: pull-to-refresh indicator (fixed under the topbar; the
+            gesture lives on the feed pane below) */}
+        <div className="cur-ptr-spinner" ref={ptrSpinnerRef} aria-hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+        </div>
+
         {/* POSTS PANE (middle) */}
-        <div className="cur-feed-posts">
-          {pipelineStage !== "idle" && (
-            <div className="cur-feed-loader">
-              <PipelineLoader
-                stage={pipelineStage}
-                candidates={pipelineCandidates}
-                hits={pipelineHits}
-                images={pipelineImages}
-                model={pipelineModel}
-                thinkingEnabled={pipelineThinkingEnabled}
-                topK={25}
-              />
-            </div>
-          )}
+        <div className="cur-feed-posts" ref={feedPaneRef}>
+          {/* One header row: pipeline status on the left, post count (and
+              Refresh on desktop) top-right — no extra row for either. */}
           <div className="cur-feed-posts-header">
+            <div className="cur-feed-loader">
+              {pipelineStage !== "idle" && (
+                <PipelineLoader
+                  stage={pipelineStage}
+                  candidates={pipelineCandidates}
+                  hits={pipelineHits}
+                  images={pipelineImages}
+                  model={pipelineModel}
+                  thinkingEnabled={pipelineThinkingEnabled}
+                  topK={25}
+                />
+              )}
+            </div>
             <span className="cur-toolbar-count">
               {posts.length > 0 && `${posts.length} post${posts.length === 1 ? "" : "s"}`}
             </span>
@@ -1484,8 +1550,8 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                     </div>
                     <BlueskyEmbed uri={post.uri} text={post.text} url={bskyUrl} />
                     {renderEngageFooter(post, bskyUrl)}
-                  </div>
                     {branchZone(post.uri)}
+                  </div>
                   </div>
                 );
               })
@@ -1613,20 +1679,54 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                       </a>
                     )}
 
-                    {post.quote_uri && !post.external_uri && (
-                      <a
-                        className="cur-post-embed quote"
-                        href={(() => {
-                          const m = post.quote_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
-                          return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : "#";
-                        })()}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <div className="cur-post-embed-host">↳ quoted post</div>
-                        <div className="cur-post-embed-desc">Open on Bluesky to view the quoted post.</div>
-                      </a>
-                    )}
+                    {post.quote_uri && !post.external_uri && (() => {
+                      const q = quotedPosts[post.quote_uri];
+                      const m = post.quote_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+                      const qUrl = m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : "#";
+                      return (
+                        <a
+                          className="cur-post-embed quote"
+                          href={qUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {q ? (
+                            <>
+                              <div className="cur-post-quote-author">
+                                {q.avatar && (
+                                  /* eslint-disable-next-line @next/next/no-img-element */
+                                  <img
+                                    src={q.avatar}
+                                    alt=""
+                                    className="cur-post-quote-avatar"
+                                    loading="lazy"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                )}
+                                <span className="cur-post-quote-name">
+                                  {q.displayName?.trim() || (q.handle ? `@${q.handle}` : "Quoted post")}
+                                </span>
+                                {q.handle && q.displayName?.trim() && (
+                                  <span className="cur-post-quote-handle">@{q.handle}</span>
+                                )}
+                              </div>
+                              {q.text && (
+                                <div className="cur-post-quote-text">{q.text}</div>
+                              )}
+                            </>
+                          ) : q === null ? (
+                            <>
+                              <div className="cur-post-embed-host">↳ quoted post</div>
+                              <div className="cur-post-embed-desc">
+                                Quoted post unavailable — open on Bluesky.
+                              </div>
+                            </>
+                          ) : (
+                            <div className="cur-post-embed-host">↳ quoted post…</div>
+                          )}
+                        </a>
+                      );
+                    })()}
 
                     {post.has_images && post.image_urls.length > 0 && (
                       <div className="cur-post-images-wrap">
@@ -1655,6 +1755,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                       </div>
                     )}
 
+                    {/* AI label for video-only posts (image posts show it in the images-wrap above) */}
+                    {!post.has_images && post.has_video && aiLabels[post.uri]?.ai_generated && (
+                      <span className="cur-ai-label">AI Generated</span>
+                    )}
+
                     {showDebug && (
                       <div className="cur-post-debug cur-post-debug-card">
                         <span className="cur-post-debug-row">
@@ -1676,11 +1781,38 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                     )}
 
                     {renderEngageFooter(post, bskyUrl)}
-                  </article>
                     {branchZone(post.uri)}
+                  </article>
                   </div>
                 );
               })
+            )}
+            {posts.length > 0 && !postsLoading && (
+              <div className="cur-feed-end-prompt">
+                <p className="cur-feed-end-title">You&rsquo;ve reached the end</p>
+                <p className="cur-feed-end-sub">Like what you see? Take your feed to Bluesky.</p>
+                <div className="cur-feed-end-actions">
+                  <button
+                    type="button"
+                    className="cur-feed-end-btn cur-feed-end-publish"
+                    onClick={openPublish}
+                  >
+                    Publish to Bluesky
+                  </button>
+                  <button
+                    type="button"
+                    className="cur-feed-end-btn cur-feed-end-refresh"
+                    onClick={() => {
+                      // Desktop scrolls the pane; mobile scrolls the document.
+                      document.querySelector('.cur-feed-posts')?.scrollTo({ top: 0 });
+                      window.scrollTo({ top: 0 });
+                      setTimeout(() => loadPosts(feedId, { force: true }), 50);
+                    }}
+                  >
+                    Refresh feed
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -1696,6 +1828,27 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
         {/* CHAT PANE (right, when rightPane === "chat") */}
         <div className="cur-chat-pane" style={{ ["--cur-right-w" as string]: `${rightWidth}px` }}>
+          {/* MOBILE: dismiss the chat — blur first so the keyboard drops,
+              then the overlay fades down. Down-arrow at the top centre,
+              like a sheet's pull-down affordance. Acts on pointer-down:
+              when the iOS keyboard is collapsing, the viewport shift between
+              touchstart and touchend makes Safari cancel the click, so an
+              onClick handler intermittently never fires. */}
+          <button
+            type="button"
+            className="cur-chat-close"
+            aria-label="Close chat"
+            onPointerDown={(e) => {
+              e.preventDefault(); // don't steal focus / fire a ghost click
+              inputRef.current?.blur();
+              setRightPane("chat");
+              setMobileTab("feed");
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
           <div className="cur-right-toggle" role="tablist" aria-label="Workbench mode">
             <button
               type="button"
@@ -1864,15 +2017,17 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               className="cur-input-wrap"
               onSubmit={(e) => {
                 e.preventDefault();
+                openMobileChat();
                 if (lastParsed?.options.length) submitChat();
                 else send(input);
               }}
             >
               <textarea
                 ref={inputRef}
-                className="cur-input"
+                className={`cur-input${lastParsed?.options.length ? " cur-input-hint" : ""}`}
                 rows={1}
                 value={input}
+                onFocus={openMobileChat}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -1890,7 +2045,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 }
                 disabled={loading}
               />
-              <ShaderSendButton
+              <SendButton
                 disabled={
                   loading ||
                   (lastParsed?.options.length

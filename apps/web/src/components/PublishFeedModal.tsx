@@ -36,7 +36,7 @@ export default function PublishFeedModal({
   const [authorizing, setAuthorizing] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<string | null>(null);
-  const [prodPublishUrl, setProdPublishUrl] = useState("https://willownet.co");
+  const [prodPublishUrl, setProdPublishUrl] = useState("https://amadi.social");
 
   useEffect(() => {
     let cancelled = false;
@@ -279,7 +279,7 @@ export default function PublishFeedModal({
                 {prodPublishUrl.replace(/^https?:\/\//, "")}
               </a>
               , authorize Bluesky, and publish again — that updates the feed to{" "}
-              <code style={inlineCode}>did:web:willownet.co</code>.
+              <code style={inlineCode}>did:web:amadi.social</code>.
             </p>
             <button
               type="button"
@@ -446,7 +446,7 @@ export default function PublishFeedModal({
           <div>
             <p style={{ ...textBody, marginBottom: 16 }}>
               Register &ldquo;{feedName}&rdquo; as a custom feed on your Bluesky
-              account. Bluesky will fetch posts from Willow whenever someone opens
+              account. Bluesky will fetch posts from amadi whenever someone opens
               the feed.
             </p>
 

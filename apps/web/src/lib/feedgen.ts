@@ -32,7 +32,7 @@ export function isFeedgenPublishable(): boolean {
 
 export function feedgenPublishBlockedMessage(): string {
   const hostname = getFeedgenHostname();
-  const prod = process.env.FEEDGEN_HOSTNAME || "willownet.co";
+  const prod = process.env.FEEDGEN_HOSTNAME || "amadi.social";
   return (
     `Feeds cannot be published from ${hostname} — Bluesky cannot reach a local dev server. ` +
     `Publish from https://${prod} instead (or set FEEDGEN_HOSTNAME for a public tunnel URL).`

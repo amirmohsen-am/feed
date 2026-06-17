@@ -61,7 +61,7 @@ Search runs on **pgvector on `bsky-db`** — there is no Vertex Vector Search in
 - **Read side** (`apps/web/src/lib/vector-search.ts`): embeds each subquery with Gemini (`gemini-embedding-001`, 768d, `RETRIEVAL_QUERY`), then runs one pgvector KNN per subquery in a single SQL statement — KNN (`embedding <=> $1::halfvec`) + filter predicates + engagement/author join + field selection, no separate hydrate step. `searchPosts` unions the per-subquery rows by URI (max `vector_score`) and applies the AppView NSFW label gate. The HNSW index is **partial** (`WHERE ingested_at_us >= INDEX_INGEST_CUTOFF_US`); every KNN must carry that same literal floor or it degrades to an exact scan over all rows. `hnsw.ef_search = 250` is set at the database level.
 - **Write side** (`apps/jetstream-indexer/`): three parallel Jetstream consumers + a prune loop in one process:
   - `postConsumer` — `app.bsky.feed.post` creates + deletes. Composes embedding input as `text + image alt + external title/description`, embeds via Gemini `RETRIEVAL_DOCUMENT`, upserts `bsky.posts` (full record + `embedding halfvec` + cached `embedding_vec` float32 bytea). Reply / quote create events also bump `reply_count`/`quote_count` of the parent/target.
-  - `engagementConsumer` — `app.bsky.feed.like` + `app.bsky.feed.repost` creates. Monotonic counters in `bsky.post_engagement`; delete events ignored (drift ~1–5%, see DECISIONS.md). Read live by the KNN join — no separate push step.
+  - `engagementConsumer` — `app.bsky.feed.like` + `app.bsky.feed.repost` creates. Monotonic counters in `bsky.post_engagement`; delete events ignored (drift ~1–5%). Read live by the KNN join — no separate push step.
   - `profileConsumer` — `app.bsky.actor.profile` + Jetstream `identity` events. Updates `bsky.authors` and appends `bsky.handles_history`.
   - `prune` — retention prune anchored on `ingested_at_us`.
 
@@ -140,19 +140,24 @@ Logs:
 gcloud logging read 'resource.labels.service_name="jetstream-indexer"' --project=timelines-492720 --limit=20
 ```
 
-`apps/jetstream-indexer/scripts/setup-vertex.sh` (provisioning a Vertex Vector Search index) is **dead** — the Vertex index/endpoint were deleted in favor of pgvector; kept only as historical reference. The Cloud Monitoring dashboard JSON is at `apps/jetstream-indexer/monitoring/dashboard.json` (import via `gcloud monitoring dashboards create --config-from-file=...`).
+The Cloud Monitoring dashboard JSON is at `apps/jetstream-indexer/monitoring/dashboard.json` (import via `gcloud monitoring dashboards create --config-from-file=...`).
 
 ## What this repo does NOT do anymore
 
 - **No OpenAI.** Embeddings come from Vertex Gemini; the chat is pure Claude.
 - **No Vertex Vector Search.** Search migrated to pgvector (HNSW, halfvec) on `bsky-db` in PR #20; the Vertex index + endpoint were deleted 2026-06-04. Vertex AI is still used, but only for Gemini embeddings. There is no `MatchServiceClient`/`findNeighbors`/upsert-to-index path, and no `vertexReconciler` loop.
 - **No happy-feed external repo.** The worker source moved into `apps/jetstream-indexer/` (was `/Users/amir/code/happy-feed`).
-- **No publish-to-Bluesky.** The `/api/publish-feed` route, the xrpc endpoints, and `/.well-known/did.json` are gone. The `published_rkey` column on `feeds` is left in place for future revival but is unused.
 - **No synthetic onboarding card bank.** Removed along with `OnboardingFlow`/`TapCards`/`TasteReveal`/`ReversePrompting` and the `onboarding_cards` table. Onboarding is now plain chat with the Claude agent.
+
+# Publishing to Bluesky
+
+Feeds can be published as Bluesky custom feed generators (restored in commit `e07c96c`). `PublishFeedModal` → `POST /api/publish-feed` writes an `app.bsky.feed.generator` record to the user's repo (OAuth session via `lib/bsky-oauth.ts`, falling back to app password) pointing at this service's `did:web`, and stores the resulting rkey in `feeds.published_rkey`. Bluesky then resolves the feed through the xrpc endpoints served here: `/.well-known/did.json`, `/xrpc/app.bsky.feed.describeFeedGenerator`, and `/xrpc/app.bsky.feed.getFeedSkeleton` (which serves post URIs from the cached skeleton).
 
 # Conventions
 
-- All API routes under `apps/web/src/app/api/*` use `requireAuth(req)` from `apps/web/src/lib/auth.ts`.
+- Running `npm install` (or `npm ci`) in either app is pre-approved — just do it when needed, no need to ask first.
+- **Landing page copy & design rules**: never use italics anywhere (emphasis is color only; `em` elements are styled `font-style: normal`), and never use dashes ("-", "—") in user-facing copy. Rephrase with commas or new sentences instead.
+- All API routes under `apps/web/src/app/api/*` use `requireAuth(req)` from `apps/web/src/lib/auth.ts` — except the intentionally public `/api/introspect/*`, `/api/subscribe`, `/api/feedgen/info`, and the xrpc / `did.json` feed-generator endpoints.
 - The curator UI loads sidebar feeds from Postgres (`/api/feeds`), filtered to feeds with non-empty topics/keywords. Postgres is the source of truth — there is no client-side cache (no localStorage, no Firestore).
 - Feed switching in the curator is non-blocking: clicking a feed clears the panels synchronously and fires chat + posts fetches in parallel. There is no auto-polling — the user clicks **Refresh** to re-query.
 

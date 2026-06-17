@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { BskyWriteError, likePostWrite, unlikePostWrite } from "@/lib/bsky-write";
+import { likePostWrite, unlikePostWrite } from "@/lib/bsky-write";
+import { jsonError } from "@/lib/api";
 
 /**
  * POST /api/bsky/like
@@ -44,12 +45,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (e) {
-    if (e instanceof BskyWriteError) {
-      console.warn("[bsky/like] error:", e.message);
-      return NextResponse.json({ error: e.message }, { status: e.status });
-    }
-    const msg = e instanceof Error ? e.message : String(e);
-    console.warn("[bsky/like] error:", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return jsonError(e, "bsky/like");
   }
 }

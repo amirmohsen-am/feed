@@ -1,0 +1,405 @@
+/* ============================================================
+   Landing v2 — pieces on top of prototype.css:
+   nav links, act skip buttons, main pitch (pillars + waitlist + demo).
+   ============================================================ */
+
+/* ---------- act gating ---------- */
+
+.act-wrap {
+  position: relative;
+}
+
+.act-skip {
+  position: absolute;
+  right: 34px;
+  bottom: 34px;
+  z-index: 5;
+  font-family: var(--rf-mono);
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--p-ink-dim);
+  background: rgba(248, 247, 255, 0.55);
+  border: 1px solid rgba(42, 37, 80, 0.25);
+  border-radius: 999px;
+  padding: 9px 18px;
+  cursor: pointer;
+  transition: color 0.25s ease, background 0.25s ease;
+}
+
+.act-skip:hover {
+  color: var(--p-ink);
+  background: rgba(248, 247, 255, 0.95);
+}
+
+/* ---------- main pitch ---------- */
+
+.lv-main {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* heavier bottom padding floats the content above true center */
+  padding: 80px 0 170px;
+  background: linear-gradient(180deg, #f0f3ff 0%, #c8d8f8 35%, #7E9BEC 100%);
+  text-align: center;
+}
+
+/* hero scroll cue — same treatment as the acts' "keep going" */
+.lv-scroll-cue {
+  position: absolute;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--rf-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(42, 37, 80, 0.55);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.lv-scroll-cue .arrow {
+  font-size: 16px;
+  animation: cue-bob 2s ease-in-out infinite;
+}
+
+.lv-title {
+  font-family: var(--rf-display);
+  font-size: clamp(48px, 7.2vw, 92px);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.06;
+  color: var(--p-ink);
+  margin-bottom: 14px;
+}
+
+.lv-subtitle {
+  font-family: var(--rf-display);
+  font-size: clamp(28px, 4.2vw, 54px);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  color: var(--p-ink);
+  margin-bottom: 88px;
+}
+
+.lv-title-logo-char {
+  /* logo image sits on the text baseline, sized to cap-height */
+  vertical-align: -0.08em;
+}
+
+.lv-title-logo-char img {
+  display: block;
+  height: 0.88em;
+  width: auto;
+}
+
+.lv-title em,
+.lv-title .hl-em .hl-char,
+.lv-subtitle em,
+.lv-subtitle .hl-em .hl-char {
+  font-style: normal;
+  color: #4a5ec8;
+}
+
+/* ouro-style per-character masked reveal: chars slide up out of each
+   word's overflow mask with randomized delay/duration/rotation */
+.hl-word {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: top;
+  padding-bottom: 0.12em;
+  margin-bottom: -0.12em;
+}
+
+.hl-char {
+  display: inline-block;
+  transform: translateY(120%) rotate(var(--cr, 0deg));
+  transition: transform var(--cd, 0.9s) cubic-bezier(0.19, 1, 0.22, 1);
+  transition-delay: var(--cdel, 0s);
+  will-change: transform;
+}
+
+.lv-main.revealed .hl-char {
+  transform: translateY(0) rotate(0deg);
+}
+
+/* instant reset off-screen so re-entry replays cleanly */
+.lv-main:not(.revealed) .hl-char {
+  transition-duration: 0.25s;
+  transition-delay: 0s;
+}
+
+/* pillars follow the headline: icon, then label, then sub, per pillar
+   (--pd set inline per pillar, staggered left to right) */
+.lv-pillar img,
+.lv-pillar-label,
+.lv-pillar-sub {
+  opacity: 0;
+  transform: translateY(26px);
+  transition:
+    opacity 0.8s cubic-bezier(0.19, 1, 0.22, 1),
+    transform 0.8s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+.lv-pillar img {
+  transition-delay: var(--pd, 0.9s);
+}
+
+.lv-pillar-label {
+  transition-delay: calc(var(--pd, 0.9s) + 0.1s);
+}
+
+.lv-pillar-sub {
+  transition-delay: calc(var(--pd, 0.9s) + 0.18s);
+}
+
+.lv-main.revealed .lv-pillar img,
+.lv-main.revealed .lv-pillar-label,
+.lv-main.revealed .lv-pillar-sub {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* CTA row closes the choreography */
+.lv-cta-row {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.9s cubic-bezier(0.19, 1, 0.22, 1) 1.5s,
+    transform 0.9s cubic-bezier(0.19, 1, 0.22, 1) 1.5s;
+}
+
+.lv-main.revealed .lv-cta-row {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.lv-main:not(.revealed) .lv-pillar img,
+.lv-main:not(.revealed) .lv-pillar-label,
+.lv-main:not(.revealed) .lv-pillar-sub,
+.lv-main:not(.revealed) .lv-cta-row {
+  transition-duration: 0.25s;
+  transition-delay: 0s;
+}
+
+.lv-pillars {
+  display: flex;
+  justify-content: center;
+  gap: clamp(36px, 7vw, 96px);
+  margin-bottom: 72px;
+  flex-wrap: wrap;
+}
+
+.lv-pillar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.lv-pillar img {
+  width: 84px;
+  height: 84px;
+  object-fit: contain;
+  margin-bottom: 10px;
+}
+
+.lv-pillar-label {
+  font-family: var(--rf-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--p-ink);
+}
+
+.lv-pillar-sub {
+  font-family: var(--rf-body);
+  font-size: 13.5px;
+  color: var(--p-ink-dim);
+}
+
+.lv-cta-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+
+.lv-subscribe-pill {
+  display: flex;
+  align-items: center;
+  background: #faf9ff;
+  border: 1px solid rgba(42, 37, 80, 0.3);
+  border-radius: 999px;
+  padding: 5px 5px 5px 20px;
+  box-shadow: 0 10px 28px -16px rgba(42, 37, 80, 0.35);
+}
+
+.lv-subscribe-pill input {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 15px;
+  color: var(--p-ink);
+  width: min(240px, 48vw);
+  font-family: var(--rf-body);
+}
+
+.lv-subscribe-pill input::placeholder {
+  color: rgba(42, 37, 80, 0.4);
+}
+
+.lv-subscribe-pill button {
+  font-family: var(--rf-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--p-cream);
+  background: var(--p-ink);
+  border: none;
+  border-radius: 999px;
+  padding: 12px 22px;
+  cursor: pointer;
+  transition: background 0.25s ease;
+}
+
+/* mobile-only variant of the demo CTA, hidden on desktop */
+.lv-demo-top {
+  display: none;
+  position: absolute;
+}
+
+/* small screens: tighter hero so it fits one viewport; pill spans the
+   row, input flexes, button never wraps */
+@media (max-width: 560px) {
+  .lv-main {
+    padding: 90px 0 96px;
+  }
+
+  .lv-subtitle {
+    margin-bottom: 44px;
+  }
+
+  /* pillars become a left-aligned vertical list (icon | label/sub),
+     the group itself centered in the hero */
+  .lv-pillars {
+    flex-direction: column;
+    align-items: flex-start;
+    width: fit-content;
+    margin: 0 auto 44px;
+    gap: 18px;
+  }
+
+  .lv-pillar {
+    display: grid;
+    grid-template-columns: 52px auto;
+    column-gap: 16px;
+    row-gap: 2px;
+    align-items: center;
+    text-align: left;
+  }
+
+  .lv-pillar img {
+    grid-row: 1 / span 2;
+    width: 52px;
+    height: 52px;
+    margin-bottom: 0;
+  }
+
+  .lv-pillar-label {
+    align-self: end;
+  }
+
+  .lv-pillar-sub {
+    align-self: start;
+  }
+
+  .lv-cta-row {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* demo CTA moves to the hero's top-right, opposite the navbar brand */
+  .lv-cta-row .lv-demo-btn {
+    display: none;
+  }
+
+  /* doubled class beats the later-in-file .lv-demo-btn base rule */
+  .lv-demo-top.lv-demo-top {
+    display: inline-flex;
+    top: 24px;
+    right: 16px;
+    padding: 6px 13px;
+    font-size: 12.5px;
+  }
+
+  .lv-subscribe {
+    width: min(100%, 340px);
+  }
+
+  .lv-subscribe-pill {
+    width: 100%;
+  }
+
+  .lv-subscribe-pill input {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+
+  .lv-subscribe-pill button {
+    font-size: 11px;
+    padding: 11px 16px;
+  }
+}
+
+.lv-subscribe-pill button:hover {
+  background: #3040a0;
+}
+
+.lv-subscribe-error {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #6050a0;
+}
+
+.lv-subscribe-success {
+  font-size: 16px;
+  color: var(--p-ink);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lv-subscribe-success span {
+  color: #4a5ec8;
+}
+
+.lv-demo-btn {
+  font-family: var(--rf-body);
+  font-size: 14px;
+  color: var(--p-ink);
+  text-decoration: none;
+  border: 1px solid rgba(42, 37, 80, 0.35);
+  border-radius: 999px;
+  padding: 12px 20px;
+  background: rgba(248, 247, 255, 0.6);
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+.lv-demo-btn:hover {
+  background: var(--p-ink);
+  color: var(--p-cream);
+}

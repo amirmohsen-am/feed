@@ -23,6 +23,7 @@
  */
 
 import { NextRequest } from "next/server";
+import { enforceRateLimit, EXPENSIVE_RULES } from "@/lib/rate-limit";
 import { readSnapshot, writeSnapshot } from "@/lib/introspect/storage";
 import {
   runExtractor,
@@ -36,6 +37,8 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
+  const limited = enforceRateLimit(req, "introspect-process-batch", EXPENSIVE_RULES);
+  if (limited) return limited;
   let body: { handle?: string };
   try {
     body = (await req.json()) as { handle?: string };

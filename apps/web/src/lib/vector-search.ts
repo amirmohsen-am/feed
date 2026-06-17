@@ -14,15 +14,23 @@
  * vector_score contract of [0, 1] via `1 - distance / 2` in SQL.
  *
  * HNSW recall knob: `hnsw.ef_search = 250` is set at the database level
- * (ALTER DATABASE), so every pooled connection inherits it and the read path
- * stays a plain one-shot query — no SET LOCAL / transaction needed.
+ * (ALTER DATABASE), so every pooled connection inherits it.
+ *
+ * The KNN itself runs inside a transaction with `SET LOCAL enable_sort = off`
+ * (see knnQuery). Without it the planner sometimes abandons the HNSW index
+ * for feeds with a trailing time window: the append-only table's stats go
+ * stale between ANALYZEs, the planner underestimates the window's row count,
+ * and flips to a created_at_us btree scan + exact distance sort over the
+ * whole window (~500k rows, 30-100s cold). The only sort a plan could use
+ * here is that exact-distance sort, so disabling sort nodes deterministically
+ * selects the HNSW ordering path regardless of stats freshness.
  *
  * The runtime needs ADC with `roles/aiplatform.user` (query embedding only)
  * + `roles/secretmanager.secretAccessor` on `bsky-database-url`.
  */
 
 import { GoogleGenAI } from "@google/genai";
-import { bskyQuery } from "./bsky-pg";
+import { bskyQuery, withBskyClient } from "./bsky-pg";
 import { LIKE_NSFW_DESCRIPTION_KEYWORDS } from "./defaults";
 import { onAdcChange } from "./adc-watcher";
 
@@ -118,6 +126,9 @@ export interface VectorHit {
   image_urls: string[];
   // Link-card thumbnail from AppView embed.external.thumb (when present).
   external_thumb: string | null;
+  // Video thumbnail from AppView embed (app.bsky.embed.video#view).
+  // A single frame from the video, used for AI-generated content detection.
+  video_thumbnail: string | null;
 }
 
 export interface SearchFilter {
@@ -146,7 +157,7 @@ export interface SearchFilter {
 const EMBED_CACHE_MAX = 256;
 const embedCache = new Map<string, number[]>();
 
-async function embedQuery(query: string): Promise<number[]> {
+export async function embedQuery(query: string): Promise<number[]> {
   const cached = embedCache.get(query);
   if (cached) {
     // Touch: re-insert to make it MRU.
@@ -213,7 +224,7 @@ interface PgRow {
 // an absent deny-list must not drop every row). Time bounds compare against
 // created_at_us (bigint, µs) which already has a btree index for the
 // exact-scan fallback; pgvector post-filters during the HNSW graph walk.
-const KNN_SQL = `
+export const KNN_SQL = `
 SELECT
   p.uri, p.did, p.text, p.created_at, p.langs,
   p.has_images, p.has_video, p.has_quote, p.has_external_link,
@@ -257,18 +268,15 @@ function toVectorLiteral(vec: number[]): string {
   return "[" + vec.join(",") + "]";
 }
 
-/**
- * Embed one subquery and run the single-statement KNN. Returns fully
- * hydrated rows — there is no separate Postgres hydrate step.
- */
-async function embedAndKnn(
-  query: string,
+// Exported so diagnostics (scripts/diagnose-search.ts) can EXPLAIN the exact
+// production statement with the exact production params.
+export function buildKnnParams(
+  queryVec: number[],
   k: number,
   filter?: SearchFilter
-): Promise<PgRow[]> {
-  const queryVec = await embedQuery(query);
+): unknown[] {
   const f = filter;
-  const params: unknown[] = [
+  return [
     toVectorLiteral(queryVec),
     k,
     f?.lang?.length ? f.lang : null,
@@ -288,8 +296,44 @@ async function embedAndKnn(
     f?.minRepostCount ?? 0,
     f?.minReplyCount ?? 0,
   ];
-  const res = await bskyQuery<PgRow>(KNN_SQL, params);
-  return res.rows;
+}
+
+/**
+ * Run the single-statement KNN for one query vector. Wrapped in a transaction
+ * solely to scope `SET LOCAL enable_sort = off`, which pins the plan to the
+ * HNSW index (see the header comment). Exported for scripts/diagnose-search.ts
+ * so diagnostics exercise the exact production execution path.
+ */
+export async function knnQuery(
+  queryVec: number[],
+  k: number,
+  filter?: SearchFilter
+): Promise<PgRow[]> {
+  return withBskyClient(async (c) => {
+    await c.query("BEGIN");
+    try {
+      await c.query("SET LOCAL enable_sort = off");
+      const res = await c.query<PgRow>(KNN_SQL, buildKnnParams(queryVec, k, filter));
+      await c.query("COMMIT");
+      return res.rows;
+    } catch (e) {
+      await c.query("ROLLBACK").catch(() => { /* ignore */ });
+      throw e;
+    }
+  });
+}
+
+/**
+ * Embed one subquery and run the single-statement KNN. Returns fully
+ * hydrated rows — there is no separate Postgres hydrate step.
+ */
+async function embedAndKnn(
+  query: string,
+  k: number,
+  filter?: SearchFilter
+): Promise<PgRow[]> {
+  const queryVec = await embedQuery(query);
+  return knnQuery(queryVec, k, filter);
 }
 
 // Hydrate a single post by its at:// URI — same projection as KNN_SQL minus
@@ -357,6 +401,7 @@ function rowToHit(r: PgRow): VectorHit {
     like_nsfw: false,
     image_urls: [],
     external_thumb: null,
+    video_thumbnail: null,
   };
 }
 
@@ -487,6 +532,7 @@ interface AppViewMeta {
   labels: string[];
   imageUrls: string[];
   externalThumb: string | null;
+  videoThumbnail: string | null;
 }
 
 interface AppViewPostView {
@@ -496,11 +542,16 @@ interface AppViewPostView {
     $type?: string;
     external?: { thumb?: string };
     images?: Array<{ thumb?: string; fullsize?: string }>;
+    // Video embed (app.bsky.embed.video#view).
+    thumbnail?: string;
+    playlist?: string;
     // recordWithMedia nests the media one level deeper.
     media?: {
       $type?: string;
       external?: { thumb?: string };
       images?: Array<{ thumb?: string; fullsize?: string }>;
+      thumbnail?: string;
+      playlist?: string;
     };
   };
 }
@@ -512,6 +563,23 @@ function extractImageUrls(p: AppViewPostView): string[] {
   return all
     .map((img) => img.thumb ?? img.fullsize ?? null)
     .filter((u): u is string => typeof u === "string" && u.length > 0);
+}
+
+function extractVideoThumbnail(p: AppViewPostView): string | null {
+  const embed = p.embed;
+  if (!embed) return null;
+  if (embed.$type === "app.bsky.embed.video#view") {
+    const thumb = embed.thumbnail;
+    return typeof thumb === "string" && thumb.length > 0 ? thumb : null;
+  }
+  if (
+    embed.$type === "app.bsky.embed.recordWithMedia#view" &&
+    embed.media?.$type === "app.bsky.embed.video#view"
+  ) {
+    const thumb = embed.media.thumbnail;
+    return typeof thumb === "string" && thumb.length > 0 ? thumb : null;
+  }
+  return null;
 }
 
 function extractExternalThumb(p: AppViewPostView): string | null {
@@ -585,6 +653,7 @@ async function fetchAppViewMeta(
         labels: (p.labels ?? []).map((l) => l.val),
         imageUrls: extractImageUrls(p),
         externalThumb: extractExternalThumb(p),
+        videoThumbnail: extractVideoThumbnail(p),
       });
     }
   }
@@ -735,6 +804,7 @@ export async function searchPosts(opts: SearchOpts): Promise<VectorHit[]> {
       if (!meta) continue;
       if (wantImages && meta.imageUrls.length > 0) h.image_urls = meta.imageUrls;
       if (meta.externalThumb) h.external_thumb = meta.externalThumb;
+      if (meta.videoThumbnail) h.video_thumbnail = meta.videoThumbnail;
     }
   }
 

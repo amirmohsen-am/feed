@@ -1,11 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import "./curator.css";
-import "./onboarding.css";
-import "./onboarding-flow.css";
 import "./tour.css";
 import CuratorTour from "./CuratorTour";
 import {
@@ -31,7 +29,6 @@ import FeedbackModal from "@/components/FeedbackModal";
 import EditableFeedName from "@/components/EditableFeedName";
 import PublishFeedModal from "@/components/PublishFeedModal";
 import FeedSearch from "@/components/FeedSearch";
-import ShaderLogo from "@/components/ShaderLogo";
 import { authedFetch } from "@/lib/authed-fetch";
 import { useResizable } from "./useResizable";
 import {
@@ -137,13 +134,50 @@ function CuratorShell({
   const [feeds, setFeeds] = useState<SavedFeed[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showPublish, setShowPublish] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showBskyConnect, setShowBskyConnect] = useState(false);
   const [bskyHandle, setBskyHandle] = useState("");
   const [bskyConnecting, setBskyConnecting] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+  const openTuneRef = useRef<(() => void) | null>(null);
+
+  async function handleShare(feed: SavedFeed) {
+    const url = `${window.location.origin}/f/${feed.id}`;
+    const text = `Hey — check out this feed I made about "${feed.name}", maybe you'd like it too`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: feed.name, text, url });
+      } catch {
+        /* user dismissed the share sheet */
+      }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(`${text}: ${url}`);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      await authedFetch("/api/auth/logout", { method: "POST" });
+      // Full reload: middleware mints a fresh anonymous session.
+      window.location.href = "/curator";
+    } catch {
+      setLoggingOut(false);
+    }
+  }
   const [activePostCount, setActivePostCount] = useState(0);
-  const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
+  // Feed-first on mobile: the chat is a slide-up overlay ("chat" = open).
+  // Drafting feeds auto-open it via the tab-reset logic below.
+  const [mobileTab, setMobileTab] = useState<MobileTab>("feed");
   const [optionsUnread, setOptionsUnread] = useState(false);
 
   // Display settings (persisted to localStorage), surfaced in the top-bar
@@ -156,7 +190,7 @@ function CuratorShell({
     setViewModeState(next);
     try { window.localStorage.setItem(VIEW_MODE_KEY, next); } catch { /* ignore */ }
   }, []);
-  const [showDebug, setShowDebugState] = useState<boolean>(true);
+  const [showDebug, setShowDebugState] = useState<boolean>(false);
   const setShowDebug = useCallback((next: boolean) => {
     setShowDebugState(next);
     try { window.localStorage.setItem(SHOW_DEBUG_KEY, String(next)); } catch { /* ignore */ }
@@ -170,7 +204,7 @@ function CuratorShell({
   useEffect(() => {
     try {
       if (window.localStorage.getItem(VIEW_MODE_KEY) === "embed") setViewModeState("embed");
-      if (window.localStorage.getItem(SHOW_DEBUG_KEY) === "false") setShowDebugState(false);
+      if (window.localStorage.getItem(SHOW_DEBUG_KEY) === "true") setShowDebugState(true);
       if (window.localStorage.getItem(HIDE_UNAVAIL_KEY) === "false") setHideUnavailableState(false);
     } catch { /* ignore */ }
   }, []);
@@ -313,6 +347,9 @@ function CuratorShell({
         setHideUnavailable,
         unavailableCount,
         setUnavailableCount,
+        openPublish: () => setShowPublish(true),
+        openTune: () => openTuneRef.current?.(),
+        registerOpenTune: (fn: () => void) => { openTuneRef.current = fn; },
       }}
     >
       <div className="curator-shell">
@@ -330,9 +367,7 @@ function CuratorShell({
           style={{ ["--cur-sidebar-w" as string]: `${sidebarWidth}px` }}
         >
           <div className="cur-sidebar-head">
-            <Link href="/">
-              <ShaderLogo height={32} />
-            </Link>
+            <Link href="/" className="cur-wordmark">willow</Link>
           </div>
 
           <div className="cur-sidebar-label">
@@ -428,7 +463,31 @@ function CuratorShell({
             style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
           >
             <Link href="/">← Home</Link>
-            <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              type="button"
+              className="cur-profile-btn cur-sidebar-gear"
+              title="Settings"
+              aria-label="Settings"
+              onClick={() => {
+                setSidebarOpen(false);
+                setShowSettings(true);
+              }}
+            >
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </button>
+            <Dialog
+              open={profileOpen}
+              onOpenChange={(open) => {
+                setProfileOpen(open);
+                // On mobile the dialog is opened from inside the drawer —
+                // close the drawer so the dialog stands alone.
+                if (open) setSidebarOpen(false);
+              }}
+            >
               <DialogTrigger className="cur-profile-btn" title="Profile">
                 {profile.photoURL ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
@@ -519,8 +578,33 @@ function CuratorShell({
                     <span className="profile-val">{feeds.length}</span>
                   </div>
                 </div>
+                <Separator />
+                <div className="profile-section" style={{ paddingBottom: 0 }}>
+                  {profile.blueskyDid ? (
+                    <button
+                      type="button"
+                      className="profile-auth-btn logout"
+                      disabled={loggingOut}
+                      onClick={handleLogout}
+                    >
+                      {loggingOut ? "Logging out…" : "Log out"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="profile-auth-btn login"
+                      onClick={() => {
+                        setProfileOpen(false);
+                        setShowBskyConnect(true);
+                      }}
+                    >
+                      Log in with Bluesky
+                    </button>
+                  )}
+                </div>
               </DialogContent>
             </Dialog>
+            </div>
           </div>
         </div>
 
@@ -768,7 +852,7 @@ function CuratorShell({
                   <line x1="8" y1="13" x2="13" y2="13" />
                 </svg>
               </button>
-              <Dialog>
+              <Dialog open={showSettings} onOpenChange={setShowSettings}>
                 <DialogTrigger
                   className={`cur-topbar-icon${viewMode === "embed" ? " active" : ""}`}
                   title="Display settings"
@@ -845,52 +929,115 @@ function CuratorShell({
                       </label>
                     )}
                   </div>
+                  {/* Mobile-only: feedback + introspect fold in here since the
+                      topbar icons are hidden on small screens. */}
+                  <div className="settings-mobile-more">
+                    <Separator />
+                    <div className="settings-section">
+                      <div className="settings-label">More</div>
+                      <button
+                        type="button"
+                        className="settings-action-row"
+                        onClick={() => {
+                          setShowSettings(false);
+                          setShowFeedback(true);
+                        }}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                          <line x1="8" y1="10" x2="16" y2="10" />
+                          <line x1="8" y1="13" x2="13" y2="13" />
+                        </svg>
+                        Send feedback
+                      </button>
+                      {profile.blueskyHandle ? (
+                        <Link
+                          href={`/introspect/${encodeURIComponent(profile.blueskyHandle.replace(/^@/, "").toLowerCase())}`}
+                          className="settings-action-row"
+                          prefetch={false}
+                          onClick={() => setShowSettings(false)}
+                        >
+                          <span aria-hidden>✦</span>
+                          Introspect my engagements
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          className="settings-action-row"
+                          onClick={() => {
+                            setShowSettings(false);
+                            setShowBskyConnect(true);
+                          }}
+                        >
+                          <span aria-hidden>✦</span>
+                          Introspect my engagements
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </DialogContent>
               </Dialog>
             </div>
+
+            {/* Tune + Publish + Share — outside cur-topbar-right so they stay visible on mobile
+                (the other topbar icons are folded away on small screens). */}
+            {activeFeed && activeHasCriteria && (
+              <button
+                type="button"
+                className="cur-topbar-icon cur-topbar-tune"
+                onClick={() => openTuneRef.current?.()}
+                title="Tune feed"
+                aria-label="Tune feed"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <line x1="4" y1="21" x2="4" y2="14" />
+                  <line x1="4" y1="10" x2="4" y2="3" />
+                  <line x1="12" y1="21" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12" y2="3" />
+                  <line x1="20" y1="21" x2="20" y2="16" />
+                  <line x1="20" y1="12" x2="20" y2="3" />
+                  <line x1="1" y1="14" x2="7" y2="14" />
+                  <line x1="9" y1="8" x2="15" y2="8" />
+                  <line x1="17" y1="16" x2="23" y2="16" />
+                </svg>
+              </button>
+            )}
+            {activeFeed && activeHasCriteria && (
+              <button
+                type="button"
+                className="cur-topbar-icon cur-topbar-publish-bsky"
+                onClick={() => setShowPublish(true)}
+                title="Publish to Bluesky"
+                aria-label="Publish to Bluesky"
+              >
+                <svg width="16" height="16" viewBox="0 0 600 530" fill="currentColor" aria-hidden>
+                  <path d="M135.72 44.03C202.216 93.951 273.74 195.86 300 249.97c26.26-54.11 97.784-156.019 164.28-205.94C512.26 8.009 590-19.862 590 68.825c0 17.712-10.155 148.79-16.111 170.07-20.703 73.984-96.144 92.854-163.25 81.433 117.3 19.964 147.14 86.092 82.697 152.22-122.39 125.59-175.91-31.511-189.63-71.766-2.514-7.38-3.69-10.832-3.706-7.905-.017-2.927-1.192.525-3.706 7.905-13.72 40.255-67.24 197.356-189.63 71.766-64.444-66.128-34.604-132.256 82.697-152.22-67.106 11.421-142.547-7.449-163.25-81.433C20.155 217.615 10 86.537 10 68.825c0-88.687 77.74-60.816 125.72-24.795z" />
+                </svg>
+              </button>
+            )}
+            {activeFeed && activeHasCriteria && (
+              <button
+                type="button"
+                className="cur-topbar-icon cur-topbar-share"
+                onClick={() => handleShare(activeFeed)}
+                title={shareCopied ? "Link copied!" : "Share this feed"}
+                aria-label="Share this feed"
+              >
+                {shareCopied ? (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : (
+                  /* forward/share arrow (like message-forwarding), not export-up */
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M21 11.5 13 4.5v4C6.5 9 3.5 13 3 19c2.6-3.4 5.8-5 10-5v4l8-6.5z" />
+                  </svg>
+                )}
+              </button>
+            )}
           </div>
 
           {children}
-
-          {/* MOBILE TAB NAV */}
-          <nav className="cur-mobile-tabs" aria-label="View tabs">
-            <button
-              type="button"
-              className={`cur-mobile-tab${mobileTab === "chat" ? " active" : ""}`}
-              onClick={() => { setMobileTab("chat"); setOptionsUnread(false); }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-              <span>Chat</span>
-              {optionsUnread && <span className="cur-mobile-tab-dot" aria-hidden />}
-            </button>
-            <button
-              type="button"
-              className={`cur-mobile-tab${mobileTab === "feed" ? " active" : ""}`}
-              onClick={() => setMobileTab("feed")}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="7" height="7" />
-                <rect x="14" y="3" width="7" height="7" />
-                <rect x="3" y="14" width="7" height="7" />
-                <rect x="14" y="14" width="7" height="7" />
-              </svg>
-              <span>Feed</span>
-              {activePostCount > 0 && <span className="cur-mobile-tab-badge">{activePostCount}</span>}
-            </button>
-            <button
-              type="button"
-              className={`cur-mobile-tab${mobileTab === "tune" ? " active" : ""}`}
-              onClick={() => setMobileTab("tune")}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
-              <span>Tune</span>
-            </button>
-          </nav>
         </div>
 
         {showFeedback && (

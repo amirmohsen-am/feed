@@ -15,6 +15,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { ensureEnvFromSecret } from "./secrets";
+import { logLlmCall } from "./llm-log";
 import type { VectorHit } from "./vector-search";
 import { DEFAULT_RERANK_MODEL, MAX_RERANK_IMAGES } from "./defaults";
 
@@ -22,10 +23,16 @@ import { DEFAULT_RERANK_MODEL, MAX_RERANK_IMAGES } from "./defaults";
 // `opts.model`; the per-feed setting is read in pg.ts.
 export const RERANK_MODEL = DEFAULT_RERANK_MODEL;
 
+// Reasons are only requested for the first RERANK_REASONS_LIMIT items: the
+// curator UI shows 25 posts, and reasons dominate output tokens — emitting
+// them for a deep (topK=100) snapshot would triple rerank latency.
+export const RERANK_REASONS_LIMIT = 25;
+
 const RERANK_OUTPUT_CONTRACT = `
 
 Return JSON only — a single array of up to N items, sorted best-first.
 Each item: {"i": <int candidate index>, "score": <int 0-100>, "reason": "<one short sentence>"}.
+For items ranked beyond the first ${RERANK_REASONS_LIMIT}, set "reason" to "".
 Do NOT include items you would not surface. Do NOT include any prose outside the array.`;
 
 let _client: Anthropic | null = null;
@@ -94,6 +101,8 @@ export async function rerank(opts: {
   // emits a private reasoning block before the JSON ranking, which can help
   // on borderline candidates at the cost of latency + tokens.
   thinkingEnabled?: boolean;
+  // Tags the llm_call log line so rerank calls are queryable per feed.
+  feedId?: number;
   // Called once when the Anthropic request is dispatched. Carries the
   // candidate/image counts so a UI can render "Ranking … 80 candidates · 87 images".
   onRequestSent?: (info: RerankPhaseInfo) => void;
@@ -144,10 +153,20 @@ export async function rerank(opts: {
   const system = systemPrompt + RERANK_OUTPUT_CONTRACT;
 
   const thinkingEnabled = opts.thinkingEnabled === true;
-  // Budget needs headroom under max_tokens. 4096 max with ~1500 thinking
-  // leaves enough room for the JSON ranking output even on long candidate
-  // lists.
   const THINKING_BUDGET = 1500;
+  // Output scales with topK: a kept item with a reason is ~40 tokens, one
+  // without ~15. Add thinking budget + slack; both haiku 4.5 and sonnet 4.6
+  // cap output at 64k so the 16k ceiling is safe.
+  const maxTokens = Math.min(
+    16384,
+    Math.max(
+      4096,
+      Math.min(topK, RERANK_REASONS_LIMIT) * 40 +
+        Math.max(0, topK - RERANK_REASONS_LIMIT) * 15 +
+        (thinkingEnabled ? THINKING_BUDGET : 0) +
+        512
+    )
+  );
 
   console.log(
     `[rerank] model=${model} candidates=${candidates.length} ` +
@@ -160,7 +179,7 @@ export async function rerank(opts: {
   const c = await client();
   const stream = c.messages.stream({
     model,
-    max_tokens: 4096,
+    max_tokens: maxTokens,
     system,
     messages: [{ role: "user", content }],
     ...(thinkingEnabled
@@ -177,6 +196,20 @@ export async function rerank(opts: {
   });
 
   const finalMessage = await stream.finalMessage();
+
+  logLlmCall({
+    callSite: "rerank",
+    message: finalMessage,
+    requestId: stream.request_id,
+    feedId: opts.feedId,
+    ms: performance.now() - t0,
+    extra: {
+      candidates: candidates.length,
+      images: imagesAttached,
+      thinking: thinkingEnabled,
+    },
+  });
+
   // With thinking enabled the first content block is a ThinkingBlock; the
   // JSON ranking lives in the first TextBlock that follows.
   const outputTextBlock = finalMessage.content.find((b) => b.type === "text");

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError } from "@/lib/auth";
 import { getFeedForUser, createBranchedFeed } from "@/lib/pg";
 import { MAX_BRANCH_TOPICS } from "@/lib/branch";
+import { jsonError } from "@/lib/api";
 
 // Create a feed by branching off a post. The picked categories become the
 // feed's subqueries; lineage (parent_feed_id + source_post_uri) is recorded.
@@ -69,9 +70,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ feed });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Internal error";
-    console.error("Branch create API error:", e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+  } catch (e) {
+    return jsonError(e, "feeds/branch");
   }
 }

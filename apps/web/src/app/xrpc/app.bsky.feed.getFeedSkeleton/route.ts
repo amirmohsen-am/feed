@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseFeedGeneratorUri } from "@/lib/feedgen";
-import { getFeedSkeletonPosts, getPublishedFeed } from "@/lib/pg";
+import { getFeedSkeletonPage, getPublishedFeed } from "@/lib/pg";
 
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
@@ -17,13 +17,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ feed: [] });
   }
 
-  const posts = await getFeedSkeletonPosts(feed.id, limit, cursor);
+  const page = await getFeedSkeletonPage(feed.id, limit, cursor);
 
   return NextResponse.json({
-    feed: posts.map((p) => ({ post: p.uri })),
-    cursor:
-      posts.length === limit && posts.length > 0
-        ? posts[posts.length - 1].indexed_at
-        : undefined,
+    feed: page.uris.map((uri) => ({ post: uri })),
+    cursor: page.cursor,
   });
 }

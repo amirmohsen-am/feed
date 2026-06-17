@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Willow — Layout Explorations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@300;400;500&family=Inter:ital,wght@0,200;0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+:root{
+  --void:#060f0b;--jade:#1c3a2e;--sage:#6b9381;--sage-dim:#8fa89b;
+  --aurora:#7dcba5;--aurora-deep:#3e8a6c;--mist:#a8d5bd;
+  --amber:#e8b988;--ember:#e09575;--cream:#f3ecdd;
+  --parchment:#e6dcc7;--pdim:#a8b5a8;
+  --hair:rgba(243,236,221,0.14);--hair-s:rgba(243,236,221,0.28);
+  --d:'Instrument Serif',Georgia,serif;
+  --b:'Inter',system-ui,sans-serif;
+  --m:'DM Mono','SF Mono',monospace;
+}
+body{background:#000;color:var(--cream);font-family:var(--b);overflow-x:hidden;}
+
+/* ── SWITCHER ─────────────────────────────────────── */
+#sw{
+  position:fixed;top:0;left:0;right:0;z-index:9999;
+  height:44px;background:rgba(0,0,0,0.94);
+  backdrop-filter:blur(16px);
+  border-bottom:1px solid rgba(243,236,221,0.12);
+  display:flex;align-items:stretch;
+}
+#sw .sw-lbl{
+  display:flex;align-items:center;padding:0 18px;
+  border-right:1px solid rgba(243,236,221,0.1);
+  font-family:var(--m);font-size:9px;letter-spacing:.18em;
+  text-transform:uppercase;color:rgba(243,236,221,.28);white-space:nowrap;
+}
+.sw-tab{
+  display:flex;align-items:center;gap:8px;padding:0 20px;
+  font-family:var(--m);font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:rgba(243,236,221,.4);
+  background:none;border:none;border-right:1px solid rgba(243,236,221,.1);
+  cursor:pointer;transition:color .2s,background .2s;white-space:nowrap;
+}
+.sw-tab:hover{color:var(--cream);background:rgba(243,236,221,.04);}
+.sw-tab.on{color:var(--amber);background:rgba(232,185,136,.06);}
+.sw-tab .n{font-size:9px;color:rgba(243,236,221,.22);}
+.sw-tab.on .n{color:rgba(232,185,136,.6);}
+
+/* ── PANELS ───────────────────────────────────────── */
+.panel{display:none;min-height:100vh;padding-top:44px;}
+.panel.on{display:block;}
+
+/* ── SHARED SUB PILL ──────────────────────────────── */
+.sub-pill{
+  display:flex;align-items:stretch;
+  border:1px solid var(--hair-s);border-radius:999px;
+  background:rgba(243,236,221,.04);padding:4px;
+  transition:border-color .2s;
+}
+.sub-pill:focus-within{border-color:var(--amber);}
+.sub-pill input{
+  flex:1 1 180px;min-width:0;background:transparent;border:none;
+  padding:9px 16px;font-family:var(--b);font-size:15px;color:var(--cream);
+}
+.sub-pill input::placeholder{color:rgba(243,236,221,.35);}
+.sub-pill input:focus{outline:none;}
+.sub-pill button{
+  flex-shrink:0;border:none;cursor:pointer;border-radius:999px;
+  padding:0 22px;font-family:var(--m);font-size:10.5px;
+  letter-spacing:.14em;text-transform:uppercase;color:#1a0e04;
+  background:linear-gradient(135deg,#f0c89b,var(--amber));
+  transition:filter .18s;
+}
+.sub-pill button:hover{filter:brightness(1.08);}
+
+/* ══════════════════════════════════════════════════
+   LAYOUT 1 — ORBIT
+   Dark · Centered · Concentric rings · Pillars
+══════════════════════════════════════════════════ */
+#l1{background:#000;}
+.orb-nav{
+  position:absolute;top:0;left:0;right:0;z-index:10;
+  padding:22px 36px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.orb-brand{font-family:var(--d);font-size:22px;color:var(--cream);letter-spacing:-.01em;}
+.orb-btn{
+  font-family:var(--m);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:#000;text-decoration:none;background:var(--cream);
+  padding:9px 20px;border-radius:999px;transition:background .2s;
+}
+.orb-btn:hover{background:var(--amber);}
+
+.orb-hero{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  position:relative;overflow:hidden;text-align:center;
+  padding:80px 40px 140px;
+  background:radial-gradient(ellipse 90% 60% at 50% 40%,rgba(28,58,46,.18),transparent 70%);
+}
+.orb-rings{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;
+}
+.orb-rings svg{width:min(900px,130vw);opacity:.22;}
+.orb-ring{transform-origin:center;animation:breathe 9s ease-in-out infinite;}
+.orb-ring:nth-child(2){animation-delay:.9s;}
+.orb-ring:nth-child(3){animation-delay:1.8s;}
+.orb-ring:nth-child(4){animation-delay:2.7s;}
+.orb-ring:nth-child(5){animation-delay:3.6s;}
+@keyframes breathe{0%,100%{opacity:.25;transform:scale(1);}50%{opacity:.6;transform:scale(1.04);}}
+
+.orb-content{position:relative;z-index:2;max-width:900px;}
+.orb-badge{
+  display:inline-flex;align-items:center;gap:9px;
+  padding:6px 14px;border:1px solid rgba(125,203,165,.25);border-radius:999px;
+  background:rgba(125,203,165,.05);font-family:var(--m);font-size:10px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--aurora);margin-bottom:40px;
+}
+.orb-dot{
+  width:6px;height:6px;border-radius:50%;background:var(--aurora);
+  box-shadow:0 0 10px var(--aurora);animation:pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse{0%,100%{opacity:.9;}50%{opacity:.3;}}
+.orb-title{
+  font-family:var(--d);font-size:clamp(64px,10vw,128px);
+  line-height:.98;letter-spacing:-.02em;color:var(--cream);margin-bottom:18px;
+}
+.orb-sub{
+  font-family:var(--d);font-style:italic;
+  font-size:clamp(22px,3.2vw,44px);color:var(--sage-dim);
+  letter-spacing:-.01em;margin-bottom:72px;
+}
+.orb-pillars{
+  display:grid;grid-template-columns:repeat(3,1fr);
+  gap:28px;max-width:740px;margin:0 auto 64px;
+}
+.orb-pillar{display:flex;flex-direction:column;align-items:center;gap:10px;}
+.orb-icon{
+  width:76px;height:76px;border-radius:50%;
+  border:1px solid rgba(125,203,165,.2);
+  background:rgba(125,203,165,.05);
+  display:flex;align-items:center;justify-content:center;
+  margin-bottom:4px;
+}
+.orb-icon img{width:44px;height:44px;object-fit:contain;}
+.orb-pl{font-family:var(--b);font-weight:500;font-size:14px;color:var(--cream);}
+.orb-ps{font-family:var(--m);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--sage-dim);}
+.orb-cta{max-width:460px;margin:0 auto;}
+
+/* ══════════════════════════════════════════════════
+   LAYOUT 2 — CHRONICLE
+   50/50 split · Editorial left · Product mockup right
+══════════════════════════════════════════════════ */
+#l2{background:#000;}
+.chr-hero{
+  min-height:100vh;display:grid;grid-template-columns:1fr 1fr;
+  position:relative;
+}
+.chr-left{
+  padding:100px 60px 80px;
+  display:flex;flex-direction:column;justify-content:center;
+  border-right:1px solid var(--hair);position:relative;
+}
+.chr-brand{
+  font-family:var(--d);font-size:20px;color:var(--cream);
+  position:absolute;top:28px;left:60px;
+}
+.chr-kicker{
+  font-family:var(--m);font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--amber);margin-bottom:24px;margin-top:36px;
+}
+.chr-hl{
+  font-family:var(--d);font-size:clamp(38px,4.8vw,70px);
+  line-height:1.06;letter-spacing:-.02em;color:var(--cream);margin-bottom:28px;
+}
+.chr-hl em{font-style:italic;color:var(--amber);}
+.chr-desc{
+  font-size:17px;line-height:1.7;color:var(--parchment);
+  font-weight:300;max-width:460px;margin-bottom:40px;
+}
+.chr-tags{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:40px;}
+.chr-tag{
+  font-family:var(--m);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--sage-dim);padding:6px 13px;
+  border:1px solid rgba(125,203,165,.18);border-radius:999px;
+  background:rgba(125,203,165,.03);
+}
+.chr-actions{display:flex;align-items:center;gap:20px;}
+.chr-ghost{
+  font-family:var(--m);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--pdim);text-decoration:none;transition:color .2s;
+}
+.chr-ghost:hover{color:var(--cream);}
+
+.chr-right{
+  padding:80px 48px;display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,.012);
+}
+.chr-mk{
+  width:100%;max-width:500px;
+  border:1px solid var(--hair-s);border-radius:10px;overflow:hidden;
+  background:#0a1810;
+  box-shadow:0 28px 80px rgba(0,0,0,.6),inset 0 0 0 1px rgba(243,236,221,.04);
+}
+.chr-bar{
+  padding:11px 14px;border-bottom:1px solid var(--hair);
+  background:rgba(0,0,0,.5);display:flex;align-items:center;gap:8px;
+}
+.chr-dots{display:flex;gap:5px;}
+.chr-d{width:9px;height:9px;border-radius:50%;background:rgba(243,236,221,.14);}
+.chr-url{
+  font-family:var(--m);font-size:10px;color:var(--pdim);margin:0 auto;
+  padding:3px 12px;border-radius:999px;background:rgba(0,0,0,.6);border:1px solid var(--hair);
+}
+.chr-body{display:grid;grid-template-columns:200px 1fr;min-height:400px;}
+.chr-side{
+  padding:18px 14px;border-right:1px solid var(--hair);background:rgba(0,0,0,.35);
+}
+.chr-slbl{
+  font-family:var(--m);font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--pdim);margin-bottom:12px;padding:0 6px;
+}
+.chr-fi{
+  padding:10px;border-radius:5px;margin-bottom:2px;
+  display:flex;align-items:center;gap:8px;cursor:pointer;
+  transition:background .2s;border:1px solid transparent;
+}
+.chr-fi.a{background:rgba(125,203,165,.08);border-color:rgba(125,203,165,.18);}
+.chr-sw{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.chr-fn{font-family:var(--d);font-size:14px;color:var(--cream);}
+.chr-fk{font-family:var(--m);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--pdim);}
+.chr-main{padding:20px 22px;}
+.chr-mh{font-family:var(--d);font-size:22px;color:var(--cream);margin-bottom:4px;}
+.chr-ms{font-family:var(--d);font-style:italic;font-size:12px;color:var(--sage-dim);margin-bottom:16px;}
+.chr-p{padding:12px 0;border-bottom:1px solid var(--hair);}
+.chr-p:last-child{border-bottom:none;}
+.chr-ph{display:flex;align-items:center;gap:7px;margin-bottom:6px;}
+.chr-av{width:18px;height:18px;border-radius:50%;flex-shrink:0;}
+.chr-hnd{font-family:var(--m);font-size:9.5px;color:var(--parchment);letter-spacing:.04em;}
+.chr-tm{font-family:var(--m);font-size:9px;color:var(--pdim);margin-left:auto;}
+.chr-pb{font-size:12.5px;line-height:1.55;color:var(--parchment);font-weight:300;padding-left:25px;}
+.chr-pb em{color:var(--amber);font-style:normal;}
+
+/* ══════════════════════════════════════════════════
+   LAYOUT 3 — VOID
+   Ultra-minimal · Massive type · Numbered pillars
+══════════════════════════════════════════════════ */
+#l3{background:#000;}
+.vd-nav{
+  position:absolute;top:0;left:0;right:0;z-index:10;
+  padding:22px 48px;display:flex;align-items:center;justify-content:space-between;
+}
+.vd-brand{
+  font-family:var(--m);font-size:11px;letter-spacing:.22em;
+  text-transform:uppercase;color:rgba(243,236,221,.4);
+}
+.vd-try{
+  font-family:var(--m);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:rgba(243,236,221,.35);text-decoration:none;transition:color .2s;
+}
+.vd-try:hover{color:var(--cream);}
+.vd-hero{
+  min-height:100vh;display:flex;flex-direction:column;justify-content:center;
+  padding:120px 60px 100px;max-width:1280px;margin:0 auto;position:relative;
+}
+.vd-num{
+  font-family:var(--m);font-size:10px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--amber);opacity:.65;margin-bottom:32px;
+}
+.vd-title{
+  font-family:var(--d);font-size:clamp(72px,11.5vw,168px);
+  line-height:.95;letter-spacing:-.03em;color:var(--cream);
+}
+.vd-em{display:block;font-style:italic;color:var(--amber);}
+.vd-rule{width:100%;height:1px;background:var(--hair);margin:52px 0;}
+.vd-lower{display:grid;grid-template-columns:1.1fr 1fr;gap:80px;align-items:end;}
+.vd-desc{
+  font-size:20px;line-height:1.7;color:var(--parchment);font-weight:300;max-width:520px;
+}
+.vd-desc em{color:var(--amber);font-style:normal;}
+.vd-right{display:flex;flex-direction:column;gap:0;}
+.vd-pillar{
+  display:flex;align-items:center;gap:18px;
+  padding:18px 0;border-bottom:1px solid var(--hair);
+  transition:background .2s;
+}
+.vd-pillar:first-child{border-top:1px solid var(--hair);}
+.vd-pn{font-family:var(--m);font-size:10px;letter-spacing:.12em;color:rgba(232,185,136,.55);min-width:26px;}
+.vd-ptxt{flex:1;}
+.vd-pname{font-family:var(--d);font-size:20px;color:var(--cream);}
+.vd-psub{font-family:var(--m);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--sage-dim);margin-top:3px;}
+.vd-arr{color:var(--hair-s);font-size:20px;}
+.vd-cta{margin-top:48px;}
+.vd-clbl{
+  font-family:var(--m);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--pdim);margin-bottom:12px;
+}
+
+/* ══════════════════════════════════════════════════
+   LAYOUT 4 — SURFACE
+   Light mode · Clean SaaS · Feature grid
+══════════════════════════════════════════════════ */
+#l4{background:#f2ece0;color:#1a1510;}
+.sfc-nav{
+  position:absolute;top:0;left:0;right:0;z-index:10;
+  padding:0 40px;height:64px;
+  display:flex;align-items:center;justify-content:space-between;
+  background:rgba(242,236,224,.85);backdrop-filter:blur(12px);
+  border-bottom:1px solid rgba(26,21,16,.1);
+}
+.sfc-brand{font-family:var(--d);font-size:22px;color:#1a1510;letter-spacing:-.01em;}
+.sfc-links{display:flex;gap:28px;align-items:center;}
+.sfc-lnk{
+  font-family:var(--m);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:rgba(26,21,16,.5);text-decoration:none;transition:color .2s;
+}
+.sfc-lnk:hover{color:#1a1510;}
+.sfc-cta{
+  font-family:var(--m);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:#f2ece0;text-decoration:none;background:#1a1510;
+  padding:9px 18px;border-radius:999px;transition:background .2s;
+}
+.sfc-cta:hover{background:#3a2e22;}
+
+.sfc-hero{
+  min-height:100vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;
+  padding:140px 40px 120px;position:relative;overflow:hidden;
+}
+/* dot grid bg */
+.sfc-hero::before{
+  content:'';position:absolute;inset:0;
+  background-image:radial-gradient(circle at 1.5px 1.5px,rgba(26,21,16,.07) 1.5px,transparent 0);
+  background-size:36px 36px;pointer-events:none;
+}
+.sfc-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:6px 14px;border:1px solid rgba(26,21,16,.14);border-radius:999px;
+  background:rgba(26,21,16,.04);font-family:var(--m);font-size:10px;
+  letter-spacing:.14em;text-transform:uppercase;color:rgba(26,21,16,.55);
+  margin-bottom:32px;position:relative;z-index:1;
+}
+.sfc-bdot{width:6px;height:6px;border-radius:50%;background:var(--aurora-deep);animation:pulse 2.4s infinite;}
+.sfc-title{
+  font-family:var(--d);font-size:clamp(44px,6.5vw,90px);
+  line-height:1.08;letter-spacing:-.025em;color:#1a1510;
+  max-width:860px;margin-bottom:22px;position:relative;z-index:1;
+}
+.sfc-title em{font-style:italic;color:var(--aurora-deep);}
+.sfc-sub{
+  font-size:18px;line-height:1.7;color:rgba(26,21,16,.6);font-weight:300;
+  max-width:500px;margin:0 auto 44px;position:relative;z-index:1;
+}
+.sfc-form{max-width:440px;width:100%;margin:0 auto 36px;position:relative;z-index:1;}
+.sfc-pill{
+  display:flex;align-items:stretch;border:1px solid rgba(26,21,16,.18);
+  border-radius:999px;background:#fff;padding:4px;
+  box-shadow:0 2px 14px rgba(26,21,16,.08);transition:border-color .2s,box-shadow .2s;
+}
+.sfc-pill:focus-within{border-color:rgba(26,21,16,.4);box-shadow:0 4px 20px rgba(26,21,16,.12);}
+.sfc-pill input{
+  flex:1 1 180px;min-width:0;background:transparent;border:none;
+  padding:10px 18px;font-family:var(--b);font-size:15px;color:#1a1510;
+}
+.sfc-pill input::placeholder{color:rgba(26,21,16,.35);}
+.sfc-pill input:focus{outline:none;}
+.sfc-pill button{
+  flex-shrink:0;background:#1a1510;border:none;cursor:pointer;
+  border-radius:999px;padding:0 24px;font-family:var(--m);font-size:10.5px;
+  letter-spacing:.14em;text-transform:uppercase;color:#f2ece0;transition:background .2s;
+}
+.sfc-pill button:hover{background:#3a2e22;}
+.sfc-alt{
+  font-family:var(--m);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:rgba(26,21,16,.42);text-decoration:none;transition:color .2s;position:relative;z-index:1;
+}
+.sfc-alt:hover{color:#1a1510;}
+
+/* feature cards */
+.sfc-cards{
+  background:#1a1510;padding:80px 40px 100px;
+}
+.sfc-cards-inner{max-width:1120px;margin:0 auto;}
+.sfc-cards-lbl{
+  font-family:var(--m);font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  color:rgba(243,236,221,.35);margin-bottom:44px;
+  display:flex;align-items:center;gap:16px;
+}
+.sfc-cards-lbl::after{content:'';flex:1;height:1px;background:rgba(243,236,221,.1);}
+.sfc-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+  background:rgba(243,236,221,.1);border:1px solid rgba(243,236,221,.1);
+  border-radius:8px;overflow:hidden;
+}
+.sfc-card{
+  background:#1a1510;padding:40px 32px;
+  display:flex;flex-direction:column;gap:18px;
+  transition:background .3s;
+}
+.sfc-card:hover{background:#221c14;}
+.sfc-card-ico{
+  width:46px;height:46px;border-radius:9px;
+  border:1px solid rgba(243,236,221,.12);
+  display:flex;align-items:center;justify-content:center;
+}
+.sfc-card-ico img{width:26px;height:26px;object-fit:contain;}
+.sfc-card-name{font-family:var(--d);font-size:22px;color:var(--cream);}
+.sfc-card-kicker{font-family:var(--m);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);}
+.sfc-card-body{font-size:14.5px;line-height:1.65;color:var(--parchment);font-weight:300;}
+
+/* ── SHARED SECTIONS (mission + team + footer) ──── */
+.sec-mission{
+  padding:140px 40px;background:#000;
+}
+.sec-inner{max-width:1160px;margin:0 auto;}
+.sec-head{
+  font-family:var(--m);font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--amber);margin-bottom:56px;
+  display:flex;align-items:center;gap:16px;
+}
+.sec-head::before,.sec-head::after{content:'';height:1px;width:60px;background:var(--hair-s);}
+.ms-grid{display:grid;grid-template-columns:1fr 1.2fr;gap:80px;align-items:start;}
+.ms-left{position:sticky;top:80px;}
+.ms-title{
+  font-family:var(--d);font-size:clamp(38px,4.8vw,62px);
+  line-height:1.1;color:var(--cream);letter-spacing:-.015em;
+}
+.ms-title em{font-style:italic;color:var(--amber);}
+.ms-body{font-size:17.5px;line-height:1.75;color:var(--parchment);font-weight:300;}
+.ms-body p{margin-bottom:22px;}
+.ms-body em{color:var(--amber);font-style:normal;}
+
+.sec-team{padding:120px 40px;background:linear-gradient(180deg,#06100c 0%,#000 100%);}
+.team-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:44px;margin-top:56px;}
+.team-card{display:flex;flex-direction:column;gap:16px;}
+.team-photo{
+  width:72px;height:72px;border-radius:50%;overflow:hidden;
+  border:1px solid var(--hair-s);flex-shrink:0;
+}
+.team-photo img{width:100%;height:100%;object-fit:cover;filter:grayscale(15%);}
+.team-name{font-family:var(--d);font-size:19px;color:var(--cream);}
+.team-role{font-family:var(--m);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);}
+.team-bio{font-size:14.5px;line-height:1.7;color:var(--parchment);font-weight:300;}
+
+.pg-footer{
+  padding:44px 40px;border-top:1px solid var(--hair);background:#000;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.pg-fb{font-family:var(--d);font-size:20px;color:var(--cream);}
+.pg-fc{font-family:var(--m);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--pdim);}
+
+/* sfc footer (light sections flip to dark) */
+.sfc-mission{background:linear-gradient(180deg,#f2ece0 0%,#1a1510 20%);}
+.sfc-mission .sec-mission{background:transparent;padding-top:0;}
+</style>
+</head>
+<body>
+
+<!-- ── SWITCHER ─────────────────────────────────────── -->
+<div id="sw">
+  <div class="sw-lbl">Layout explorations</div>
+  <button class="sw-tab on" onclick="show(1)" id="t1"><span class="n">01</span> Orbit</button>
+  <button class="sw-tab" onclick="show(2)" id="t2"><span class="n">02</span> Chronicle</button>
+  <button class="sw-tab" onclick="show(3)" id="t3"><span class="n">03</span> Void</button>
+  <button class="sw-tab" onclick="show(4)" id="t4"><span class="n">04</span> Surface</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     LAYOUT 1 — ORBIT
+     Dark, centered, animated concentric rings, three pillars
+══════════════════════════════════════════════════ -->
+<div id="l1" class="panel on">
+  <section class="orb-hero">
+    <nav class="orb-nav">
+      <span class="orb-brand">willow</span>
+      <a href="/curator" class="orb-btn">Try it out →</a>
+    </nav>
+
+    <!-- Animated rings SVG -->
+    <div class="orb-rings">
+      <svg viewBox="0 0 900 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle class="orb-ring" cx="450" cy="450" r="80"  stroke="#7dcba5" stroke-width="1"/>
+        <circle class="orb-ring" cx="450" cy="450" r="150" stroke="#7dcba5" stroke-width="0.8"/>
+        <circle class="orb-ring" cx="450" cy="450" r="225" stroke="#7dcba5" stroke-width="0.7"/>
+        <circle class="orb-ring" cx="450" cy="450" r="310" stroke="#7dcba5" stroke-width="0.55"/>
+        <circle class="orb-ring" cx="450" cy="450" r="400" stroke="#7dcba5" stroke-width="0.4"/>
+      </svg>
+    </div>
+
+    <div class="orb-content">
+      <div class="orb-badge">
+        <span class="orb-dot"></span>
+        Now open to early access
+      </div>
+      <h1 class="orb-title">willow</h1>
+      <p class="orb-sub">Transparency into your feed.</p>
+
+      <div class="orb-pillars">
+        <div class="orb-pillar">
+          <div class="orb-icon">
+            <img src="/images/pillars/feed-curation.png" alt="">
+          </div>
+          <span class="orb-pl">Feed curation</span>
+          <span class="orb-ps">Choose your feed</span>
+        </div>
+        <div class="orb-pillar">
+          <div class="orb-icon">
+            <img src="/images/pillars/user-identification.png" alt="">
+          </div>
+          <span class="orb-pl">User identification</span>
+          <span class="orb-ps">See who's real</span>
+        </div>
+        <div class="orb-pillar">
+          <div class="orb-icon">
+            <img src="/images/pillars/content-validation.png" alt="">
+          </div>
+          <span class="orb-pl">Content validation</span>
+          <span class="orb-ps">See what's true</span>
+        </div>
+      </div>
+
+      <div class="orb-cta">
+        <div class="sub-pill">
+          <input type="email" placeholder="your@email.com">
+          <button>Get Updates</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Mission -->
+  <section class="sec-mission">
+    <div class="sec-inner">
+      <div class="sec-head">The Mission</div>
+      <div class="ms-grid">
+        <div class="ms-left">
+          <h2 class="ms-title">Built for <em>people,</em><br>not platforms.</h2>
+        </div>
+        <div class="ms-body">
+          <p>Modern social feeds are built to maximize a single metric: <em>engagement</em>. This is not a novel insight. However, as algorithms have gotten better, the problem has become more acute. At the same time, new technologies have made fake users, content and interactions indistinguishable from real ones.</p>
+          <p>The old solution was "just stop using social media." But as our lives have moved online more and more, the lines around what is and isn't social media have blurred. Avoidance is both more difficult and more restrictive to our own growth and goals.</p>
+          <p>New technologies that create new problems require better technology, not avoidance. The solution to fatal car crashes is <em>seatbelts</em>, not ditching cars for horses.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Team -->
+  <section class="sec-team sec-inner" style="max-width:100%;">
+    <div style="max-width:1160px;margin:0 auto;">
+      <div class="sec-head">The Team</div>
+      <div class="team-grid">
+        <div class="team-card">
+          <div class="team-photo"><img src="/images/christian.jpg" alt="Christian Neizonek"></div>
+          <div class="team-name">Christian Neizonek</div>
+          <div class="team-role">Engineer, Father</div>
+          <div class="team-bio">Worked in robotics for 10 years. Pivoting to the most important problems in our world today. Building online spaces that make people their best selves.</div>
+        </div>
+        <div class="team-card">
+          <div class="team-photo"><img src="/images/ohm.jpg" alt="Ohm Patel"></div>
+          <div class="team-name">Ohm Patel</div>
+          <div class="team-role">Engineer</div>
+          <div class="team-bio">Former content creator turned engineer. Building better incentive systems for social media — feeds that serve people, not platforms.</div>
+        </div>
+        <div class="team-card">
+          <div class="team-photo"><img src="/images/amir.jpg" alt="Amir Ahanchi"></div>
+          <div class="team-name">Amir Ahanchi</div>
+          <div class="team-role">Engineer</div>
+          <div class="team-bio">Engineer with years in the social media space. Deeply caring about intentional living, agency, and the need for open platforms people can truly trust.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="pg-footer">
+    <span class="pg-fb">willow</span>
+    <span class="pg-fc">© 2026</span>
+  </footer>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     LAYOUT 2 — CHRONICLE
+     50/50 split: editorial left, product mockup right
+══════════════════════════════════════════════════ -->
+<div id="l2" class="panel">
+  <section class="chr-hero">
+    <div class="chr-left">
+      <span class="chr-brand">willow</span>
+      <div class="chr-kicker">Early access — Bluesky</div>
+      <h1 class="chr-hl">The feed you <em>actually</em> want.</h1>
+      <p class="chr-desc">Curate your Bluesky feed with AI. See who's real, know what's true, read what matters.</p>
+      <div class="chr-tags">
+        <span class="chr-tag">Feed curation</span>
+        <span class="chr-tag">User identification</span>
+        <span class="chr-tag">Content validation</span>
+      </div>
+      <div class="chr-actions">
+        <div class="sub-pill" style="flex:1;max-width:360px;">
+          <input type="email" placeholder="your@email.com">
+          <button>Join</button>
+        </div>
+        <a href="/curator" class="chr-ghost">Try it out →</a>
+      </div>
+    </div>
+
+    <div class="chr-right">
+      <!-- Product UI mockup -->
+      <div class="chr-mk">
+        <div class="chr-bar">
+          <div class="chr-dots">
+            <div class="chr-d"></div>
+            <div class="chr-d"></div>
+            <div class="chr-d"></div>
+          </div>
+          <div class="chr-url">amadi.social/curator</div>
+        </div>
+        <div class="chr-body">
+          <div class="chr-side">
+            <div class="chr-slbl">Your feeds</div>
+            <div class="chr-fi a">
+              <div class="chr-sw" style="background:#7dcba5;box-shadow:0 0 8px #7dcba5;"></div>
+              <div>
+                <div class="chr-fn">Tech news</div>
+                <div class="chr-fk">12 topics</div>
+              </div>
+            </div>
+            <div class="chr-fi">
+              <div class="chr-sw" style="background:#e8b988;"></div>
+              <div>
+                <div class="chr-fn">Climate</div>
+                <div class="chr-fk">8 topics</div>
+              </div>
+            </div>
+            <div class="chr-fi">
+              <div class="chr-sw" style="background:#d88575;"></div>
+              <div>
+                <div class="chr-fn">Design</div>
+                <div class="chr-fk">6 topics</div>
+              </div>
+            </div>
+            <div class="chr-fi">
+              <div class="chr-sw" style="background:#a8d5bd;"></div>
+              <div>
+                <div class="chr-fn">Science</div>
+                <div class="chr-fk">15 topics</div>
+              </div>
+            </div>
+          </div>
+          <div class="chr-main">
+            <div class="chr-mh">Tech news</div>
+            <div class="chr-ms">AI · Open source · Startups</div>
+            <div class="chr-p">
+              <div class="chr-ph">
+                <div class="chr-av" style="background:linear-gradient(135deg,#7dcba5,#1c3a2e);"></div>
+                <span class="chr-hnd">@researcher.bsky.social</span>
+                <span class="chr-tm">2m</span>
+              </div>
+              <div class="chr-pb">New paper on transformer efficiency — <em>3× speedup</em> with no accuracy loss. Open source weights dropping this week.</div>
+            </div>
+            <div class="chr-p">
+              <div class="chr-ph">
+                <div class="chr-av" style="background:linear-gradient(135deg,#e8b988,#6b9381);"></div>
+                <span class="chr-hnd">@devtools.bsky.social</span>
+                <span class="chr-tm">8m</span>
+              </div>
+              <div class="chr-pb">The open-source LLM ecosystem is moving faster than anyone expected. Here's what's worth watching this month.</div>
+            </div>
+            <div class="chr-p">
+              <div class="chr-ph">
+                <div class="chr-av" style="background:linear-gradient(135deg,#3e8a6c,#060f0b);"></div>
+                <span class="chr-hnd">@infra.bsky.social</span>
+                <span class="chr-tm">14m</span>
+              </div>
+              <div class="chr-pb">Bluesky just crossed <em>30M users</em>. The AT Protocol is proving out at scale.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Mission -->
+  <section class="sec-mission">
+    <div class="sec-inner">
+      <div class="sec-head">The Mission</div>
+      <div class="ms-grid">
+        <div class="ms-left">
+          <h2 class="ms-title">Better tech,<br>not <em>avoidance.</em></h2>
+        </div>
+        <div class="ms-body">
+          <p>Modern social feeds are built to maximize a single metric: <em>engagement</em>. As algorithms have gotten better, the problem has become more acute. At the same time, new technologies have made fake users, content and interactions indistinguishable from real ones.</p>
+          <p>New open protocols eliminate walled gardens and bake transparency into algorithms and platforms. Authentication technologies make fake content explicit. LLMs give users more fine grained control of their information stream.</p>
+          <p>Together these can make our digital experiences <em>radically healthier.</em></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Team -->
+  <section class="sec-team" style="padding:120px 40px;">
+    <div style="max-width:1160px;margin:0 auto;">
+      <div class="sec-head">The Team</div>
+      <div class="team-grid">
+        <div class="team-card">
+          <div class="team-photo"><img src="/images/christian.jpg" alt="Christian Neizonek"></div>
+          <div class="team-name">Christian Neizonek</div>
+          <div class="team-role">Engineer, Father</div>
+          <div class="team-bio">Worked in robotics for 10 years. Pivoting to the most important problems in our world today.</div>
+        </div>
+        <div class="team-card">
+          <div class="team-photo"><img src="/images/ohm.jpg" alt="Ohm Patel"></div>
+          <div class="team-name">Ohm Patel</div>
+          <div class="team-role">Engineer</div>
+          <div class="team-bio">Former content creator turned engineer. Building better incentive systems for social media.</div>
+        </div>
+        <div class="team-card">
+          <div class="team-photo"><img src="/images/amir.jpg" alt="Amir Ahanchi"></div>
+          <div class="team-name">Amir Ahanchi</div>
+          <div class="team-role">Engineer</div>
+          <div class="team-bio">Engineer with years in social media. Deeply caring about intentional living and open platforms.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="pg-footer">
+    <span class="pg-fb">willow</span>
+    <span class="pg-fc">© 2026</span>
+  </footer>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     LAYOUT 3 — VOID
+     Ultra-minimal, massive type, numbered pillars
+══════════════════════════════════════════════════ -->
+<div id="l3" class="panel">
+  <section class="vd-hero">
+    <nav class="vd-nav">
+      <span class="vd-brand">willow</span>
+      <a href="/curator" class="vd-try">Try it out →</a>
+    </nav>
+
+    <div class="vd-num">001 / transparency</div>
+    <h1 class="vd-title">
+      willow<span class="vd-em">feeds</span>
+    </h1>
+
+    <div class="vd-rule"></div>
+
+    <div class="vd-lower">
+      <div>
+        <p class="vd-desc">
+          Curate your Bluesky feed with AI. Know who's real, see what's true,
+          read what <em>actually matters to you.</em>
+        </p>
+      </div>
+      <div class="vd-right">
+        <div class="vd-pillar">
+          <span class="vd-pn">01</span>
+          <div class="vd-ptxt">
+            <div class="vd-pname">Feed curation</div>
+            <div class="vd-psub">Choose your feed</div>
+          </div>
+          <span class="vd-arr">→</span>
+        </div>
+        <div class="vd-pillar">
+          <span class="vd-pn">02</span>
+          <div class="vd-ptxt">
+            <div class="vd-pname">User identification</div>
+            <div class="vd-psub">See who's real</div>
+          </div>
+          <span class="vd-arr">→</span>
+        </div>
+        <div class="vd-pillar">
+          <span class="vd-pn">03</span>
+          <div class="vd-ptxt">
+            <div class="vd-pname">Content validation</div>
+            <div class="vd-psub">See what's true</div>
+          </div>
+          <span class="vd-arr">→</span>
+        </div>
+        <div class="vd-cta">
+          <div class="vd-clbl">Get Updates</div>
+          <div class="sub-pill">
+            <input type="email" placeholder="your@email.com">
+            <button>Join</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Mission -->
+  <section class="sec-mission">
+    <div class="sec-inner">
+      <div class="sec-head">The Mission</div>
+      <div class="ms-grid">
+        <div class="ms-left">
+          <h2 class="ms-title"><em>Seatbelts,</em><br>not horses.</h2>
+        </div>
+        <div class="ms-body">
+          <p>Modern social feeds are built to maximize a single metric: <em>engagement</em>. As algorithms have gotten better, the problem has become more acute.</p>
+          <p>New open protocols eliminate walled gardens and bake transparency into platforms. LLMs give users more fine-grained control of their information stream. Together, these can make our digital experiences <em>radically healthier.</em></p>
+          <p>The solution to fatal car crashes is seatbelts — not ditching cars for horses.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Team -->
+  <section class="sec-team" style="padding:120px 40px;">
+    <div style="max-width:1160px;margin:0 auto;">
+      <div class="sec-head">The Team</div>
+      <div class="team-grid">
+        <div class="team-card">
+          <div class="team-photo"><img src="/images/christian.jpg" alt="Christian Neizonek"></div>
+          <div class="team-name">Christian Neizonek</div>
+          <div class="team-role">Engineer, Father</div>
+          <div class="team-bio">Worked in robotics for 10 years. Pivoting to the most important problems in our world today.</div>
+        </div>
+        <div class="team-card">
+          <div class="team-photo"><img src="/images/ohm.jpg" alt="Ohm Patel"></div>
+          <div class="team-name">Ohm Patel</div>
+          <div class="team-role">Engineer</div>
+          <div class="team-bio">Former content creator turned engineer. Building better incentive systems for social media.</div>
+        </div>
+        <div class="team-card">
+          <div class="team-photo"><img src="/images/amir.jpg" alt="Amir Ahanchi"></div>
+          <div class="team-name">Amir Ahanchi</div>
+          <div class="team-role">Engineer</div>
+          <div class="team-bio">Engineer with years in social media. Deeply caring about intentional living and open platforms.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="pg-footer">
+    <span class="pg-fb">willow</span>
+    <span class="pg-fc">© 2026</span>
+  </footer>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     LAYOUT 4 — SURFACE
+     Light mode, clean SaaS, feature card grid
+══════════════════════════════════════════════════ -->
+<div id="l4" class="panel">
+  <section class="sfc-hero">
+    <nav class="sfc-nav">
+      <span class="sfc-brand">willow</span>
+      <div class="sfc-links">
+        <a href="#" class="sfc-lnk">Mission</a>
+        <a href="#" class="sfc-lnk">Team</a>
+        <a href="/curator" class="sfc-cta">Try it out →</a>
+      </div>
+    </nav>
+
+    <div class="sfc-badge">
+      <span class="sfc-bdot"></span>
+      Early access — Bluesky
+    </div>
+    <h1 class="sfc-title">
+      Your feed, <em>curated</em> by you.
+    </h1>
+    <p class="sfc-sub">
+      Tell Willow what you want to read. It builds a Bluesky feed around your interests — and filters out the noise.
+    </p>
+    <div class="sfc-form">
+      <div class="sfc-pill">
+        <input type="email" placeholder="your@email.com">
+        <button>Get Updates</button>
+      </div>
+    </div>
+    <a href="/curator" class="sfc-alt">Or try it now →</a>
+  </section>
+
+  <!-- Feature cards -->
+  <div class="sfc-cards">
+    <div class="sfc-cards-inner">
+      <div class="sfc-cards-lbl">What willow does</div>
+      <div class="sfc-grid">
+        <div class="sfc-card">
+          <div class="sfc-card-ico">
+            <img src="/images/pillars/feed-curation.png" alt="">
+          </div>
+          <div>
+            <div class="sfc-card-name">Feed curation</div>
+            <div class="sfc-card-kicker">Choose your feed</div>
+          </div>
+          <div class="sfc-card-body">
+            Chat with an AI agent about what you want to read. It builds and refines a Bluesky feed around your interests — not an algorithm's ad revenue.
+          </div>
+        </div>
+        <div class="sfc-card">
+          <div class="sfc-card-ico">
+            <img src="/images/pillars/user-identification.png" alt="">
+          </div>
+          <div>
+            <div class="sfc-card-name">User identification</div>
+            <div class="sfc-card-kicker">See who's real</div>
+          </div>
+          <div class="sfc-card-body">
+            Know which accounts are authentic humans versus bots or AI personas. Bluesky's open protocol makes verification possible at scale.
+          </div>
+        </div>
+        <div class="sfc-card">
+          <div class="sfc-card-ico">
+            <img src="/images/pillars/content-validation.png" alt="">
+          </div>
+          <div>
+            <div class="sfc-card-name">Content validation</div>
+            <div class="sfc-card-kicker">See what's true</div>
+          </div>
+          <div class="sfc-card-body">
+            Surface context and credibility signals alongside posts. Know when something is contested, verified, or requires more nuance.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mission (dark on light) -->
+  <div class="sfc-mission">
+    <section class="sec-mission">
+      <div class="sec-inner">
+        <div class="sec-head">The Mission</div>
+        <div class="ms-grid">
+          <div class="ms-left">
+            <h2 class="ms-title">Built for <em>people,</em><br>not platforms.</h2>
+          </div>
+          <div class="ms-body">
+            <p>Modern social feeds are built to maximize a single metric: <em>engagement</em>. As algorithms have gotten better, the problem has become more acute.</p>
+            <p>New open protocols eliminate walled gardens and bake transparency into platforms. LLMs give users more fine-grained control of their information stream. Together, these can make digital experiences <em>radically healthier.</em></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec-team" style="padding:80px 40px 120px;">
+      <div style="max-width:1160px;margin:0 auto;">
+        <div class="sec-head">The Team</div>
+        <div class="team-grid">
+          <div class="team-card">
+            <div class="team-photo"><img src="/images/christian.jpg" alt="Christian Neizonek"></div>
+            <div class="team-name">Christian Neizonek</div>
+            <div class="team-role">Engineer, Father</div>
+            <div class="team-bio">Worked in robotics for 10 years. Pivoting to the most important problems in our world today.</div>
+          </div>
+          <div class="team-card">
+            <div class="team-photo"><img src="/images/ohm.jpg" alt="Ohm Patel"></div>
+            <div class="team-name">Ohm Patel</div>
+            <div class="team-role">Engineer</div>
+            <div class="team-bio">Former content creator turned engineer. Building better incentive systems for social media.</div>
+          </div>
+          <div class="team-card">
+            <div class="team-photo"><img src="/images/amir.jpg" alt="Amir Ahanchi"></div>
+            <div class="team-name">Amir Ahanchi</div>
+            <div class="team-role">Engineer</div>
+            <div class="team-bio">Engineer with years in social media. Deeply caring about intentional living and open platforms.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="pg-footer">
+      <span class="pg-fb">willow</span>
+      <span class="pg-fc">© 2026</span>
+    </footer>
+  </div>
+</div>
+
+<script>
+function show(n) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
+  document.querySelectorAll('.sw-tab').forEach(t => t.classList.remove('on'));
+  document.getElementById('l' + n).classList.add('on');
+  document.getElementById('t' + n).classList.add('on');
+  window.scrollTo(0, 0);
+}
+</script>
+</body>
+</html>

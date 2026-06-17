@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Send button — simple, elegant</title>
+<style>
+  :root{
+    --paper: #fbfaf6;
+    --paper-2: #f5f2e9;
+    --ink: #0b1814;
+    --ink-2: #3a4a44;
+    --ink-3: #6a7570;
+    --ink-4: #a8b0ab;
+    --hair: rgba(11,24,20,0.08);
+    --hair-strong: rgba(11,24,20,0.16);
+    --aurora: #7dcba5;
+    --aurora-deep: #3e8a6c;
+    --amber: #e8b988;
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin: 0; background: #e9e6dc;
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); padding: 32px 24px 64px;
+  }
+  h1{ font-weight: 500; font-size: 22px; margin: 0 0 4px; }
+  .lead{ color: var(--ink-3); font-size: 14px; margin: 0 0 28px; max-width: 720px; line-height: 1.5; }
+  .grid{ display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+  .option{ width: 340px; }
+  .option .tag{
+    display: inline-block; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--aurora-deep); background: rgba(125,203,165,0.18);
+    border-radius: 999px; padding: 2px 8px; margin-bottom: 6px;
+  }
+  .option h2{ font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+  .option .notes{ font-size: 12px; color: var(--ink-3); line-height: 1.5; margin: 10px 0 0; }
+  .option .notes b{ color: var(--ink-2); }
+  .frame{
+    background: var(--paper);
+    border: 1px solid var(--hair-strong);
+    border-radius: 14px;
+    padding: 18px 16px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .ctx{ display: flex; align-items: center; gap: 8px; width: 100%; }
+  .pill{
+    flex: 1;
+    background: rgba(255,255,255,0.94);
+    border: 1px solid var(--hair-strong);
+    border-radius: 999px;
+    padding: 11px 18px;
+    font-size: 13px; color: var(--ink-4);
+    box-shadow: 0 6px 24px rgba(11,24,20,0.1);
+  }
+  .states{
+    display: flex; gap: 18px; align-items: center; justify-content: center;
+    padding-top: 2px;
+    font-size: 10px; color: var(--ink-4); text-transform: uppercase; letter-spacing: 0.07em;
+  }
+  .states .s{ display: flex; flex-direction: column; gap: 6px; align-items: center; }
+
+  .btn{
+    position: relative;
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    border: none; cursor: pointer;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+    transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease,
+                box-shadow 0.18s ease, color 0.18s ease, opacity 0.18s ease;
+  }
+  .btn svg{ transition: transform 0.18s ease; }
+  .btn:active{ transform: scale(0.94); }
+  .btn.is-disabled{ opacity: 0.35; cursor: default; pointer-events: none; }
+
+  /* A: ink solid */
+  .a{ background: var(--ink); color: #fff; }
+  .a:hover{ background: var(--ink-2); }
+  .a:hover svg{ transform: translateY(-1.5px); }
+
+  /* B: aurora solid */
+  .b{ background: var(--aurora-deep); color: #fff; box-shadow: 0 2px 10px rgba(62,138,108,0.35); }
+  .b:hover{ background: #347a5e; box-shadow: 0 3px 14px rgba(62,138,108,0.45); }
+  .b:hover svg{ transform: translateY(-1.5px); }
+
+  /* C: ghost hairline that fills on hover */
+  .c{ background: #fff; color: var(--ink); border: 1px solid var(--hair-strong); }
+  .c:hover{ background: var(--ink); color: #fff; border-color: var(--ink); }
+  .c:hover svg{ transform: translateY(-1.5px); }
+
+  /* D: duotone green, soft top light */
+  .d{
+    background: linear-gradient(180deg, #4d9c7c 0%, #356f57 100%);
+    color: #fdfbf4;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.32),
+      0 2px 8px rgba(11,24,20,0.18);
+  }
+  .d:hover{ filter: brightness(1.07); }
+  .d:hover svg{ transform: translateY(-1.5px); }
+
+  /* E: ink with aurora ring on hover/focus */
+  .e{ background: var(--ink); color: #fff; }
+  .e:hover{ box-shadow: 0 0 0 3px rgba(125,203,165,0.45); }
+  .e:hover svg{ transform: translateY(-1.5px); }
+
+  /* F: paper relief */
+  .f{
+    background: var(--paper-2);
+    color: var(--ink);
+    border: 1px solid var(--hair-strong);
+    box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgba(11,24,20,0.1);
+  }
+  .f:hover{ background: var(--amber); border-color: transparent; }
+  .f:hover svg{ transform: translateY(-1.5px); }
+</style>
+</head>
+<body>
+  <h1>Send button: simple and elegant</h1>
+  <p class="lead">
+    No shaders, no glow. Six restrained takes on a 42px circle with a crisp arrow.
+    Hover any button: the elegance budget went into the micro-interactions, a gentle
+    arrow lift, a quiet color shift, a press-down on tap. Each card also shows the disabled state.
+  </p>
+
+  <div class="grid" id="grid"></div>
+
+<script>
+  const ARROW = w => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const OPTIONS = [
+    { k: "a", name: "Ink", stroke: 2.2, notes: "<b>The quiet default.</b> Solid ink circle, white arrow, hover warms to the lighter ink and the arrow lifts a pixel. Disappears into the design system, never wrong." },
+    { k: "b", name: "Aurora", stroke: 2.2, notes: "<b>The brand accent.</b> Solid aurora green with a soft same-hue shadow, the one saturated dot in the composer. Matches the live badge and pipeline light." },
+    { k: "c", name: "Ghost, fills on hover", stroke: 2.2, notes: "<b>The lightest touch.</b> White with a hairline border and ink arrow; hovering floods it ink and flips the arrow white. At rest it is almost part of the input pill." },
+    { k: "d", name: "Duotone green", stroke: 2.2, notes: "<b>Soft dimension.</b> A barely-there vertical gradient and a 1px inner top light give it the gentle convexity of a real key without any skeuomorphic noise." },
+    { k: "e", name: "Ink, aurora halo", stroke: 2.2, notes: "<b>Ink with a tell.</b> Same as the ink button at rest, but hover and focus draw a thin aurora halo, a restrained nod to the exotic version it replaces." },
+    { k: "f", name: "Paper relief, amber hover", stroke: 2.2, notes: "<b>Editorial.</b> Pressed-paper button that sits flush with the palette at rest and turns warm amber on hover. The most distinctive at-rest shape without using color." },
+  ];
+  document.getElementById("grid").innerHTML = OPTIONS.map((o, i) => `
+    <div class="option">
+      <span class="tag">Option ${o.k.toUpperCase()}</span>
+      <h2>${o.name}</h2>
+      <div class="frame">
+        <div class="ctx">
+          <div class="pill">Describe your ideal feed…</div>
+          <button class="btn ${o.k}">${ARROW(o.stroke)}</button>
+        </div>
+        <div class="states">
+          <div class="s"><button class="btn ${o.k}">${ARROW(o.stroke)}</button><span>enabled</span></div>
+          <div class="s"><button class="btn ${o.k} is-disabled">${ARROW(o.stroke)}</button><span>disabled</span></div>
+        </div>
+      </div>
+      <p class="notes">${o.notes}</p>
+    </div>`).join("");
+</script>
+</body>
+</html>

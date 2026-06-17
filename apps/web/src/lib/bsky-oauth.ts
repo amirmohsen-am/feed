@@ -113,6 +113,12 @@ function pgSessionStore(): NodeSavedSessionStore {
 
 let _client: NodeOAuthClient | null = null;
 
+// Granular scopes — only what the app actually does with the user's repo:
+// create replies/quotes (never edit/delete posts), like/unlike, repost/unrepost,
+// and publish feed generator records. No blob, rpc, profile, or follow access.
+const BSKY_OAUTH_SCOPE =
+  "atproto repo:app.bsky.feed.post?action=create repo:app.bsky.feed.like repo:app.bsky.feed.repost repo:app.bsky.feed.generator";
+
 function getPublicUrl(): string {
   // In production, this must be the publicly accessible HTTPS URL.
   // Locally, use 127.0.0.1 (not "localhost") per RFC 8252.
@@ -136,25 +142,25 @@ export function getBskyOAuthClient(): NodeOAuthClient {
     // the client_id points at the real HTTPS metadata endpoint.
     clientMetadata: IS_LOCAL_DEV
       ? {
-          client_id: `http://localhost?redirect_uri=${encodeURIComponent(`${publicUrl}/oauth/callback`)}&scope=${encodeURIComponent("atproto transition:generic")}`,
-          client_name: "Willow Feed (dev)",
+          client_id: `http://localhost?redirect_uri=${encodeURIComponent(`${publicUrl}/oauth/callback`)}&scope=${encodeURIComponent(BSKY_OAUTH_SCOPE)}`,
+          client_name: "amadi (dev)",
           client_uri: publicUrl,
           redirect_uris: [`${publicUrl}/oauth/callback`],
           grant_types: ["authorization_code", "refresh_token"],
           response_types: ["code"],
-          scope: "atproto transition:generic",
+          scope: BSKY_OAUTH_SCOPE,
           token_endpoint_auth_method: "none",
           application_type: "web",
           dpop_bound_access_tokens: true,
         }
       : {
           client_id: `${publicUrl}/oauth/client-metadata.json`,
-          client_name: "Willow Feed",
+          client_name: "amadi",
           client_uri: publicUrl,
           redirect_uris: [`${publicUrl}/oauth/callback`],
           grant_types: ["authorization_code", "refresh_token"],
           response_types: ["code"],
-          scope: "atproto transition:generic",
+          scope: BSKY_OAUTH_SCOPE,
           token_endpoint_auth_method: "none",
           application_type: "web",
           dpop_bound_access_tokens: true,
@@ -173,7 +179,7 @@ export function getBskyOAuthClient(): NodeOAuthClient {
 export async function startBskyOAuth(handle: string): Promise<string> {
   const client = getBskyOAuthClient();
   const url = await client.authorize(handle, {
-    scope: "atproto transition:generic",
+    scope: BSKY_OAUTH_SCOPE,
   });
   return url.toString();
 }

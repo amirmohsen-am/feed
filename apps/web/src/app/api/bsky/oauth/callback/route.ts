@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth";
 import { handleBskyOAuthCallback } from "@/lib/bsky-oauth";
 import { linkBlueskyAccount } from "@/lib/link-bluesky";
 import { SESSION_COOKIE } from "@/lib/session";
+import { jsonError } from "@/lib/api";
 
 /**
  * POST /api/bsky/oauth/callback
@@ -49,8 +50,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, did, handle, userId });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.warn("[bsky/oauth/callback] error:", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return jsonError(e, "bsky/oauth/callback");
   }
 }

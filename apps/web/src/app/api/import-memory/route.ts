@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { requireAuth } from "@/lib/auth";
+import { enforceRateLimit, LLM_RULES } from "@/lib/rate-limit";
 import { createFeed, updateFeed } from "@/lib/pg";
 import { ensureEnvFromSecret } from "@/lib/secrets";
 
@@ -47,6 +48,8 @@ const TOOLS: Anthropic.Tool[] = [
 ];
 
 export async function POST(req: NextRequest) {
+  const limited = enforceRateLimit(req, "import-memory", LLM_RULES);
+  if (limited) return limited;
   const auth = await requireAuth();
 
   const { memoryText, source } = await req.json();
