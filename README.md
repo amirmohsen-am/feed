@@ -89,9 +89,9 @@ Keyed on the client IP (rightmost `X-Forwarded-For` entry). Over-limit requests 
 
 | Tier | Limits (per IP) | Routes |
 |---|---|---|
-| `LLM_RULES` | 20/min, 300/day | `/api/chat`, `/api/search`, `/api/import-memory`, `/api/branch/options`, `/api/feed-preview/stream` |
-| `EXPENSIVE_RULES` | 6/min, 40/hr, 80/day | `/api/introspect/fetch`, `/api/introspect/process-batch` (multi-call / heavy fan-out) |
-| `HIVE_RULES` | 100/min, 1000/hr, 4000/day | `/api/ai-label` (fires one request per image-bearing post on every feed load) |
+| `LLM_RULES` | 200/min, 3000/day | `/api/chat`, `/api/search`, `/api/import-memory`, `/api/branch/options`, `/api/feed-preview/stream` |
+| `EXPENSIVE_RULES` | 60/min, 400/hr, 800/day | `/api/introspect/fetch`, `/api/introspect/process-batch` (multi-call / heavy fan-out) |
+| `HIVE_RULES` | 1000/min, 10000/hr, 40000/day | `/api/ai-label` (fires one request per image-bearing post on every feed load) |
 
 **Bypass / tuning** (env vars on the `feed-web` service):
 
