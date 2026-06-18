@@ -31,15 +31,15 @@ const DAY = 24 * HOUR;
 
 /** Default tier for single-LLM-call routes (chat, search, branch, etc.). */
 export const LLM_RULES: RateRule[] = [
-  { windowMs: MINUTE, max: 20 },
-  { windowMs: DAY, max: 300 },
+  { windowMs: MINUTE, max: 200 },
+  { windowMs: DAY, max: 3000 },
 ];
 
 /** Stricter tier for the multi-call / heavy-fanout introspect routes. */
 export const EXPENSIVE_RULES: RateRule[] = [
-  { windowMs: MINUTE, max: 6 },
-  { windowMs: HOUR, max: 40 },
-  { windowMs: DAY, max: 80 },
+  { windowMs: MINUTE, max: 60 },
+  { windowMs: HOUR, max: 400 },
+  { windowMs: DAY, max: 800 },
 ];
 
 /**
@@ -51,9 +51,9 @@ export const EXPENSIVE_RULES: RateRule[] = [
  * cold-cache / attacker case (unique URLs → real Hive spend).
  */
 export const HIVE_RULES: RateRule[] = [
-  { windowMs: MINUTE, max: 100 },
-  { windowMs: HOUR, max: 1000 },
-  { windowMs: DAY, max: 4000 },
+  { windowMs: MINUTE, max: 1000 },
+  { windowMs: HOUR, max: 10000 },
+  { windowMs: DAY, max: 40000 },
 ];
 
 /**
