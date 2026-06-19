@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ripple Feed — Design Styles</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,300;1,9..144,400&family=Caveat:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
+<style>
+  /* ------------------------------------------------------------------ */
+  /*  Page shell                                                          */
+  /* ------------------------------------------------------------------ */
+  :root {
+    --ink:      #0b1814;
+    --ink-2:    #3a4a44;
+    --ink-3:    #6a7570;
+    --ink-4:    #a8b0ab;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #efece4;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+
+  .page-head { max-width: 1700px; margin: 0 auto; padding: 56px 32px 28px; }
+  .page-head .kicker {
+    font-size: 11px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: #3e8a6c;
+    margin-bottom: 14px; font-weight: 600;
+  }
+  .page-head h1 {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-weight: 400; font-size: 42px; line-height: 1.05;
+    margin: 0 0 12px; color: var(--ink); max-width: 880px;
+  }
+  .page-head h1 em { color: #3e8a6c; font-style: italic; }
+  .page-head p {
+    max-width: 780px; color: #4a5b53;
+    font-size: 14.5px; line-height: 1.6; margin: 0;
+  }
+
+  .grid {
+    max-width: 1700px;
+    margin: 0 auto;
+    padding: 16px 32px 80px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 56px;
+  }
+  @media (min-width: 1240px) {
+    .grid { grid-template-columns: 1fr 1fr; gap: 64px 40px; }
+  }
+
+  .cell { display: flex; flex-direction: column; gap: 16px; }
+  .cell-head { display: flex; flex-direction: column; gap: 8px; }
+  .cell-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.2em;
+    color: #3e8a6c; text-transform: uppercase;
+  }
+  .cell-title {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-weight: 400; font-size: 28px; line-height: 1.1;
+    color: var(--ink); margin: 0;
+  }
+  .cell-trade { font-size: 13px; line-height: 1.55; color: #4a5b53; max-width: 720px; }
+  .cell-trade strong { color: var(--ink); font-weight: 600; }
+  .cell-trade em { font-style: italic; color: #3e8a6c; font-weight: 500; }
+  .cell-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .cell-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.06em;
+    padding: 3px 8px; border-radius: 999px;
+    background: rgba(125,203,165,0.16); color: #3e8a6c;
+  }
+
+  .frame {
+    aspect-ratio: 16 / 10.2;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow:
+      0 1px 0 rgba(11,24,20,0.04),
+      0 22px 50px -24px rgba(11,24,20,0.22);
+    background: #fff;
+    position: relative;
+  }
+  .chrome {
+    height: 28px;
+    background: #ece8de;
+    border-bottom: 1px solid rgba(11,24,20,0.08);
+    display: flex; align-items: center; padding: 0 10px; gap: 6px;
+  }
+  .chrome .dot { width: 9px; height: 9px; border-radius: 50%; background: #d0c9b8; }
+  .chrome .url {
+    flex: 1; margin-left: 10px;
+    background: #f5f2e9; border-radius: 5px;
+    height: 17px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; color: #6a7570;
+    padding: 0 8px; line-height: 17px;
+  }
+  .body-area { position: absolute; inset: 28px 0 0 0; overflow: hidden; }
+
+  .shell {
+    height: 100%;
+    display: grid;
+    grid-template-columns: 130px 1fr 240px;
+  }
+
+  /* ================================================================== */
+  /*  S1 — Editorial Garden                                              */
+  /* ================================================================== */
+  .s1 { background: #fbfaf6; }
+  .s1 .feeds {
+    background: #f5f2e9; border-right: 1px solid rgba(11,24,20,0.08);
+    padding: 12px 8px; display:flex; flex-direction:column; gap:4px;
+  }
+  .s1 .brand { font-family: 'Instrument Serif', serif; font-size: 17px; color: #3e8a6c; padding: 0 4px 8px; }
+  .s1 .feeds .label { font-size: 8px; letter-spacing: 0.14em; text-transform: uppercase; color: #6a7570; padding: 0 6px 4px; font-weight: 600; }
+  .s1 .feeds .item { display:flex; align-items:center; gap:6px; padding: 5px 7px; border-radius: 6px; font-size: 10px; color: #3a4a44; }
+  .s1 .feeds .item.on { background: #fff; box-shadow: 0 1px 0 rgba(11,24,20,0.04); color: var(--ink); font-weight: 500; }
+  .s1 .feeds .item .sw { width: 6px; height: 6px; border-radius: 50%; }
+  .s1 .feeds .item .ct { margin-left: auto; font-family:'JetBrains Mono', monospace; font-size: 8px; color: #a8b0ab; }
+  .s1 .feeds .new { margin-top: 6px; padding: 6px; border: 1px dashed rgba(11,24,20,0.16); border-radius: 6px; text-align: center; font-size: 9px; color: #6a7570; }
+
+  .s1 .posts { padding: 12px 18px; border-right: 1px solid rgba(11,24,20,0.08); overflow: hidden; }
+  .s1 .posts .head { display:flex; align-items:baseline; gap: 10px; margin-bottom: 10px; }
+  .s1 .posts .head h3 { margin: 0; font-family: 'Instrument Serif', serif; font-size: 19px; font-weight: 400; }
+  .s1 .posts .live { font-size: 9px; padding: 2px 7px; border-radius: 999px; background: rgba(125,203,165,0.18); color: #3e8a6c; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
+  .s1 .posts .meta { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #6a7570; }
+  .s1 .post { display:flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid rgba(11,24,20,0.08); }
+  .s1 .post .avatar { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; }
+  .s1 .post .col { flex: 1; min-width: 0; }
+  .s1 .post .ah { display:flex; align-items:baseline; gap: 6px; font-size: 11px; }
+  .s1 .post .name { font-weight: 600; }
+  .s1 .post .handle { color: #6a7570; font-size: 10px; }
+  .s1 .post .time { margin-left:auto; font-family:'JetBrains Mono', monospace; font-size: 9px; color: #a8b0ab; }
+  .s1 .post .text { font-size: 12px; line-height: 1.45; margin-top: 3px; }
+  .s1 .post .react { margin-top: 5px; display:flex; gap: 6px; font-size: 9px; font-family: 'JetBrains Mono', monospace; color: #a8b0ab; }
+  .s1 .post .react .b { padding: 2px 7px; border-radius: 999px; background: #f5f2e9; }
+  .s1 .post .react .b.up { color: #3e8a6c; background: rgba(125,203,165,0.12); }
+  .s1 .post .react .score { margin-left: auto; color: #3e8a6c; }
+
+  .s1 .right { background: #f5f2e9; }
+  .s1 .seg { display:flex; background: #ece8de; border-radius: 8px; padding: 2px; margin: 10px 12px 0; }
+  .s1 .seg .b { flex: 1; text-align:center; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 5px 0; color: #6a7570; border-radius: 6px; font-weight: 600; }
+  .s1 .seg .b.on { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(11,24,20,0.08); }
+  .s1 .chat-body { padding: 12px 14px; display:flex; flex-direction:column; gap: 9px; overflow: hidden; height: calc(100% - 38px); }
+  .s1 .msg-bot { font-size: 11px; line-height: 1.5; max-width: 95%; }
+  .s1 .msg-bot strong { color: #3e8a6c; }
+  .s1 .msg-user { align-self: flex-end; background: var(--ink); color: #f3ecdd; padding: 6px 10px; border-radius: 12px 12px 3px 12px; font-size: 11px; max-width: 85%; }
+  .s1 .composer { margin-top: auto; background: #fff; border: 1px solid rgba(11,24,20,0.08); border-radius: 10px; padding: 7px 10px; display:flex; align-items: center; gap: 8px; }
+  .s1 .composer .ph { flex: 1; font-size: 11px; color: #a8b0ab; }
+  .s1 .composer .send { width: 20px; height: 20px; border-radius: 50%; background: var(--ink); color: #f3ecdd; display:flex; align-items: center; justify-content: center; font-size: 10px; }
+
+  /* ================================================================== */
+  /*  S2 — Linen & Ink (cool, restrained)                                */
+  /* ================================================================== */
+  .s2 { background: #f7f7f5; }
+  .s2 .feeds {
+    background: #eef0ed; border-right: 1px solid rgba(20,30,40,0.08);
+    padding: 12px 8px; display:flex; flex-direction:column; gap:3px;
+  }
+  .s2 .brand { font-family: 'Fraunces', serif; font-weight: 500; font-size: 16px; color: #1a2433; padding: 0 4px 8px; letter-spacing: -0.01em; }
+  .s2 .feeds .label { font-size: 8px; letter-spacing: 0.18em; text-transform: uppercase; color: #6e7888; padding: 0 6px 4px; font-weight: 500; }
+  .s2 .feeds .item { display:flex; align-items:center; gap:6px; padding: 4px 7px; border-radius: 4px; font-size: 10.5px; color: #4a5468; }
+  .s2 .feeds .item.on { background: #fff; color: #1a2433; font-weight: 500; border: 1px solid rgba(20,30,40,0.08); }
+  .s2 .feeds .item .sw { width: 5px; height: 5px; border-radius: 1px; }
+  .s2 .feeds .item .ct { margin-left: auto; font-family:'JetBrains Mono', monospace; font-size: 8px; color: #aab2bd; font-weight: 400; }
+  .s2 .feeds .new { margin-top: 6px; padding: 5px; border: 1px solid rgba(20,30,40,0.1); border-radius: 4px; text-align: center; font-size: 9px; color: #6e7888; background: #fff; }
+
+  .s2 .posts { padding: 14px 20px; border-right: 1px solid rgba(20,30,40,0.06); overflow: hidden; background: #fff; }
+  .s2 .posts .head { display:flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid rgba(20,30,40,0.06); }
+  .s2 .posts .head h3 { margin: 0; font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: #1a2433; letter-spacing: -0.01em; }
+  .s2 .posts .live { font-size: 9px; padding: 2px 6px; border-radius: 3px; background: #e8f0ec; color: #4f8c84; letter-spacing: 0.04em; font-weight: 500; font-family: 'JetBrains Mono', monospace; }
+  .s2 .posts .meta { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #6e7888; margin-left: auto; }
+  .s2 .post { display:flex; gap: 12px; padding: 11px 0; border-bottom: 1px solid rgba(20,30,40,0.06); }
+  .s2 .post .avatar { width: 22px; height: 22px; border-radius: 4px; flex-shrink: 0; }
+  .s2 .post .col { flex: 1; min-width: 0; }
+  .s2 .post .ah { display:flex; align-items:baseline; gap: 6px; font-size: 11px; }
+  .s2 .post .name { font-weight: 600; color: #1a2433; }
+  .s2 .post .handle { color: #6e7888; font-size: 10px; }
+  .s2 .post .time { margin-left:auto; font-family:'JetBrains Mono', monospace; font-size: 9px; color: #aab2bd; }
+  .s2 .post .text { font-size: 12px; line-height: 1.5; margin-top: 3px; color: #2a3344; }
+  .s2 .post .react { margin-top: 6px; display:flex; gap: 4px; font-size: 9px; color: #aab2bd; font-family: 'JetBrains Mono', monospace; }
+  .s2 .post .react .b { padding: 1px 6px; border: 1px solid rgba(20,30,40,0.08); border-radius: 3px; }
+  .s2 .post .react .b.up { color: #4f8c84; border-color: rgba(79,140,132,0.3); }
+  .s2 .post .react .score { margin-left: auto; color: #4f8c84; font-weight: 600; border: none; padding: 1px 0; }
+
+  .s2 .right { background: #eef0ed; }
+  .s2 .seg { display:flex; background: #fff; border: 1px solid rgba(20,30,40,0.08); border-radius: 4px; padding: 0; margin: 10px 12px 0; }
+  .s2 .seg .b { flex: 1; text-align: center; font-size: 10px; letter-spacing: 0.1em; padding: 6px 0; color: #6e7888; font-weight: 500; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; }
+  .s2 .seg .b.on { background: #1a2433; color: #fff; }
+  .s2 .chat-body { padding: 12px 14px; display:flex; flex-direction:column; gap: 10px; height: calc(100% - 42px); }
+  .s2 .msg-bot { font-size: 11px; line-height: 1.55; max-width: 95%; color: #2a3344; }
+  .s2 .msg-bot strong { color: #4f8c84; font-weight: 600; }
+  .s2 .msg-user { align-self: flex-end; background: #1a2433; color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 11px; max-width: 85%; }
+  .s2 .composer { margin-top: auto; background: #fff; border: 1px solid rgba(20,30,40,0.12); border-radius: 4px; padding: 8px 10px; display:flex; align-items: center; gap: 8px; }
+  .s2 .composer .ph { flex: 1; font-size: 11px; color: #aab2bd; }
+  .s2 .composer .send { width: 22px; height: 22px; border-radius: 3px; background: #1a2433; color: #fff; display:flex; align-items: center; justify-content: center; font-size: 11px; }
+
+  /* ================================================================== */
+  /*  S3 — Apothecary (botanical romance)                                */
+  /* ================================================================== */
+  .s3 { background: #efe8d7; font-family: 'Fraunces', Georgia, serif; }
+  .s3 .feeds {
+    background: #e6dec5; border-right: 1px solid rgba(26,42,34,0.16);
+    padding: 14px 10px; display:flex; flex-direction:column; gap:6px;
+  }
+  .s3 .brand { font-family: 'Instrument Serif', serif; font-style: italic; font-size: 19px; color: #2a4a3a; padding: 0 4px 10px; letter-spacing: 0.01em; }
+  .s3 .feeds .label { font-size: 8px; letter-spacing: 0.24em; text-transform: uppercase; color: #6a6055; padding: 0 6px 6px; font-family: 'JetBrains Mono', monospace; }
+  .s3 .feeds .item { display:flex; align-items:center; gap:8px; padding: 6px 8px; font-size: 11px; color: #3a3025; font-family: 'Fraunces', serif; }
+  .s3 .feeds .item.on { background: rgba(255,255,255,0.5); color: #1a2a22; font-style: italic; font-weight: 500; border-radius: 2px; }
+  .s3 .feeds .item .sw { width: 8px; height: 8px; border-radius: 50%; border: 1px solid rgba(26,42,34,0.2); }
+  .s3 .feeds .item .ct { margin-left: auto; font-family:'JetBrains Mono', monospace; font-size: 8px; color: #8a8070; }
+  .s3 .feeds .new { margin-top: 10px; padding: 6px; text-align: center; font-size: 10px; color: #6a6055; font-style: italic; border-top: 1px solid rgba(26,42,34,0.12); border-bottom: 1px solid rgba(26,42,34,0.12); padding: 8px; }
+  .s3 .feeds .new::before, .s3 .feeds .new::after { content: " · "; color: #a89878; }
+
+  .s3 .posts { padding: 16px 22px; border-right: 1px solid rgba(26,42,34,0.16); overflow: hidden; }
+  .s3 .posts .head { display:flex; align-items: baseline; gap: 12px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid rgba(26,42,34,0.16); position: relative; }
+  .s3 .posts .head::after { content: "✻"; position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%); background: #efe8d7; padding: 0 8px; color: #8a6a45; font-size: 10px; }
+  .s3 .posts .head h3 { margin: 0; font-family: 'Instrument Serif', serif; font-style: italic; font-size: 22px; font-weight: 400; color: #1a2a22; }
+  .s3 .posts .live { font-size: 8px; padding: 0; color: #8a6a45; letter-spacing: 0.3em; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
+  .s3 .posts .meta { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #6a6055; letter-spacing: 0.06em; margin-left: auto; }
+  .s3 .post { display:flex; gap: 12px; padding: 11px 0; border-bottom: 1px dotted rgba(26,42,34,0.2); }
+  .s3 .post .avatar { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(26,42,34,0.16); }
+  .s3 .post .col { flex: 1; min-width: 0; }
+  .s3 .post .ah { display:flex; align-items: baseline; gap: 6px; font-family: 'Fraunces', serif; font-size: 11px; }
+  .s3 .post .name { font-weight: 600; color: #1a2a22; }
+  .s3 .post .handle { color: #8a6a45; font-style: italic; font-size: 10px; }
+  .s3 .post .time { margin-left:auto; font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #a89878; }
+  .s3 .post .text { font-family: 'Fraunces', serif; font-size: 13px; line-height: 1.5; margin-top: 3px; color: #2a2218; }
+  .s3 .post .react { margin-top: 6px; display:flex; gap: 12px; font-size: 9px; color: #8a8070; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.06em; }
+  .s3 .post .react .b.up { color: #2a4a3a; }
+  .s3 .post .react .score { margin-left: auto; color: #8a6a45; font-style: italic; font-family: 'Fraunces', serif; font-size: 11px; }
+
+  .s3 .right { background: #e6dec5; }
+  .s3 .seg-wrap { padding: 12px 14px 6px; }
+  .s3 .seg { display:flex; gap: 0; border-bottom: 1px solid rgba(26,42,34,0.2); }
+  .s3 .seg .b { flex: 1; text-align: center; font-family: 'Fraunces', serif; font-style: italic; font-size: 13px; padding: 4px 0; color: #6a6055; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .s3 .seg .b.on { color: #1a2a22; border-bottom-color: #8a6a45; font-weight: 500; }
+  .s3 .chat-body { padding: 4px 16px 14px; display:flex; flex-direction:column; gap: 10px; height: calc(100% - 50px); }
+  .s3 .msg-bot { font-family: 'Fraunces', serif; font-size: 12px; line-height: 1.55; max-width: 95%; color: #2a2218; }
+  .s3 .msg-bot strong { color: #2a4a3a; font-style: italic; font-weight: 500; }
+  .s3 .msg-user { align-self: flex-end; background: transparent; color: #1a2a22; padding: 4px 0; border-right: 2px solid #8a6a45; padding-right: 10px; font-family: 'Fraunces', serif; font-style: italic; font-size: 12px; max-width: 80%; text-align: right; }
+  .s3 .composer { margin-top: auto; background: transparent; border: none; border-top: 1px solid rgba(26,42,34,0.2); padding: 10px 0 0; display:flex; align-items: center; gap: 8px; }
+  .s3 .composer .ph { flex: 1; font-size: 11px; color: #8a8070; font-style: italic; font-family: 'Fraunces', serif; }
+  .s3 .composer .send { font-family: 'Fraunces', serif; font-style: italic; font-size: 11px; color: #2a4a3a; }
+
+  /* ================================================================== */
+  /*  S4 — Concrete (modernist, brutalist-lite)                          */
+  /* ================================================================== */
+  .s4 { background: #f5f4f0; font-family: 'Inter', sans-serif; }
+  .s4 .feeds {
+    background: #ebe8e0; border-right: 2px solid var(--ink);
+    padding: 14px 10px; display:flex; flex-direction:column; gap:0;
+  }
+  .s4 .brand { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px; color: var(--ink); padding: 0 2px 12px; letter-spacing: -0.02em; text-transform: uppercase; }
+  .s4 .feeds .label { font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink); padding: 6px 2px 6px; font-weight: 700; font-family: 'JetBrains Mono', monospace; border-top: 1px solid var(--ink); }
+  .s4 .feeds .item { display:flex; align-items:center; gap: 6px; padding: 6px 2px; font-size: 10.5px; color: #3a3a36; border-bottom: 1px solid rgba(11,24,20,0.1); font-family: 'JetBrains Mono', monospace; font-weight: 500; }
+  .s4 .feeds .item.on { color: var(--ink); font-weight: 700; }
+  .s4 .feeds .item .sw { width: 8px; height: 8px; border-radius: 0; }
+  .s4 .feeds .item .ct { margin-left: auto; font-size: 8px; color: #6a6660; }
+  .s4 .feeds .new { margin-top: 12px; padding: 7px; text-align: center; font-size: 10px; color: var(--ink); border: 2px solid var(--ink); font-family: 'JetBrains Mono', monospace; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+
+  .s4 .posts { padding: 14px 20px; border-right: 2px solid var(--ink); overflow: hidden; background: #fff; }
+  .s4 .posts .head { display:flex; align-items:center; gap: 12px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 2px solid var(--ink); }
+  .s4 .posts .head h3 { margin: 0; font-family: 'Inter', sans-serif; font-size: 19px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; text-transform: uppercase; }
+  .s4 .posts .live { font-size: 9px; padding: 2px 6px; background: #e09575; color: #fff; font-family: 'JetBrains Mono', monospace; font-weight: 700; letter-spacing: 0.1em; }
+  .s4 .posts .meta { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink); font-weight: 600; }
+  .s4 .post { display:flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--ink); }
+  .s4 .post .avatar { width: 24px; height: 24px; border-radius: 0; flex-shrink: 0; border: 1px solid var(--ink); }
+  .s4 .post .col { flex: 1; min-width: 0; }
+  .s4 .post .ah { display:flex; align-items: baseline; gap: 6px; font-size: 10.5px; font-family: 'JetBrains Mono', monospace; }
+  .s4 .post .name { font-weight: 700; color: var(--ink); }
+  .s4 .post .handle { color: #6a6660; font-size: 9.5px; }
+  .s4 .post .time { margin-left:auto; font-size: 9px; color: #6a6660; }
+  .s4 .post .text { font-size: 12.5px; line-height: 1.45; margin-top: 4px; font-weight: 400; }
+  .s4 .post .react { margin-top: 6px; display:flex; gap: 4px; font-size: 9px; font-family: 'JetBrains Mono', monospace; }
+  .s4 .post .react .b { padding: 2px 6px; border: 1px solid var(--ink); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; background: #fff; }
+  .s4 .post .react .b.up { background: #e09575; color: #fff; border-color: #e09575; }
+  .s4 .post .react .score { margin-left: auto; background: var(--ink); color: #fff; }
+
+  .s4 .right { background: #ebe8e0; border-left: 2px solid var(--ink); }
+  .s4 .seg { display:flex; margin: 0; }
+  .s4 .seg .b { flex: 1; text-align: center; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 10px; letter-spacing: 0.16em; padding: 12px 0; color: #6a6660; text-transform: uppercase; border-bottom: 2px solid var(--ink); }
+  .s4 .seg .b.on { background: var(--ink); color: #f5f4f0; }
+  .s4 .chat-body { padding: 14px; display:flex; flex-direction:column; gap: 10px; height: calc(100% - 42px); }
+  .s4 .msg-bot { font-size: 11.5px; line-height: 1.5; max-width: 100%; color: var(--ink); }
+  .s4 .msg-bot strong { background: #e09575; color: #fff; padding: 0 4px; font-weight: 600; }
+  .s4 .msg-user { align-self: flex-end; background: var(--ink); color: #f5f4f0; padding: 6px 10px; font-size: 11px; max-width: 85%; font-family: 'JetBrains Mono', monospace; }
+  .s4 .composer { margin-top: auto; background: #fff; border: 2px solid var(--ink); padding: 8px 10px; display:flex; align-items: center; gap: 8px; }
+  .s4 .composer .ph { flex: 1; font-size: 11px; color: #6a6660; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.08em; }
+  .s4 .composer .send { width: 22px; height: 22px; background: var(--ink); color: #fff; display:flex; align-items: center; justify-content: center; font-size: 11px; }
+
+  /* ================================================================== */
+  /*  S5 — Sketchbook (warm notebook paper)                              */
+  /* ================================================================== */
+  .s5 {
+    background: #f4e8d0;
+    background-image:
+      repeating-linear-gradient(
+        180deg,
+        transparent 0 22px,
+        rgba(120,80,40,0.06) 22px 23px
+      );
+    font-family: 'Fraunces', Georgia, serif;
+  }
+  .s5 .feeds {
+    background: rgba(232,217,180,0.55); border-right: 1.5px dashed rgba(80,40,20,0.3);
+    padding: 14px 10px; display:flex; flex-direction:column; gap: 4px;
+  }
+  .s5 .brand { font-family: 'Caveat', cursive; font-weight: 600; font-size: 22px; color: #6b3a1a; padding: 0 4px 6px; }
+  .s5 .feeds .label { font-family: 'Caveat', cursive; font-size: 13px; color: #8a5530; padding: 0 6px 4px; }
+  .s5 .feeds .item { display:flex; align-items:center; gap: 6px; padding: 4px 8px; font-size: 11px; color: #4a3022; font-family: 'Fraunces', serif; }
+  .s5 .feeds .item.on { background: rgba(255,255,255,0.55); border-radius: 12px; font-weight: 600; box-shadow: 0 1px 0 rgba(80,40,20,0.08); }
+  .s5 .feeds .item .sw { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid rgba(80,40,20,0.4); background: transparent !important; }
+  .s5 .feeds .item .ct { margin-left: auto; font-family: 'Caveat', cursive; font-size: 12px; color: #8a5530; }
+  .s5 .feeds .new { margin-top: 10px; padding: 6px; text-align: center; font-family: 'Caveat', cursive; font-size: 15px; color: #6b3a1a; border: 1.5px dashed rgba(80,40,20,0.4); border-radius: 14px; }
+
+  .s5 .posts { padding: 16px 22px; border-right: 1.5px dashed rgba(80,40,20,0.3); overflow: hidden; }
+  .s5 .posts .head { display:flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+  .s5 .posts .head h3 { margin: 0; font-family: 'Caveat', cursive; font-size: 28px; font-weight: 600; color: #4a2a14; }
+  .s5 .posts .live { font-family: 'Caveat', cursive; font-size: 14px; color: #6b8a5a; }
+  .s5 .posts .live::before { content: "· "; }
+  .s5 .posts .meta { margin-left: auto; font-family: 'Caveat', cursive; font-size: 14px; color: #8a5530; }
+  .s5 .post { display:flex; gap: 12px; padding: 10px 0; border-bottom: 1px dashed rgba(80,40,20,0.2); position: relative; }
+  .s5 .post .avatar { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; border: 1.5px solid rgba(80,40,20,0.25); }
+  .s5 .post .col { flex: 1; min-width: 0; }
+  .s5 .post .ah { display:flex; align-items: baseline; gap: 6px; font-size: 11px; font-family: 'Fraunces', serif; }
+  .s5 .post .name { font-weight: 600; color: #4a2a14; }
+  .s5 .post .handle { color: #8a5530; font-style: italic; font-size: 10px; }
+  .s5 .post .time { margin-left:auto; font-family: 'Caveat', cursive; font-size: 13px; color: #a87850; }
+  .s5 .post .text { font-family: 'Fraunces', serif; font-size: 13px; line-height: 1.5; margin-top: 4px; color: #2a1a08; }
+  .s5 .post .react { margin-top: 6px; display:flex; gap: 10px; font-family: 'Caveat', cursive; font-size: 13px; color: #6b5a45; }
+  .s5 .post .react .b.up { color: #6b8a5a; }
+  .s5 .post .react .b.dn { color: #b06050; }
+  .s5 .post .react .score { margin-left: auto; color: #8a5530; }
+
+  .s5 .right { background: rgba(232,217,180,0.7); }
+  .s5 .seg-wrap { padding: 12px 14px 0; }
+  .s5 .seg { display:flex; gap: 8px; }
+  .s5 .seg .b { flex: 1; text-align: center; font-family: 'Caveat', cursive; font-size: 17px; padding: 5px 0; color: #8a5530; border-bottom: 2px dashed transparent; }
+  .s5 .seg .b.on { color: #4a2a14; border-bottom-color: #6b3a1a; font-weight: 600; }
+  .s5 .chat-body { padding: 8px 16px 14px; display:flex; flex-direction:column; gap: 10px; height: calc(100% - 50px); }
+  .s5 .msg-bot { font-family: 'Fraunces', serif; font-size: 12px; line-height: 1.55; max-width: 95%; color: #2a1a08; }
+  .s5 .msg-bot strong { color: #6b3a1a; font-weight: 600; font-style: italic; }
+  .s5 .msg-user { align-self: flex-end; font-family: 'Caveat', cursive; font-size: 16px; color: #4a2a14; max-width: 85%; padding: 0; line-height: 1.2; text-align: right; }
+  .s5 .composer { margin-top: auto; background: rgba(255,255,255,0.5); border: 1.5px dashed rgba(80,40,20,0.35); border-radius: 14px; padding: 8px 12px; display:flex; align-items: center; gap: 8px; }
+  .s5 .composer .ph { flex: 1; font-family: 'Caveat', cursive; font-size: 15px; color: #8a5530; }
+  .s5 .composer .send { font-family: 'Caveat', cursive; font-size: 18px; color: #6b3a1a; }
+
+  /* ================================================================== */
+  /*  S6 — Atelier Minimal (high-end, lots of whitespace)                */
+  /* ================================================================== */
+  .s6 { background: #ffffff; font-family: 'Inter', sans-serif; font-weight: 300; }
+  .s6 .feeds {
+    background: #ffffff; border-right: 1px solid rgba(0,0,0,0.06);
+    padding: 18px 12px; display:flex; flex-direction:column; gap: 0;
+  }
+  .s6 .brand { font-family: 'Inter', sans-serif; font-weight: 300; font-size: 16px; color: #1f1f1f; padding: 0 4px 16px; letter-spacing: 0.08em; }
+  .s6 .feeds .label { font-size: 9px; letter-spacing: 0.28em; text-transform: uppercase; color: #b0b0b0; padding: 12px 4px 10px; font-weight: 400; }
+  .s6 .feeds .item { display:flex; align-items: center; gap: 8px; padding: 6px 4px; font-size: 10.5px; color: #707070; font-weight: 300; }
+  .s6 .feeds .item.on { color: #1f1f1f; font-weight: 500; }
+  .s6 .feeds .item .sw { width: 4px; height: 4px; border-radius: 50%; }
+  .s6 .feeds .item .ct { margin-left: auto; font-size: 9px; color: #b0b0b0; font-weight: 300; }
+  .s6 .feeds .new { margin-top: 14px; padding: 8px 0; text-align: left; font-size: 10px; color: #1f1f1f; font-weight: 400; letter-spacing: 0.06em; }
+
+  .s6 .posts { padding: 20px 28px 14px; border-right: 1px solid rgba(0,0,0,0.06); overflow: hidden; }
+  .s6 .posts .head { display:flex; align-items: baseline; gap: 12px; margin-bottom: 18px; }
+  .s6 .posts .head h3 { margin: 0; font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 400; color: #1f1f1f; letter-spacing: -0.01em; }
+  .s6 .posts .live { font-size: 9px; padding: 0; color: #7dcba5; letter-spacing: 0.2em; text-transform: uppercase; }
+  .s6 .posts .meta { margin-left: auto; font-size: 10px; color: #b0b0b0; font-weight: 300; }
+  .s6 .post { display:flex; gap: 14px; padding: 14px 0; border-bottom: 1px solid rgba(0,0,0,0.04); }
+  .s6 .post .avatar { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; }
+  .s6 .post .col { flex: 1; min-width: 0; }
+  .s6 .post .ah { display:flex; align-items: baseline; gap: 8px; font-size: 11px; }
+  .s6 .post .name { font-weight: 500; color: #1f1f1f; }
+  .s6 .post .handle { color: #b0b0b0; font-size: 10px; font-weight: 300; }
+  .s6 .post .time { margin-left:auto; font-size: 9px; color: #b0b0b0; font-weight: 300; }
+  .s6 .post .text { font-size: 12.5px; line-height: 1.55; margin-top: 6px; font-weight: 300; color: #2a2a2a; }
+  .s6 .post .react { margin-top: 10px; display:flex; gap: 18px; font-size: 9px; color: #b0b0b0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+  .s6 .post .react .b { padding: 0; }
+  .s6 .post .react .b.up { color: #3e8a6c; }
+  .s6 .post .react .score { margin-left: auto; color: #3e8a6c; font-weight: 500; }
+
+  .s6 .right { background: #fafafa; }
+  .s6 .seg-wrap { padding: 18px 16px 0; }
+  .s6 .seg { display:flex; gap: 16px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+  .s6 .seg .b { font-size: 10px; letter-spacing: 0.24em; padding: 0 0 10px; color: #b0b0b0; font-weight: 400; text-transform: uppercase; border-bottom: 1px solid transparent; margin-bottom: -1px; }
+  .s6 .seg .b.on { color: #1f1f1f; border-bottom-color: #1f1f1f; }
+  .s6 .chat-body { padding: 14px 16px 16px; display:flex; flex-direction:column; gap: 12px; height: calc(100% - 50px); }
+  .s6 .msg-bot { font-size: 12px; line-height: 1.6; max-width: 95%; font-weight: 300; color: #2a2a2a; }
+  .s6 .msg-bot strong { color: #3e8a6c; font-weight: 500; }
+  .s6 .msg-user { align-self: flex-end; background: transparent; color: #1f1f1f; padding: 0; font-size: 12px; font-weight: 400; max-width: 85%; text-align: right; }
+  .s6 .msg-user::before { content: "→ "; color: #b0b0b0; }
+  .s6 .composer { margin-top: auto; background: transparent; border: none; border-top: 1px solid rgba(0,0,0,0.08); padding: 10px 0 0; display:flex; align-items: center; gap: 8px; }
+  .s6 .composer .ph { flex: 1; font-size: 11px; color: #b0b0b0; font-weight: 300; }
+  .s6 .composer .send { font-size: 16px; color: #1f1f1f; font-weight: 300; }
+
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <div class="kicker">Same layout · six design languages</div>
+  <h1>Six visual identities for the <em>Feeds · Posts · Chat/Tune</em> shell.</h1>
+  <p>Same 3-column structure, same content, same segmented toggle. Only the typography, palette, density, and tone change. Pick the mood that feels like Ripple.</p>
+</header>
+
+<main class="grid">
+
+  <!-- ============================================================== -->
+  <!-- S1 — Editorial Garden                                          -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">01 / Editorial Garden</span>
+      <h2 class="cell-title">Editorial Garden</h2>
+      <p class="cell-trade"><strong>The current direction, polished.</strong> Warm cream paper, sage and aurora greens, Instrument Serif for titles, Inter for body. Calm, magazine-y, optimistic. <em>Feels like sitting down with a good newsletter on a Sunday morning.</em></p>
+      <div class="cell-tags">
+        <span class="cell-tag">cream paper</span>
+        <span class="cell-tag">sage + aurora</span>
+        <span class="cell-tag">instrument serif</span>
+        <span class="cell-tag">warm</span>
+      </div>
+    </header>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">ripple.feed</div></div>
+      <div class="body-area">
+        <div class="shell s1">
+          <aside class="feeds">
+            <div class="brand">Ripple</div>
+            <div class="label">Your feeds</div>
+            <div class="item on"><span class="sw" style="background:#7dcba5"></span>Climate, calmly<span class="ct">312</span></div>
+            <div class="item"><span class="sw" style="background:#e8b988"></span>Indie dev<span class="ct">88</span></div>
+            <div class="item"><span class="sw" style="background:#e09575"></span>Bay shows<span class="ct">24</span></div>
+            <div class="item"><span class="sw" style="background:#d88575"></span>Long reads<span class="ct">17</span></div>
+            <div class="new">+ new</div>
+          </aside>
+          <section class="posts">
+            <div class="head"><h3>Climate, calmly</h3><span class="live">live</span><span class="meta">312/d</span></div>
+            <div class="post">
+              <div class="avatar" style="background:linear-gradient(135deg,#7dcba5,#a8d5bd)"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Hannah Vásquez</span><span class="handle">@hvasquez</span><span class="time">2h</span></div>
+                <div class="text">Three years of mangrove restoration along the Sundarbans is starting to show in storm-surge data. Quietly extraordinary.</div>
+                <div class="react"><span class="b up">▲ more</span><span class="b">▼ less</span><span class="score">0.91</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar" style="background:linear-gradient(135deg,#e8b988,#e09575)"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Tomaš Reinhardt</span><span class="handle">@reinhardt</span><span class="time">4h</span></div>
+                <div class="text">Netherlands hit 64% renewables on its grid for the first time. Thread of charts inside.</div>
+                <div class="react"><span class="b up">▲ more</span><span class="b">▼ less</span><span class="score">0.88</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar" style="background:linear-gradient(135deg,#a8d5bd,#6b9381)"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Ena Whitford</span><span class="handle">@enawh</span><span class="time">7h</span></div>
+                <div class="text">Retrofit subsidies in Italy hit a million homes this week. Boring milestone, huge impact.</div>
+                <div class="react"><span class="b up">▲ more</span><span class="b">▼ less</span><span class="score">0.84</span></div>
+              </div>
+            </div>
+          </section>
+          <aside class="right">
+            <div class="seg"><span class="b on">Chat</span><span class="b">Tune</span></div>
+            <div class="chat-body">
+              <div class="msg-bot">Reading you as solutions-leaning. I'll lean <strong>hopeful</strong>, mute collapse framings, and surface long-arc restoration.</div>
+              <div class="msg-user">Yes. Also nothing about politicians.</div>
+              <div class="msg-bot">Got it — damping politician posts, keeping focus on <strong>projects and outcomes</strong>.</div>
+              <div class="composer"><span class="ph">Refine, add a topic…</span><span class="send">↑</span></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- S2 — Linen & Ink                                               -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">02 / Linen & Ink</span>
+      <h2 class="cell-title">Linen &amp; Ink</h2>
+      <p class="cell-trade"><strong>Cooler, more Notion-adjacent.</strong> Off-white background, deep navy ink instead of black, muted teal accent, Fraunces for the few moments of personality. Square corners, sharp hairlines. <em>Reads as serious, well-organized, professional.</em> Less warmth, more precision.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">cool whites</span>
+        <span class="cell-tag">navy ink</span>
+        <span class="cell-tag">sharp hairlines</span>
+        <span class="cell-tag">precise</span>
+      </div>
+    </header>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">ripple.feed</div></div>
+      <div class="body-area">
+        <div class="shell s2">
+          <aside class="feeds">
+            <div class="brand">Ripple</div>
+            <div class="label">Feeds</div>
+            <div class="item on"><span class="sw" style="background:#4f8c84"></span>Climate, calmly<span class="ct">312</span></div>
+            <div class="item"><span class="sw" style="background:#aa8856"></span>Indie dev<span class="ct">88</span></div>
+            <div class="item"><span class="sw" style="background:#a85a4a"></span>Bay shows<span class="ct">24</span></div>
+            <div class="item"><span class="sw" style="background:#7a6a8a"></span>Long reads<span class="ct">17</span></div>
+            <div class="new">+ New feed</div>
+          </aside>
+          <section class="posts">
+            <div class="head"><h3>Climate, calmly</h3><span class="live">live</span><span class="meta">312 / day</span></div>
+            <div class="post">
+              <div class="avatar" style="background:linear-gradient(135deg,#4f8c84,#7aa8a0)"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Hannah Vásquez</span><span class="handle">@hvasquez</span><span class="time">2h</span></div>
+                <div class="text">Three years of mangrove restoration along the Sundarbans is starting to show in storm-surge data. Quietly extraordinary.</div>
+                <div class="react"><span class="b up">↑ more</span><span class="b">↓ less</span><span class="score">0.91</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar" style="background:linear-gradient(135deg,#aa8856,#c8a26a)"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Tomaš Reinhardt</span><span class="handle">@reinhardt</span><span class="time">4h</span></div>
+                <div class="text">Netherlands hit 64% renewables on its grid for the first time. Thread of charts inside.</div>
+                <div class="react"><span class="b up">↑ more</span><span class="b">↓ less</span><span class="score">0.88</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar" style="background:linear-gradient(135deg,#7aa8a0,#5a7c7a)"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Ena Whitford</span><span class="handle">@enawh</span><span class="time">7h</span></div>
+                <div class="text">Retrofit subsidies in Italy hit a million homes this week. Boring milestone, huge impact.</div>
+                <div class="react"><span class="b up">↑ more</span><span class="b">↓ less</span><span class="score">0.84</span></div>
+              </div>
+            </div>
+          </section>
+          <aside class="right">
+            <div class="seg"><span class="b on">Chat</span><span class="b">Tune</span></div>
+            <div class="chat-body">
+              <div class="msg-bot">Reading you as solutions-leaning. I'll lean <strong>hopeful</strong>, mute collapse framings, and surface long-arc restoration.</div>
+              <div class="msg-user">Yes. Also nothing about politicians.</div>
+              <div class="msg-bot">Got it — damping politician posts, keeping focus on <strong>projects and outcomes</strong>.</div>
+              <div class="composer"><span class="ph">Refine, add a topic…</span><span class="send">↑</span></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- S3 — Apothecary                                                -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">03 / Apothecary</span>
+      <h2 class="cell-title">Apothecary</h2>
+      <p class="cell-trade"><strong>Botanical, romantic, the most "designed."</strong> Deep cream paper, forest green and sepia, italic serifs everywhere, dotted dividers, ornamental flourishes (✻). Feels like a hand-bound notebook. <em>Highest character; risks feeling precious or hard to maintain.</em></p>
+      <div class="cell-tags">
+        <span class="cell-tag">italic serifs</span>
+        <span class="cell-tag">forest + sepia</span>
+        <span class="cell-tag">ornamental</span>
+        <span class="cell-tag">most character</span>
+      </div>
+    </header>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">ripple.feed</div></div>
+      <div class="body-area">
+        <div class="shell s3">
+          <aside class="feeds">
+            <div class="brand">Ripple</div>
+            <div class="label">Feeds</div>
+            <div class="item on"><span class="sw" style="background:#2a4a3a"></span>Climate, calmly<span class="ct">312</span></div>
+            <div class="item"><span class="sw" style="background:#8a6a45"></span>Indie dev<span class="ct">88</span></div>
+            <div class="item"><span class="sw" style="background:#a85a4a"></span>Bay shows<span class="ct">24</span></div>
+            <div class="item"><span class="sw" style="background:#6a5a45"></span>Long reads<span class="ct">17</span></div>
+            <div class="new">new feed</div>
+          </aside>
+          <section class="posts">
+            <div class="head"><h3>Climate, calmly</h3><span class="live">live</span><span class="meta">312/d</span></div>
+            <div class="post">
+              <div class="avatar" style="background:linear-gradient(135deg,#2a4a3a,#4a6a55)"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Hannah Vásquez</span><span class="handle">@hvasquez</span><span class="time">2h</span></div>
+                <div class="text">Three years of mangrove restoration along the Sundarbans is starting to show in storm-surge data. Quietly extraordinary.</div>
+                <div class="react"><span class="b up">more</span><span class="b">less</span><span class="score">.91</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar" style="background:linear-gradient(135deg,#8a6a45,#a88858)"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Tomaš Reinhardt</span><span class="handle">@reinhardt</span><span class="time">4h</span></div>
+                <div class="text">Netherlands hit 64% renewables on its grid for the first time. A quietly remarkable milestone.</div>
+                <div class="react"><span class="b up">more</span><span class="b">less</span><span class="score">.88</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar" style="background:linear-gradient(135deg,#4a6a55,#6a8a72)"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Ena Whitford</span><span class="handle">@enawh</span><span class="time">7h</span></div>
+                <div class="text">Retrofit subsidies in Italy hit a million homes this week. Boring milestone, huge impact.</div>
+                <div class="react"><span class="b up">more</span><span class="b">less</span><span class="score">.84</span></div>
+              </div>
+            </div>
+          </section>
+          <aside class="right">
+            <div class="seg-wrap">
+              <div class="seg"><span class="b on">Chat</span><span class="b">Tune</span></div>
+            </div>
+            <div class="chat-body">
+              <div class="msg-bot">Reading you as solutions-leaning. I'll lean <strong>hopeful</strong>, mute collapse framings, and surface long-arc restoration.</div>
+              <div class="msg-user">Yes. Also nothing about politicians.</div>
+              <div class="msg-bot">Of course — damping politician posts, keeping focus on <strong>projects and outcomes</strong>.</div>
+              <div class="composer"><span class="ph">a word, a wish, a quibble…</span><span class="send">return ↩</span></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- S4 — Concrete                                                  -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">04 / Concrete</span>
+      <h2 class="cell-title">Concrete</h2>
+      <p class="cell-trade"><strong>Modernist, brutalist-lite, opinionated.</strong> Stark off-white, thick black rules, JetBrains Mono for labels and chrome, a single hot ember accent. Square corners, all-caps, no decoration. <em>Reads as a workshop tool, not a magazine.</em> Feels powerful and a little intimidating.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">mono-heavy</span>
+        <span class="cell-tag">thick rules</span>
+        <span class="cell-tag">single hot accent</span>
+        <span class="cell-tag">workshop tool</span>
+      </div>
+    </header>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">ripple.feed</div></div>
+      <div class="body-area">
+        <div class="shell s4">
+          <aside class="feeds">
+            <div class="brand">RIPPLE</div>
+            <div class="label">FEEDS</div>
+            <div class="item on"><span class="sw" style="background:#e09575"></span>CLIMATE.CALM<span class="ct">312</span></div>
+            <div class="item"><span class="sw" style="background:#1a1a1a"></span>INDIE.DEV<span class="ct">88</span></div>
+            <div class="item"><span class="sw" style="background:#1a1a1a"></span>BAY.SHOWS<span class="ct">24</span></div>
+            <div class="item"><span class="sw" style="background:#1a1a1a"></span>LONG.READS<span class="ct">17</span></div>
+            <div class="new">+ NEW</div>
+          </aside>
+          <section class="posts">
+            <div class="head"><h3>Climate.Calm</h3><span class="live">LIVE</span><span class="meta">312/D</span></div>
+            <div class="post">
+              <div class="avatar" style="background:#e09575"></div>
+              <div class="col">
+                <div class="ah"><span class="name">HVASQUEZ</span><span class="handle">@hvasquez</span><span class="time">2H</span></div>
+                <div class="text">Three years of mangrove restoration along the Sundarbans is starting to show in storm-surge data. Quietly extraordinary.</div>
+                <div class="react"><span class="b up">+ MORE</span><span class="b">− LESS</span><span class="b score">0.91</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar" style="background:#1a1a1a"></div>
+              <div class="col">
+                <div class="ah"><span class="name">REINHARDT</span><span class="handle">@reinhardt</span><span class="time">4H</span></div>
+                <div class="text">Netherlands hit 64% renewables on its grid for the first time. Thread of charts inside.</div>
+                <div class="react"><span class="b up">+ MORE</span><span class="b">− LESS</span><span class="b score">0.88</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar" style="background:#1a1a1a"></div>
+              <div class="col">
+                <div class="ah"><span class="name">ENAWH</span><span class="handle">@enawh</span><span class="time">7H</span></div>
+                <div class="text">Retrofit subsidies in Italy hit a million homes this week. Boring milestone, huge impact.</div>
+                <div class="react"><span class="b up">+ MORE</span><span class="b">− LESS</span><span class="b score">0.84</span></div>
+              </div>
+            </div>
+          </section>
+          <aside class="right">
+            <div class="seg"><span class="b on">CHAT</span><span class="b">TUNE</span></div>
+            <div class="chat-body">
+              <div class="msg-bot">Reading you as solutions-leaning. Leaning <strong>HOPEFUL</strong>, muting collapse framings, surfacing long-arc restoration.</div>
+              <div class="msg-user">YES. NOTHING ABOUT POLITICIANS.</div>
+              <div class="msg-bot">Damping politician posts. Focus on <strong>PROJECTS &amp; OUTCOMES</strong>.</div>
+              <div class="composer"><span class="ph">refine</span><span class="send">↵</span></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- S5 — Sketchbook                                                -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">05 / Sketchbook</span>
+      <h2 class="cell-title">Sketchbook</h2>
+      <p class="cell-trade"><strong>Personal, handwritten, lo-fi.</strong> Beige notebook paper with faint rules, dashed borders, Caveat for headers and labels, Fraunces for the body. The chat user-bubble becomes handwriting. <em>Charming and approachable</em>; carries the implicit promise that the product is a small, personal thing rather than enterprise.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">notebook paper</span>
+        <span class="cell-tag">handwritten</span>
+        <span class="cell-tag">dashed borders</span>
+        <span class="cell-tag warn">may feel toy-ish</span>
+      </div>
+    </header>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">ripple.feed</div></div>
+      <div class="body-area">
+        <div class="shell s5">
+          <aside class="feeds">
+            <div class="brand">Ripple</div>
+            <div class="label">my feeds</div>
+            <div class="item on"><span class="sw" style="border-color:#6b8a5a !important"></span>Climate, calmly<span class="ct">312</span></div>
+            <div class="item"><span class="sw"></span>Indie dev<span class="ct">88</span></div>
+            <div class="item"><span class="sw"></span>Bay shows<span class="ct">24</span></div>
+            <div class="item"><span class="sw"></span>Long reads<span class="ct">17</span></div>
+            <div class="new">+ new one</div>
+          </aside>
+          <section class="posts">
+            <div class="head"><h3>Climate, calmly</h3><span class="live">live</span><span class="meta">312/day</span></div>
+            <div class="post">
+              <div class="avatar" style="background:linear-gradient(135deg,#a8c890,#8aa878)"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Hannah Vásquez</span><span class="handle">@hvasquez</span><span class="time">2h</span></div>
+                <div class="text">Three years of mangrove restoration along the Sundarbans is starting to show in storm-surge data. Quietly extraordinary.</div>
+                <div class="react"><span class="b up">↑ more like this</span><span class="b dn">↓ less</span><span class="score">.91</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar" style="background:linear-gradient(135deg,#d8a878,#b88858)"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Tomaš Reinhardt</span><span class="handle">@reinhardt</span><span class="time">4h</span></div>
+                <div class="text">Netherlands hit 64% renewables on its grid for the first time. Thread of charts inside.</div>
+                <div class="react"><span class="b up">↑ more like this</span><span class="b dn">↓ less</span><span class="score">.88</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar" style="background:linear-gradient(135deg,#90a888,#6b8a5a)"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Ena Whitford</span><span class="handle">@enawh</span><span class="time">7h</span></div>
+                <div class="text">Retrofit subsidies in Italy hit a million homes this week. Boring milestone, huge impact.</div>
+                <div class="react"><span class="b up">↑ more like this</span><span class="b dn">↓ less</span><span class="score">.84</span></div>
+              </div>
+            </div>
+          </section>
+          <aside class="right">
+            <div class="seg-wrap">
+              <div class="seg"><span class="b on">Chat</span><span class="b">Tune</span></div>
+            </div>
+            <div class="chat-body">
+              <div class="msg-bot">Reading you as solutions-leaning. I'll lean <strong>hopeful</strong>, mute collapse framings, and surface long-arc restoration.</div>
+              <div class="msg-user">Yes! And nothing about politicians please.</div>
+              <div class="msg-bot">Got it — damping politician posts, keeping focus on <strong>projects and outcomes</strong>.</div>
+              <div class="composer"><span class="ph">tell me anything…</span><span class="send">↵</span></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- S6 — Atelier Minimal                                           -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">06 / Atelier Minimal</span>
+      <h2 class="cell-title">Atelier Minimal</h2>
+      <p class="cell-trade"><strong>Whitespace, hairlines, ultra-restrained.</strong> Pure white, Inter throughout in light weight (300), generous spacing, almost no color — a single thin aurora line marking the active state. Borrows from Aesop / Glossier / Apple marketing pages. <em>Most premium-feeling</em>; can read as cold if not balanced with content density.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">pure white</span>
+        <span class="cell-tag">light weights</span>
+        <span class="cell-tag">huge whitespace</span>
+        <span class="cell-tag">premium</span>
+      </div>
+    </header>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">ripple.feed</div></div>
+      <div class="body-area">
+        <div class="shell s6">
+          <aside class="feeds">
+            <div class="brand">RIPPLE</div>
+            <div class="label">Feeds</div>
+            <div class="item on"><span class="sw" style="background:#7dcba5"></span>Climate, calmly<span class="ct">312</span></div>
+            <div class="item"><span class="sw" style="background:#c0c0c0"></span>Indie dev<span class="ct">88</span></div>
+            <div class="item"><span class="sw" style="background:#c0c0c0"></span>Bay shows<span class="ct">24</span></div>
+            <div class="item"><span class="sw" style="background:#c0c0c0"></span>Long reads<span class="ct">17</span></div>
+            <div class="new">＋ New feed</div>
+          </aside>
+          <section class="posts">
+            <div class="head"><h3>Climate, calmly</h3><span class="live">live</span><span class="meta">312 / day</span></div>
+            <div class="post">
+              <div class="avatar" style="background:linear-gradient(135deg,#d8d8d8,#b8b8b8)"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Hannah Vásquez</span><span class="handle">@hvasquez</span><span class="time">2h</span></div>
+                <div class="text">Three years of mangrove restoration along the Sundarbans is starting to show in storm-surge data. Quietly extraordinary.</div>
+                <div class="react"><span class="b up">More</span><span class="b">Less</span><span class="score">0.91</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar" style="background:linear-gradient(135deg,#c8c8c8,#a8a8a8)"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Tomaš Reinhardt</span><span class="handle">@reinhardt</span><span class="time">4h</span></div>
+                <div class="text">Netherlands hit 64% renewables on its grid for the first time. Thread of charts inside.</div>
+                <div class="react"><span class="b up">More</span><span class="b">Less</span><span class="score">0.88</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar" style="background:linear-gradient(135deg,#d8d8d8,#c0c0c0)"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Ena Whitford</span><span class="handle">@enawh</span><span class="time">7h</span></div>
+                <div class="text">Retrofit subsidies in Italy hit a million homes this week. Boring milestone, huge impact.</div>
+                <div class="react"><span class="b up">More</span><span class="b">Less</span><span class="score">0.84</span></div>
+              </div>
+            </div>
+          </section>
+          <aside class="right">
+            <div class="seg-wrap">
+              <div class="seg"><span class="b on">Chat</span><span class="b">Tune</span></div>
+            </div>
+            <div class="chat-body">
+              <div class="msg-bot">Reading you as solutions-leaning. I'll lean <strong>hopeful</strong>, mute collapse framings, and surface long-arc restoration.</div>
+              <div class="msg-user">Yes. Nothing about politicians.</div>
+              <div class="msg-bot">Damping politician posts. Focus on <strong>projects and outcomes</strong>.</div>
+              <div class="composer"><span class="ph">Refine</span><span class="send">→</span></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </article>
+
+</main>
+
+<footer style="max-width:1700px; margin:0 auto; padding: 0 32px 80px; font-size:12px; color:#7a857f; border-top: 1px solid rgba(11,24,20,0.08); padding-top: 24px;">
+  Same shell, six visual languages — pick the one that feels like Ripple to you.
+</footer>
+
+</body>
+</html>

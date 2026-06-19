@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ripple Feed — Curator UI/UX Exploration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&display=swap" rel="stylesheet">
+<style>
+  /* ------------------------------------------------------------------ */
+  /*  Page shell                                                          */
+  /* ------------------------------------------------------------------ */
+  :root {
+    --void:        #060f0b;
+    --midnight:    #0b1814;
+    --slate:       #142420;
+    --sage:        #6b9381;
+    --sage-dim:    #8fa89b;
+    --cream:       #f3ecdd;
+    --parchment:   #e6dcc7;
+    --parchment-dim:#a8b5a8;
+    --aurora:      #7dcba5;
+    --aurora-deep: #3e8a6c;
+    --mist:        #a8d5bd;
+    --ember:       #e09575;
+    --amber:       #e8b988;
+    --rose:        #d88575;
+
+    --hair: rgba(243,236,221,0.08);
+    --hair-strong: rgba(243,236,221,0.16);
+    --hair-ink: rgba(6,15,11,0.08);
+    --hair-ink-strong: rgba(6,15,11,0.16);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #f5f3ee;
+    color: var(--void);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+
+  .page-head {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 56px 32px 32px;
+  }
+  .page-head .kicker {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--aurora-deep);
+    margin-bottom: 16px;
+    font-weight: 600;
+  }
+  .page-head h1 {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-weight: 400;
+    font-size: 48px;
+    line-height: 1.05;
+    margin: 0 0 12px;
+    color: var(--midnight);
+  }
+  .page-head h1 em { color: var(--aurora-deep); font-style: italic; }
+  .page-head p {
+    max-width: 720px;
+    color: #4a5b53;
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 0;
+  }
+  .page-head .axis {
+    display: flex;
+    gap: 24px;
+    margin-top: 24px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: #4a5b53;
+  }
+  .page-head .axis span {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .page-head .axis span::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--aurora);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Grid of variants                                                    */
+  /* ------------------------------------------------------------------ */
+  .grid {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 16px 32px 80px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 56px;
+  }
+  @media (min-width: 1400px) {
+    .grid { grid-template-columns: 1fr 1fr; gap: 64px 48px; }
+  }
+
+  .cell {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .cell-head {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .cell-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--aurora-deep);
+    text-transform: uppercase;
+  }
+  .cell-title {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-weight: 400;
+    font-size: 28px;
+    line-height: 1.1;
+    color: var(--midnight);
+    margin: 0;
+  }
+  .cell-trade {
+    font-size: 13px;
+    line-height: 1.55;
+    color: #4a5b53;
+    max-width: 640px;
+  }
+  .cell-trade strong {
+    color: var(--midnight);
+    font-weight: 600;
+  }
+  .cell-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .cell-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(125,203,165,0.16);
+    color: var(--aurora-deep);
+  }
+  .cell-tag.warn {
+    background: rgba(216,133,117,0.18);
+    color: #a44a3b;
+  }
+
+  .frames {
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+  }
+
+  /* Desktop frame: browser-chrome'd panel */
+  .frame-desktop {
+    flex: 1 1 auto;
+    min-width: 0;
+    aspect-ratio: 16 / 11;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 rgba(6,15,11,0.04), 0 18px 40px -20px rgba(6,15,11,0.18);
+    background: #fff;
+    position: relative;
+  }
+  .frame-desktop .chrome {
+    height: 26px;
+    background: #ece8de;
+    border-bottom: 1px solid var(--hair-ink);
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .frame-desktop .chrome .dot {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: #d0c9b8;
+  }
+  .frame-desktop .chrome .url {
+    flex: 1;
+    margin-left: 8px;
+    background: #f5f1e6;
+    border-radius: 4px;
+    height: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #6c7872;
+    padding: 0 8px;
+    line-height: 16px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .frame-desktop .body {
+    position: absolute;
+    inset: 26px 0 0 0;
+    overflow: hidden;
+  }
+
+  /* Mobile frame: phone silhouette */
+  .frame-mobile {
+    flex: 0 0 auto;
+    width: 200px;
+    aspect-ratio: 9 / 19.5;
+    border-radius: 28px;
+    background: #1a1a1a;
+    padding: 8px;
+    box-shadow: 0 1px 0 rgba(6,15,11,0.04), 0 18px 40px -20px rgba(6,15,11,0.18);
+    position: relative;
+  }
+  .frame-mobile .screen {
+    width: 100%;
+    height: 100%;
+    border-radius: 22px;
+    overflow: hidden;
+    background: #fff;
+    position: relative;
+  }
+  .frame-mobile .notch {
+    position: absolute;
+    top: 8px; left: 50%;
+    transform: translateX(-50%);
+    width: 56px; height: 14px;
+    background: #1a1a1a;
+    border-radius: 0 0 10px 10px;
+    z-index: 30;
+  }
+  .frame-mobile .status {
+    position: absolute;
+    top: 4px; left: 14px; right: 14px;
+    display: flex; justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: var(--midnight);
+    z-index: 31;
+  }
+  .frame-mobile .home-indicator {
+    position: absolute;
+    bottom: 4px; left: 50%;
+    transform: translateX(-50%);
+    width: 80px; height: 3px;
+    border-radius: 2px;
+    background: rgba(0,0,0,0.4);
+    z-index: 31;
+  }
+
+  /* Generic helpers used by frames ----------------------------------- */
+  .hair-b { border-bottom: 1px solid var(--hair-ink); }
+  .hair-r { border-right: 1px solid var(--hair-ink); }
+  .row { display: flex; }
+  .col { display: flex; flex-direction: column; }
+
+  .text-xxs { font-size: 8px; }
+  .text-xs  { font-size: 9px; }
+  .text-sm  { font-size: 10px; }
+  .text-md  { font-size: 11px; }
+  .text-lg  { font-size: 13px; }
+
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .serif { font-family: 'Instrument Serif', Georgia, serif; }
+
+  /* =================================================================== */
+  /*  V1 — Conversational Copilot (refined)                              */
+  /* =================================================================== */
+  .v1 .body { background: #fbf8f0; display: grid; grid-template-columns: 90px 1fr 1fr; grid-template-rows: 24px 1fr; font-size: 9px; color: var(--midnight); }
+  .v1 .topbar { grid-column: 1 / -1; display:flex; align-items:center; padding: 0 10px; border-bottom: 1px solid var(--hair-ink); background:#fff; gap:8px; }
+  .v1 .topbar .logo { font-family:'Instrument Serif', serif; font-size: 12px; color: var(--aurora-deep); }
+  .v1 .topbar .live { margin-left:8px; font-size:7px; padding:2px 6px; background:rgba(125,203,165,0.2); color:var(--aurora-deep); border-radius:999px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; }
+  .v1 .topbar .crumb { color: #8a9590; margin-left:auto; font-size:8px; }
+  .v1 .sidebar { background: #f3eee0; border-right: 1px solid var(--hair-ink); padding: 10px 8px; display:flex; flex-direction:column; gap:4px; }
+  .v1 .sidebar .label { font-size:7px; letter-spacing:0.14em; text-transform:uppercase; color:#8a9590; padding:0 4px 6px; }
+  .v1 .feed-item { display:flex; align-items:center; gap:6px; padding:5px 6px; border-radius:6px; font-size:9px; cursor:pointer; }
+  .v1 .feed-item.active { background:#fff; box-shadow: 0 1px 0 rgba(6,15,11,0.04); }
+  .v1 .feed-item .sw { width:6px; height:6px; border-radius:50%; }
+  .v1 .feed-item .ttl { font-weight:500; line-height:1.2; }
+  .v1 .feed-item .ct { color:#8a9590; font-size:7px; }
+  .v1 .new-feed { margin-top:auto; font-size:8px; color:#4a5b53; padding:6px; text-align:center; border:1px dashed rgba(6,15,11,0.18); border-radius:6px; }
+  .v1 .chat { padding: 12px 12px 8px; display:flex; flex-direction:column; min-height:0; }
+  .v1 .chat .panel-head { font-size:8px; letter-spacing:0.12em; text-transform:uppercase; color:#8a9590; margin-bottom:8px; }
+  .v1 .chat .msgs { flex: 1; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+  .v1 .msg { font-size:9px; line-height:1.5; max-width: 88%; }
+  .v1 .msg.user { align-self:flex-end; background:var(--midnight); color:var(--cream); padding:6px 9px; border-radius:10px 10px 2px 10px; }
+  .v1 .msg.bot { color:var(--midnight); padding:0; }
+  .v1 .msg.bot strong { color: var(--aurora-deep); font-weight:600; }
+  .v1 .composer { margin-top: 8px; background: #fff; border:1px solid var(--hair-ink); border-radius:10px; padding:6px 8px; display:flex; align-items:center; gap:6px; }
+  .v1 .composer .ph { color:#a8b0ab; font-size:9px; flex:1; }
+  .v1 .composer .send { width:18px; height:18px; border-radius:50%; background: var(--aurora); }
+  .v1 .results { background:#fff; padding: 12px; display:flex; flex-direction:column; gap:8px; overflow:hidden; }
+  .v1 .results .panel-head { font-size:8px; letter-spacing:0.12em; text-transform:uppercase; color:#8a9590; display:flex; align-items:center; justify-content:space-between; }
+  .v1 .results .panel-head .refresh { font-size:8px; color:var(--aurora-deep); }
+  .v1 .post { padding:7px 0; border-bottom:1px solid var(--hair-ink); }
+  .v1 .post:last-child { border-bottom:none; }
+  .v1 .post .author { display:flex; align-items:center; gap:5px; margin-bottom:3px; }
+  .v1 .post .avatar { width:14px; height:14px; border-radius:50%; background:linear-gradient(135deg, var(--aurora), var(--mist)); }
+  .v1 .post .handle { font-size:8px; color:#8a9590; }
+  .v1 .post .name { font-size:8px; font-weight:600; color:var(--midnight); }
+  .v1 .post .text { font-size:9px; line-height:1.4; }
+  .v1 .post .meta { font-size:7px; color:#a8b0ab; margin-top:3px; display:flex; gap:10px; }
+
+  /* V1 mobile */
+  .v1m { background: #fbf8f0; height:100%; display:flex; flex-direction:column; padding-top: 22px; font-size:9px; color:var(--midnight); }
+  .v1m .tbar { padding: 8px 12px; display:flex; align-items:center; gap:6px; border-bottom: 1px solid var(--hair-ink); background:#fff; }
+  .v1m .tbar .logo { font-family:'Instrument Serif', serif; font-size:13px; color: var(--aurora-deep); }
+  .v1m .tbar .crumb { font-size:8px; color:#8a9590; margin-left:auto; }
+  .v1m .tabs { display:flex; background:#fff; border-bottom:1px solid var(--hair-ink); }
+  .v1m .tabs .t { flex:1; text-align:center; padding:7px 0; font-size:8px; color:#8a9590; letter-spacing:0.08em; text-transform:uppercase; }
+  .v1m .tabs .t.on { color: var(--midnight); border-bottom: 2px solid var(--aurora); font-weight:600; }
+  .v1m .panel { flex:1; padding: 10px; display:flex; flex-direction:column; gap:8px; overflow:hidden; }
+  .v1m .msg { font-size:9px; line-height:1.45; }
+  .v1m .msg.user { align-self:flex-end; background:var(--midnight); color:var(--cream); padding:5px 8px; border-radius:10px 10px 2px 10px; max-width: 80%; }
+  .v1m .msg.bot { color:var(--midnight); max-width:90%; }
+  .v1m .msg.bot strong { color: var(--aurora-deep); }
+  .v1m .composer { margin-top:auto; background:#fff; border:1px solid var(--hair-ink); border-radius:18px; padding:7px 12px; display:flex; gap:6px; align-items:center; }
+  .v1m .composer .ph { color:#a8b0ab; font-size:9px; flex:1; }
+  .v1m .composer .send { width:20px; height:20px; border-radius:50%; background: var(--aurora); }
+
+  /* =================================================================== */
+  /*  V2 — Direct Tuner                                                   */
+  /* =================================================================== */
+  .v2 .body { background: #f8f8f5; padding: 12px; display:grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 9px; color: var(--midnight); }
+  .v2 .panel { background: #fff; border-radius: 8px; padding: 10px; border: 1px solid var(--hair-ink); display:flex; flex-direction:column; gap:8px; }
+  .v2 .panel-title { font-size:8px; letter-spacing:0.14em; text-transform:uppercase; color:#7a857f; font-weight:600; }
+  .v2 .panel-sub { font-size:8px; color:#a8b0ab; margin-top:-4px; }
+  .v2 .panel.full { grid-column: 1 / -1; }
+  .v2 .chips { display:flex; flex-wrap:wrap; gap:4px; }
+  .v2 .chip {
+    font-size:8px; padding: 3px 8px; border-radius: 999px;
+    border: 1px solid rgba(6,15,11,0.12);
+    background: #fff; color: #5a665f;
+    display:flex; align-items:center; gap:4px;
+  }
+  .v2 .chip.on { background: var(--aurora-deep); color: #fff; border-color: var(--aurora-deep); }
+  .v2 .chip.ex { background: #fff; color: #a44a3b; border-color: rgba(216,133,117,0.5); text-decoration: line-through; }
+  .v2 .chip.add { color: #7a857f; border-style: dashed; }
+  .v2 .slider { display:flex; flex-direction:column; gap: 4px; }
+  .v2 .slider .top { display:flex; justify-content:space-between; font-size:8px; color:#7a857f; }
+  .v2 .slider .top .a { color:var(--midnight); font-weight:500; }
+  .v2 .slider .track {
+    height: 4px; background: rgba(6,15,11,0.08); border-radius: 999px;
+    position: relative;
+  }
+  .v2 .slider .track .fill { height:100%; background: var(--aurora); border-radius: 999px; }
+  .v2 .slider .track .knob {
+    position:absolute; top:50%; width:10px; height:10px; border-radius:50%;
+    background: #fff; border: 2px solid var(--aurora-deep); transform: translate(-50%, -50%);
+    box-shadow: 0 1px 3px rgba(6,15,11,0.2);
+  }
+  .v2 .meter {
+    display:flex; align-items:baseline; gap: 8px;
+    border-top: 1px solid var(--hair-ink); padding-top: 8px; margin-top: 2px;
+  }
+  .v2 .meter .num { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight:600; color: var(--aurora-deep); }
+  .v2 .meter .lbl { font-size: 8px; color: #7a857f; }
+  .v2 .preview-list { display:flex; flex-direction:column; gap: 6px; }
+  .v2 .preview-row { display:flex; gap:6px; align-items:flex-start; padding: 5px 0; border-bottom: 1px solid var(--hair-ink); }
+  .v2 .preview-row:last-child { border-bottom: none; }
+  .v2 .preview-row .avatar { width:14px; height:14px; border-radius:50%; background:linear-gradient(135deg, var(--amber), var(--ember)); flex-shrink:0; }
+  .v2 .preview-row .txt { font-size: 9px; line-height: 1.3; }
+  .v2 .preview-row .score {
+    font-family: 'JetBrains Mono', monospace; font-size:8px;
+    color: var(--aurora-deep); margin-left: auto; flex-shrink:0;
+  }
+
+  /* V2 mobile */
+  .v2m { background:#f8f8f5; height:100%; padding-top:22px; font-size:9px; color:var(--midnight); display:flex; flex-direction:column; }
+  .v2m .bar { padding: 8px 12px; display:flex; gap:6px; align-items:center; background:#fff; border-bottom: 1px solid var(--hair-ink); }
+  .v2m .bar .ttl { font-family:'Instrument Serif', serif; font-size: 12px; }
+  .v2m .bar .count { margin-left:auto; font-family:'JetBrains Mono', monospace; font-size:8px; color:var(--aurora-deep); font-weight:600; }
+  .v2m .pad { padding: 10px; display:flex; flex-direction:column; gap: 10px; overflow:hidden; }
+  .v2m .lbl { font-size: 7px; letter-spacing:0.14em; text-transform:uppercase; color:#7a857f; margin-bottom: 4px; }
+  .v2m .chips { display:flex; flex-wrap:wrap; gap:3px; }
+  .v2m .chip { font-size:7px; padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(6,15,11,0.12); background:#fff; color: #5a665f; }
+  .v2m .chip.on { background: var(--aurora-deep); color: #fff; border-color: var(--aurora-deep); }
+  .v2m .chip.ex { color:#a44a3b; border-color: rgba(216,133,117,0.5); text-decoration: line-through; }
+  .v2m .slider { margin-top: 4px; }
+  .v2m .slider .top { display:flex; justify-content:space-between; font-size:7px; color: #7a857f; margin-bottom: 3px; }
+  .v2m .slider .top .a { color:var(--midnight); font-weight:500; }
+  .v2m .slider .track { height:3px; background:rgba(6,15,11,0.08); border-radius:999px; position:relative; }
+  .v2m .slider .track .fill { height:100%; background:var(--aurora); border-radius:999px; }
+  .v2m .slider .track .knob { position:absolute; top:50%; width:8px; height:8px; border-radius:50%; background:#fff; border:2px solid var(--aurora-deep); transform:translate(-50%,-50%); }
+  .v2m .apply { margin-top:auto; background: var(--midnight); color: var(--cream); text-align:center; padding: 9px; border-radius: 10px; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+
+  /* =================================================================== */
+  /*  V3 — Swipe Studio                                                   */
+  /* =================================================================== */
+  .v3 .body {
+    background: linear-gradient(165deg, #fef5ea 0%, #f9e8d2 100%);
+    display:grid; grid-template-columns: 1fr 220px; gap: 0;
+    font-size:10px; color:var(--midnight);
+    position:relative;
+  }
+  .v3 .stage { display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 16px; gap: 10px; position: relative; }
+  .v3 .topbar { position:absolute; top: 10px; left: 16px; right: 16px; display:flex; justify-content:space-between; align-items:center; font-size:9px; color:#7a857f; }
+  .v3 .topbar .lf { font-family:'Instrument Serif', serif; font-size: 13px; color: #5a3a28; }
+  .v3 .topbar .count { font-family:'JetBrains Mono', monospace; color: #b07050; }
+  .v3 .swipe-stack { position:relative; width: 200px; aspect-ratio: 5 / 6; }
+  .v3 .swipe-card {
+    position:absolute; inset:0; background:#fff;
+    border-radius: 14px; padding: 12px 14px;
+    box-shadow: 0 18px 30px -10px rgba(90,58,40,0.25), 0 2px 4px rgba(90,58,40,0.08);
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .v3 .swipe-card.behind1 { transform: scale(0.94) translateY(8px); opacity:0.7; z-index:1; }
+  .v3 .swipe-card.behind2 { transform: scale(0.88) translateY(16px); opacity:0.4; z-index:0; }
+  .v3 .swipe-card.front { transform: rotate(-3deg); z-index: 3; }
+  .v3 .sc-author { display:flex; align-items:center; gap:6px; }
+  .v3 .sc-avatar { width:22px; height:22px; border-radius:50%; background:linear-gradient(135deg, var(--ember), var(--rose)); }
+  .v3 .sc-name { font-weight:600; font-size:10px; }
+  .v3 .sc-handle { color:#a8a098; font-size:9px; }
+  .v3 .sc-text { font-size:10px; line-height:1.4; color:#2a2a2a; }
+  .v3 .sc-tag { margin-top:auto; display:inline-flex; align-items:center; gap:4px; font-size:8px; color:var(--ember); align-self:flex-start; }
+  .v3 .swipe-actions { display:flex; gap: 14px; align-items:center; margin-top: 6px; }
+  .v3 .swipe-btn {
+    width: 36px; height: 36px; border-radius:50%;
+    background:#fff; box-shadow: 0 4px 10px rgba(90,58,40,0.15);
+    display:flex; align-items:center; justify-content:center;
+    font-size:14px; font-weight:600;
+  }
+  .v3 .swipe-btn.no { color: var(--rose); }
+  .v3 .swipe-btn.yes { color: var(--aurora-deep); }
+  .v3 .swipe-btn.more { color: #7a857f; font-size: 10px; }
+  .v3 .swipe-btn.big { width: 44px; height: 44px; font-size: 18px; }
+  .v3 .right {
+    background: rgba(255,255,255,0.5);
+    border-left: 1px solid rgba(176,112,80,0.2);
+    padding: 14px 12px; display:flex; flex-direction:column; gap:12px;
+  }
+  .v3 .right .sect-title { font-size:8px; letter-spacing:0.14em; text-transform:uppercase; color:#b07050; font-weight:600; }
+  .v3 .taste-meter { display:flex; flex-direction:column; gap:4px; }
+  .v3 .taste-bar { height: 4px; border-radius: 999px; background: rgba(176,112,80,0.15); position:relative; overflow:hidden; }
+  .v3 .taste-bar .fill { position:absolute; left:0; top:0; bottom:0; background: linear-gradient(90deg, var(--ember), var(--amber)); border-radius:999px; }
+  .v3 .taste-row { display:flex; justify-content:space-between; font-size:8px; color:#7a5040; }
+  .v3 .vibe-chips { display:flex; flex-wrap:wrap; gap:4px; }
+  .v3 .vibe-chip { font-size:8px; padding: 3px 7px; border-radius: 999px; background: rgba(224,149,117,0.18); color: #7a5040; }
+  .v3 .vibe-chip.faint { background: rgba(176,112,80,0.08); color: #a89890; }
+  .v3 .right .recent { display:flex; flex-direction:column; gap:5px; }
+  .v3 .recent-row { display:flex; gap:6px; align-items:center; font-size:8px; color:#7a5040; }
+  .v3 .recent-row .ico { width:12px; height:12px; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:bold; }
+  .v3 .recent-row .ico.up { background: rgba(125,203,165,0.3); color: var(--aurora-deep); }
+  .v3 .recent-row .ico.dn { background: rgba(216,133,117,0.25); color: #a44a3b; }
+
+  /* V3 mobile */
+  .v3m { background: linear-gradient(180deg, #fef5ea 0%, #f9e8d2 100%); height:100%; padding-top:22px; padding-bottom:12px; font-size:10px; color:var(--midnight); display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:10px; padding-left:8px; padding-right:8px; }
+  .v3m .top { width:100%; display:flex; justify-content:space-between; align-items:center; padding: 6px 4px; }
+  .v3m .top .lf { font-family:'Instrument Serif', serif; font-size:14px; color:#5a3a28; }
+  .v3m .top .count { font-family:'JetBrains Mono', monospace; font-size:9px; color:#b07050; }
+  .v3m .stack { position:relative; width: 140px; aspect-ratio: 5/6.2; margin-top: 8px; }
+  .v3m .card { position:absolute; inset:0; background:#fff; border-radius:14px; padding:10px; box-shadow: 0 14px 24px -8px rgba(90,58,40,0.2); display:flex; flex-direction:column; gap:6px; }
+  .v3m .card.behind { transform: scale(0.94) translateY(6px); opacity:0.6; }
+  .v3m .card.front { transform: rotate(-2deg); z-index:2; }
+  .v3m .card .au { display:flex; align-items:center; gap:5px; }
+  .v3m .card .av { width:18px; height:18px; border-radius:50%; background:linear-gradient(135deg, var(--ember), var(--rose)); }
+  .v3m .card .name { font-weight:600; font-size:9px; }
+  .v3m .card .hd { font-size:7px; color:#a8a098; }
+  .v3m .card .tx { font-size:9px; line-height:1.35; }
+  .v3m .actions { display:flex; gap:14px; margin-top:6px; }
+  .v3m .ab { width:36px; height:36px; border-radius:50%; background:#fff; box-shadow: 0 4px 8px rgba(90,58,40,0.18); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600; }
+  .v3m .ab.no { color: var(--rose); }
+  .v3m .ab.yes { color: var(--aurora-deep); }
+  .v3m .meter { margin-top: auto; width: 100%; padding: 6px 8px; }
+  .v3m .meter-lbl { display:flex; justify-content:space-between; font-size:7px; color:#7a5040; margin-bottom:3px; }
+  .v3m .meter-bar { height:3px; border-radius:999px; background:rgba(176,112,80,0.15); position:relative; }
+  .v3m .meter-bar .fl { position:absolute; left:0; top:0; bottom:0; width:62%; background: linear-gradient(90deg, var(--ember), var(--amber)); border-radius:999px; }
+
+  /* =================================================================== */
+  /*  V4 — Editorial Briefing                                             */
+  /* =================================================================== */
+  .v4 .body { background: var(--cream); display:grid; grid-template-rows: auto 1fr; font-family: 'Fraunces', Georgia, serif; color: var(--midnight); }
+  .v4 .head { padding: 14px 20px; display:flex; align-items:center; gap:12px; border-bottom: 1px solid rgba(6,15,11,0.1); }
+  .v4 .head .mast { font-family: 'Instrument Serif', serif; font-size: 16px; font-style: italic; }
+  .v4 .head .sub { font-size: 8px; letter-spacing: 0.2em; text-transform: uppercase; color: #6a6055; margin-left: 6px; }
+  .v4 .head .date { margin-left:auto; font-size: 9px; color: #6a6055; font-family: 'Inter', sans-serif; letter-spacing: 0.08em; }
+  .v4 .stage { display:grid; grid-template-columns: 220px 1fr; gap: 0; }
+  .v4 .brief { padding: 16px 18px; border-right: 1px solid rgba(6,15,11,0.1); display:flex; flex-direction:column; gap: 8px; }
+  .v4 .brief-lbl { font-family: 'Inter', sans-serif; font-size: 7px; letter-spacing: 0.18em; text-transform: uppercase; color: #6a6055; font-weight: 600; }
+  .v4 .brief-text { font-size: 11px; line-height: 1.55; color: #2a2a2a; }
+  .v4 .brief-text em { font-style: italic; color: var(--aurora-deep); }
+  .v4 .curator-note { background: rgba(125,203,165,0.1); border-left: 2px solid var(--aurora-deep); padding: 8px 10px; font-size: 10px; line-height: 1.5; margin-top: 4px; }
+  .v4 .curator-note .who { font-family: 'Inter', sans-serif; font-size: 7px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--aurora-deep); margin-bottom: 4px; font-weight: 600; }
+  .v4 .columns { padding: 16px 20px; display:grid; grid-template-columns: 1fr 1fr; gap: 16px; overflow: hidden; }
+  .v4 .article { display:flex; flex-direction: column; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid rgba(6,15,11,0.08); }
+  .v4 .article .topic { font-family: 'Inter', sans-serif; font-size: 7px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ember); font-weight: 600; }
+  .v4 .article .ttl { font-size: 13px; line-height: 1.15; font-weight: 500; color: var(--midnight); }
+  .v4 .article .ex { font-size: 10px; line-height: 1.4; color: #3a3a30; }
+  .v4 .article .by { font-family: 'Inter', sans-serif; font-size: 8px; color: #6a6055; margin-top: 2px; }
+
+  /* V4 mobile */
+  .v4m { background: var(--cream); height:100%; padding-top:22px; font-family: 'Fraunces', Georgia, serif; color: var(--midnight); display:flex; flex-direction:column; }
+  .v4m .head { padding: 10px 14px; display:flex; align-items:center; border-bottom: 1px solid rgba(6,15,11,0.1); }
+  .v4m .head .mast { font-family: 'Instrument Serif', serif; font-size: 14px; font-style: italic; }
+  .v4m .head .date { margin-left:auto; font-size: 7px; font-family: 'Inter', sans-serif; color: #6a6055; letter-spacing: 0.1em; }
+  .v4m .pad { padding: 12px 14px; display:flex; flex-direction:column; gap: 10px; overflow: hidden; }
+  .v4m .brief-lbl { font-family: 'Inter', sans-serif; font-size: 7px; letter-spacing: 0.18em; text-transform: uppercase; color: #6a6055; font-weight: 600; }
+  .v4m .brief { font-size: 10px; line-height: 1.5; }
+  .v4m .brief em { color: var(--aurora-deep); font-style: italic; }
+  .v4m .note { background: rgba(125,203,165,0.12); border-left:2px solid var(--aurora-deep); padding:6px 8px; font-size:9px; line-height:1.45; }
+  .v4m .article { padding-top: 8px; border-top: 1px solid rgba(6,15,11,0.08); }
+  .v4m .topic { font-family: 'Inter', sans-serif; font-size:7px; letter-spacing:0.16em; text-transform:uppercase; color: var(--ember); font-weight:600; }
+  .v4m .ttl { font-size: 12px; line-height: 1.15; margin-top: 3px; }
+  .v4m .ex { font-size: 9px; line-height: 1.4; color: #3a3a30; margin-top: 3px; }
+
+  /* =================================================================== */
+  /*  V5 — Dashboard / Studio (Linear-dense)                              */
+  /* =================================================================== */
+  .v5 .body { background: var(--midnight); color: var(--cream); font-size:9px; display:grid; grid-template-columns: 110px 1fr 180px; grid-template-rows: 22px 22px 1fr; }
+  .v5 .topbar { grid-column: 1 / -1; background: var(--slate); border-bottom: 1px solid var(--hair); display:flex; align-items:center; padding: 0 10px; gap:10px; }
+  .v5 .topbar .logo { font-family:'Instrument Serif', serif; font-size: 11px; color: var(--aurora); }
+  .v5 .topbar .kbd { margin-left: 8px; font-family: 'JetBrains Mono', monospace; font-size: 8px; color: var(--sage-dim); background: var(--midnight); padding: 2px 7px; border-radius: 4px; border: 1px solid var(--hair); }
+  .v5 .topbar .kbd .pal { color: var(--cream); }
+  .v5 .topbar .right { margin-left:auto; display:flex; gap:8px; font-size:8px; color: var(--sage-dim); font-family: 'JetBrains Mono', monospace; }
+  .v5 .topbar .right .ok { color: var(--aurora); }
+  .v5 .filtersbar { grid-column: 1 / -1; background: var(--slate); border-bottom: 1px solid var(--hair); display:flex; align-items:center; padding: 0 10px; gap:6px; font-size:8px; font-family:'JetBrains Mono', monospace; }
+  .v5 .filtersbar .grp { color: var(--sage-dim); margin-right: 4px; }
+  .v5 .filtersbar .pill { background: rgba(125,203,165,0.16); color: var(--aurora); padding: 2px 6px; border-radius: 4px; letter-spacing:0.04em; }
+  .v5 .filtersbar .pill.ex { background: rgba(216,133,117,0.18); color: var(--rose); text-decoration: line-through; }
+  .v5 .sidebar { background: var(--midnight); padding: 8px 6px; border-right: 1px solid var(--hair); }
+  .v5 .sidebar .sect { font-size:7px; letter-spacing:0.14em; text-transform:uppercase; color: var(--sage-dim); padding: 4px 6px; }
+  .v5 .sidebar .item { display:flex; align-items:center; gap:5px; padding: 3px 6px; font-size:9px; border-radius:4px; }
+  .v5 .sidebar .item.on { background: rgba(125,203,165,0.1); color: var(--aurora); }
+  .v5 .sidebar .item .sw { width: 5px; height:5px; border-radius:50%; }
+  .v5 .main {
+    background: var(--midnight);
+    display:flex; flex-direction:column;
+    overflow: hidden;
+  }
+  .v5 .head-row {
+    display:grid; grid-template-columns: 30px 1fr 70px 50px 60px;
+    padding: 4px 10px; font-family:'JetBrains Mono', monospace;
+    font-size:7px; letter-spacing:0.14em; text-transform:uppercase;
+    color: var(--sage-dim);
+    border-bottom: 1px solid var(--hair);
+  }
+  .v5 .row {
+    display:grid; grid-template-columns: 30px 1fr 70px 50px 60px;
+    padding: 7px 10px; align-items:center;
+    border-bottom: 1px solid var(--hair);
+    font-size: 9px;
+  }
+  .v5 .row .sc { font-family:'JetBrains Mono', monospace; color: var(--aurora); font-size:9px; }
+  .v5 .row .author { color: var(--sage-dim); font-size:8px; font-family: 'JetBrains Mono', monospace; }
+  .v5 .row .topic-tag { font-family: 'JetBrains Mono', monospace; font-size:8px; color: var(--amber); }
+  .v5 .row .age { font-family: 'JetBrains Mono', monospace; font-size:8px; color: var(--sage-dim); }
+  .v5 .row .txt { color: var(--cream); line-height: 1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .v5 .row.hl { background: rgba(125,203,165,0.06); }
+  .v5 .inspector { background: var(--slate); border-left: 1px solid var(--hair); padding: 10px; font-size:8px; }
+  .v5 .inspector .lbl { color: var(--sage-dim); font-family:'JetBrains Mono', monospace; font-size:7px; letter-spacing:0.14em; text-transform:uppercase; margin-bottom: 4px; }
+  .v5 .inspector h6 { margin: 0 0 6px; font-size:10px; font-weight: 600; color: var(--cream); line-height:1.3; }
+  .v5 .inspector .matchrow { display:flex; align-items:center; justify-content:space-between; padding: 3px 0; border-bottom: 1px solid var(--hair); font-family: 'JetBrains Mono', monospace; font-size: 8px; }
+  .v5 .inspector .matchrow .k { color: var(--sage-dim); }
+  .v5 .inspector .matchrow .v { color: var(--aurora); }
+  .v5 .inspector .section { margin-top: 10px; }
+  .v5 .inspector .preview { background: var(--midnight); border: 1px solid var(--hair); border-radius: 4px; padding: 6px; font-size: 8px; line-height: 1.4; color: var(--parchment); }
+
+  /* V5 mobile */
+  .v5m { background: var(--midnight); color: var(--cream); height:100%; padding-top:22px; font-size:9px; display:flex; flex-direction:column; }
+  .v5m .tbar { padding: 6px 10px; display:flex; align-items:center; gap:8px; border-bottom: 1px solid var(--hair); background: var(--slate); }
+  .v5m .tbar .logo { font-family:'Instrument Serif', serif; font-size:12px; color: var(--aurora); }
+  .v5m .tbar .feed { font-family:'JetBrains Mono', monospace; font-size:8px; color: var(--sage-dim); margin-left:auto; }
+  .v5m .fbar { padding: 6px 10px; display:flex; gap:4px; flex-wrap:wrap; background: var(--slate); border-bottom: 1px solid var(--hair); }
+  .v5m .fbar .pill { font-family:'JetBrains Mono', monospace; font-size:7px; padding: 2px 5px; background: rgba(125,203,165,0.16); color: var(--aurora); border-radius:3px; }
+  .v5m .fbar .pill.ex { background: rgba(216,133,117,0.18); color: var(--rose); text-decoration: line-through; }
+  .v5m .feed-list { flex:1; overflow:hidden; }
+  .v5m .feed-list .r { padding: 7px 10px; border-bottom: 1px solid var(--hair); display:flex; gap:6px; }
+  .v5m .feed-list .r .sc { font-family:'JetBrains Mono', monospace; font-size:8px; color: var(--aurora); flex-shrink:0; }
+  .v5m .feed-list .r .col { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; }
+  .v5m .feed-list .r .txt { font-size:9px; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .v5m .feed-list .r .meta { font-family:'JetBrains Mono', monospace; font-size:7px; color: var(--sage-dim); }
+
+  /* =================================================================== */
+  /*  V6 — Canvas / Node Graph                                            */
+  /* =================================================================== */
+  .v6 .body { background: #f7faf8; position:relative; overflow:hidden; font-size:9px; }
+  .v6 .body::before {
+    content: ""; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(to right, rgba(6,15,11,0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(6,15,11,0.04) 1px, transparent 1px);
+    background-size: 20px 20px;
+    pointer-events:none;
+  }
+  .v6 .toolbar { position:absolute; top: 8px; left: 10px; right: 10px; display:flex; align-items:center; gap:8px; z-index: 5; }
+  .v6 .toolbar .logo { font-family:'Instrument Serif', serif; font-size:12px; color: var(--aurora-deep); }
+  .v6 .toolbar .seg { display:flex; background:#fff; border:1px solid var(--hair-ink); border-radius:6px; overflow:hidden; }
+  .v6 .toolbar .seg .b { padding: 2px 8px; font-size: 8px; color:#7a857f; }
+  .v6 .toolbar .seg .b.on { background: var(--midnight); color: var(--cream); }
+  .v6 .toolbar .right { margin-left:auto; font-family: 'JetBrains Mono', monospace; font-size:8px; color: var(--aurora-deep); }
+  .v6 .canvas { position:absolute; inset: 38px 0 0 0; }
+  .v6 .node {
+    position:absolute;
+    background: #fff; border:1px solid var(--hair-ink-strong);
+    border-radius: 8px; padding: 6px 9px;
+    box-shadow: 0 2px 6px rgba(6,15,11,0.06);
+    font-size: 9px;
+    z-index: 3;
+  }
+  .v6 .node .lbl { font-size: 7px; letter-spacing: 0.14em; text-transform: uppercase; color: #7a857f; margin-bottom: 2px; font-weight:600; }
+  .v6 .node.topic { border-color: var(--aurora-deep); }
+  .v6 .node.topic .lbl { color: var(--aurora-deep); }
+  .v6 .node.kw { border-color: var(--amber); }
+  .v6 .node.kw .lbl { color: #a07028; }
+  .v6 .node.vibe { border-color: var(--ember); background: rgba(232,185,136,0.06); }
+  .v6 .node.vibe .lbl { color: #a44a3b; }
+  .v6 .node.ex { border-color: var(--rose); background: rgba(216,133,117,0.06); }
+  .v6 .node.ex .lbl { color: #a44a3b; }
+  .v6 .node.post {
+    border-color: var(--midnight); background: var(--midnight); color: var(--cream);
+    border-radius: 8px;
+    z-index: 4;
+  }
+  .v6 .node.post .lbl { color: var(--aurora); }
+  .v6 .node.post .who { font-size:7px; color: var(--sage-dim); margin-top:2px; }
+  .v6 .node-sub { font-size: 9px; color:#2a2a2a; }
+  .v6 svg.lines { position:absolute; inset:0; width:100%; height:100%; z-index:1; pointer-events:none; }
+  .v6 .stats {
+    position:absolute; bottom: 10px; right: 12px;
+    background:#fff; border:1px solid var(--hair-ink);
+    border-radius: 8px; padding: 7px 10px;
+    font-family:'JetBrains Mono', monospace;
+    font-size: 8px; color:#7a857f;
+    display:flex; flex-direction:column; gap:2px;
+    z-index: 5;
+  }
+  .v6 .stats .v { color: var(--aurora-deep); font-weight:600; }
+
+  /* V6 mobile */
+  .v6m { background:#f7faf8; height:100%; padding-top:22px; display:flex; flex-direction:column; font-size:9px; color:var(--midnight); }
+  .v6m .bar { padding: 8px 12px; background:#fff; border-bottom: 1px solid var(--hair-ink); display:flex; align-items:center; gap:6px; }
+  .v6m .bar .logo { font-family:'Instrument Serif', serif; font-size:13px; color: var(--aurora-deep); }
+  .v6m .bar .map { margin-left:auto; font-size:8px; color: var(--aurora-deep); border:1px solid var(--aurora-deep); padding:2px 6px; border-radius:5px; }
+  .v6m .summary { padding: 10px 12px; background: #fff; border-bottom: 1px solid var(--hair-ink); display:flex; flex-direction:column; gap:6px; }
+  .v6m .summary .ln { font-size:8px; }
+  .v6m .summary .ln span { font-family:'JetBrains Mono', monospace; padding: 1px 5px; border-radius: 3px; margin-right:2px; font-size:7px; }
+  .v6m .summary .ln .topic { background: rgba(125,203,165,0.18); color: var(--aurora-deep); }
+  .v6m .summary .ln .kw { background: rgba(232,185,136,0.25); color: #8c6622; }
+  .v6m .summary .ln .ex { background: rgba(216,133,117,0.18); color: #a44a3b; text-decoration: line-through; }
+  .v6m .feed-list { flex:1; overflow:hidden; padding: 10px 12px; display:flex; flex-direction:column; gap:8px; }
+  .v6m .post { padding: 6px 0; border-bottom: 1px solid var(--hair-ink); }
+  .v6m .post:last-child { border-bottom:none; }
+  .v6m .post .au { display:flex; align-items:center; gap:5px; }
+  .v6m .post .av { width:14px; height:14px; border-radius:50%; background: linear-gradient(135deg, var(--aurora), var(--mist)); }
+  .v6m .post .nm { font-size: 8px; font-weight:600; }
+  .v6m .post .hd { font-size: 7px; color: #7a857f; }
+  .v6m .post .tx { font-size: 9px; line-height: 1.4; margin-top: 3px; }
+  .v6m .post .why { font-size: 7px; color: var(--aurora-deep); margin-top: 3px; font-family: 'JetBrains Mono', monospace; }
+
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <div class="kicker">Ripple Feed · Curator Exploration</div>
+  <h1>Six directions for <em>describing what you want to read</em>.</h1>
+  <p>The current product is a chat-driven copilot. These mockups range from refining that idea to abandoning it entirely &mdash; sliders, swipes, briefs, dashboards, canvases. Each cell pairs the desktop frame with its mobile sibling so you can judge the tradeoff at both sizes.</p>
+  <div class="axis">
+    <span>Layout varies</span>
+    <span>Tone varies</span>
+    <span>Density varies</span>
+    <span>Input paradigm varies</span>
+  </div>
+</header>
+
+<main class="grid">
+
+  <!-- ============================================================== -->
+  <!-- 01 — Conversational Copilot                                    -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">01 / Refined Chat</span>
+      <h2 class="cell-title">Conversational Copilot</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> Lowest cognitive floor &mdash; anyone can describe a feed in plain English. But every iteration costs an LLM round-trip and the user can never <em>see</em> the model of their taste they&rsquo;re building.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">chat-first</span>
+        <span class="cell-tag">three-pane</span>
+        <span class="cell-tag">warm tone</span>
+        <span class="cell-tag">low density</span>
+        <span class="cell-tag warn">opaque state</span>
+      </div>
+    </header>
+    <div class="frames">
+      <!-- Desktop -->
+      <div class="frame-desktop v1">
+        <div class="chrome">
+          <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          <div class="url">ripple.feed&nbsp;&nbsp;&middot;&nbsp;&nbsp;curator</div>
+        </div>
+        <div class="body">
+          <div class="topbar">
+            <div class="logo">Ripple</div>
+            <span class="live">Live</span>
+            <span class="crumb">Climate, calmly &middot; 312 posts/day</span>
+          </div>
+          <div class="sidebar">
+            <div class="label">Your Feeds</div>
+            <div class="feed-item active"><span class="sw" style="background:var(--aurora)"></span><div><div class="ttl">Climate, calmly</div><div class="ct">312/day</div></div></div>
+            <div class="feed-item"><span class="sw" style="background:var(--amber)"></span><div><div class="ttl">Indie dev</div><div class="ct">88/day</div></div></div>
+            <div class="feed-item"><span class="sw" style="background:var(--ember)"></span><div><div class="ttl">Bay Area shows</div><div class="ct">24/day</div></div></div>
+            <div class="feed-item"><span class="sw" style="background:var(--rose)"></span><div><div class="ttl">Long reads</div><div class="ct">17/day</div></div></div>
+            <div class="new-feed">+ new feed</div>
+          </div>
+          <div class="chat">
+            <div class="panel-head">Conversation</div>
+            <div class="msgs">
+              <div class="msg user">I want climate news but not doom &mdash; more &ldquo;here&rsquo;s what people are doing.&rdquo;</div>
+              <div class="msg bot"><strong>Got it.</strong> So solutions-leaning &mdash; restoration, policy wins, retrofits. Should I mute anything? People sometimes block the word &ldquo;collapse&rdquo; here.</div>
+              <div class="msg user">Yeah, no collapse, no apocalypse takes.</div>
+              <div class="msg bot">Done. I&rsquo;ll also damp anything that just doomscrolls &mdash; even if it doesn&rsquo;t use those words. Want me to lean more <strong>scientist</strong> or more <strong>journalist</strong>?</div>
+            </div>
+            <div class="composer"><span class="ph">Reply or refine&hellip;</span><span class="send"></span></div>
+          </div>
+          <div class="results">
+            <div class="panel-head"><span>Posts &middot; 47 new</span><span class="refresh">refresh</span></div>
+            <div class="post">
+              <div class="author"><div class="avatar"></div><div><div class="name">Hannah V&aacute;squez</div><div class="handle">@hvasquez.bsky.social</div></div></div>
+              <div class="text">Three years of mangrove restoration along the Sundarbans is starting to show in storm-surge data. Quietly extraordinary.</div>
+              <div class="meta"><span>2h</span><span>match&nbsp;0.91</span></div>
+            </div>
+            <div class="post">
+              <div class="author"><div class="avatar" style="background:linear-gradient(135deg,var(--ember),var(--amber))"></div><div><div class="name">Toma&scaron; Reinhardt</div><div class="handle">@reinhardt.bsky.social</div></div></div>
+              <div class="text">The Netherlands just hit 64% renewables on its grid for the first time. Threadgood charts inside&hellip;</div>
+              <div class="meta"><span>4h</span><span>match&nbsp;0.88</span></div>
+            </div>
+            <div class="post">
+              <div class="author"><div class="avatar" style="background:linear-gradient(135deg,var(--mist),var(--sage))"></div><div><div class="name">Ena Whitford</div><div class="handle">@enawh.bsky.social</div></div></div>
+              <div class="text">Retrofit subsidies hit a million homes in Italy this week. Boring milestone, huge impact.</div>
+              <div class="meta"><span>7h</span><span>match&nbsp;0.84</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Mobile -->
+      <div class="frame-mobile">
+        <div class="screen">
+          <div class="notch"></div>
+          <div class="status"><span>9:41</span><span>&middot;&middot;&middot;</span></div>
+          <div class="home-indicator"></div>
+          <div class="v1m">
+            <div class="tbar"><span class="logo">Ripple</span><span class="crumb">Climate, calmly</span></div>
+            <div class="tabs"><span class="t on">Chat</span><span class="t">Feed</span><span class="t">Tune</span></div>
+            <div class="panel">
+              <div class="msg user">No doom takes please &mdash; more &ldquo;what people are doing.&rdquo;</div>
+              <div class="msg bot"><strong>Got it.</strong> Solutions-leaning. Mute &ldquo;collapse&rdquo;?</div>
+              <div class="msg user">Yes.</div>
+              <div class="msg bot">Done. Lean more <strong>scientist</strong> or <strong>journalist</strong>?</div>
+              <div class="composer"><span class="ph">Reply&hellip;</span><span class="send"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- 02 — Direct Tuner                                              -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">02 / No Chat</span>
+      <h2 class="cell-title">Direct Tuner</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> The user <em>sees</em> the whole model of their taste at a glance &mdash; chips, sliders, live count &mdash; and every tweak is instant and cheap (no LLM call). But cold-start is harder, and ambiguous vibes like &ldquo;less doomscrolly&rdquo; don&rsquo;t map cleanly to controls.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">no chat</span>
+        <span class="cell-tag">direct manipulation</span>
+        <span class="cell-tag">high density</span>
+        <span class="cell-tag">precise</span>
+        <span class="cell-tag warn">cold-start</span>
+      </div>
+    </header>
+    <div class="frames">
+      <div class="frame-desktop v2">
+        <div class="chrome">
+          <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          <div class="url">ripple.feed&nbsp;&nbsp;&middot;&nbsp;&nbsp;tune</div>
+        </div>
+        <div class="body">
+          <div class="panel">
+            <div class="panel-title">Topics &middot; include</div>
+            <div class="panel-sub">Posts must touch one of these.</div>
+            <div class="chips">
+              <span class="chip on">climate policy</span>
+              <span class="chip on">restoration</span>
+              <span class="chip on">renewables</span>
+              <span class="chip on">retrofits</span>
+              <span class="chip">EV adoption</span>
+              <span class="chip">batteries</span>
+              <span class="chip">grid</span>
+              <span class="chip add">+ add</span>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-title">Topics &middot; exclude</div>
+            <div class="panel-sub">Hard mutes &mdash; we&rsquo;ll never show these.</div>
+            <div class="chips">
+              <span class="chip ex">collapse</span>
+              <span class="chip ex">apocalypse</span>
+              <span class="chip ex">populist takes</span>
+              <span class="chip add">+ add</span>
+            </div>
+            <div class="meter">
+              <span class="num">312</span>
+              <span class="lbl">posts/day matching your filters<br/>+ 0.4&times; vs all of Bluesky</span>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-title">Vibe</div>
+            <div class="panel-sub">Soft preferences. Posts get ranked, not filtered.</div>
+            <div class="slider">
+              <div class="top"><span>doomy</span><span class="a">hopeful</span></div>
+              <div class="track"><div class="fill" style="width:78%"></div><div class="knob" style="left:78%"></div></div>
+            </div>
+            <div class="slider">
+              <div class="top"><span class="a">scientist</span><span>journalist</span></div>
+              <div class="track"><div class="fill" style="width:36%"></div><div class="knob" style="left:36%"></div></div>
+            </div>
+            <div class="slider">
+              <div class="top"><span>breaking</span><span class="a">evergreen</span></div>
+              <div class="track"><div class="fill" style="width:62%"></div><div class="knob" style="left:62%"></div></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-title">Live preview</div>
+            <div class="panel-sub">Top matches under current settings.</div>
+            <div class="preview-list">
+              <div class="preview-row"><div class="avatar"></div><div class="txt">Three years of mangrove restoration is showing in storm-surge data&hellip;</div><div class="score">0.91</div></div>
+              <div class="preview-row"><div class="avatar" style="background:linear-gradient(135deg,var(--aurora),var(--mist))"></div><div class="txt">Netherlands hit 64% renewables on its grid this week.</div><div class="score">0.88</div></div>
+              <div class="preview-row"><div class="avatar" style="background:linear-gradient(135deg,var(--rose),var(--ember))"></div><div class="txt">Retrofit subsidies passed one million homes in Italy.</div><div class="score">0.84</div></div>
+              <div class="preview-row"><div class="avatar" style="background:linear-gradient(135deg,var(--amber),var(--mist))"></div><div class="txt">Geothermal pilot in Cornwall hits 4&nbsp;MW continuous output.</div><div class="score">0.79</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="frame-mobile">
+        <div class="screen">
+          <div class="notch"></div>
+          <div class="status"><span>9:41</span><span>&middot;&middot;&middot;</span></div>
+          <div class="home-indicator"></div>
+          <div class="v2m">
+            <div class="bar"><span class="ttl">Tune</span><span class="count">312/day</span></div>
+            <div class="pad">
+              <div>
+                <div class="lbl">Include</div>
+                <div class="chips">
+                  <span class="chip on">climate policy</span>
+                  <span class="chip on">restoration</span>
+                  <span class="chip on">renewables</span>
+                  <span class="chip on">retrofits</span>
+                </div>
+              </div>
+              <div>
+                <div class="lbl">Exclude</div>
+                <div class="chips">
+                  <span class="chip ex">collapse</span>
+                  <span class="chip ex">apocalypse</span>
+                </div>
+              </div>
+              <div>
+                <div class="lbl">Vibe</div>
+                <div class="slider"><div class="top"><span>doomy</span><span class="a">hopeful</span></div><div class="track"><div class="fill" style="width:78%"></div><div class="knob" style="left:78%"></div></div></div>
+                <div class="slider"><div class="top"><span class="a">scientist</span><span>journalist</span></div><div class="track"><div class="fill" style="width:36%"></div><div class="knob" style="left:36%"></div></div></div>
+              </div>
+              <div class="apply">Apply &middot; 312/day</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- 03 — Swipe Studio                                              -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">03 / Tinder for taste</span>
+      <h2 class="cell-title">Swipe Studio</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> Zero-friction onboarding &mdash; the user never has to articulate what they want. The model learns from gestures. But the user can&rsquo;t see <em>why</em> they&rsquo;re being shown what they&rsquo;re shown, and course-correcting a wrong impression takes many swipes.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">gestural</span>
+        <span class="cell-tag">implicit signal</span>
+        <span class="cell-tag">playful tone</span>
+        <span class="cell-tag">single-card</span>
+        <span class="cell-tag warn">opaque to user</span>
+      </div>
+    </header>
+    <div class="frames">
+      <div class="frame-desktop v3">
+        <div class="chrome">
+          <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          <div class="url">ripple.feed&nbsp;&nbsp;&middot;&nbsp;&nbsp;taste</div>
+        </div>
+        <div class="body">
+          <div class="stage">
+            <div class="topbar">
+              <span class="lf">Ripple</span>
+              <span>train your feed by reacting &mdash; we&rsquo;ll figure it out</span>
+              <span class="count">324 reactions</span>
+            </div>
+            <div class="swipe-stack">
+              <div class="swipe-card behind2"></div>
+              <div class="swipe-card behind1"></div>
+              <div class="swipe-card front">
+                <div class="sc-author">
+                  <div class="sc-avatar"></div>
+                  <div>
+                    <div class="sc-name">Hannah V&aacute;squez</div>
+                    <div class="sc-handle">@hvasquez.bsky.social &middot; 2h</div>
+                  </div>
+                </div>
+                <div class="sc-text">Three years of mangrove restoration along the Sundarbans is starting to show in storm-surge data. Quietly extraordinary.</div>
+                <div class="sc-tag">&#9679; restoration &middot; solutions &middot; long-arc</div>
+              </div>
+            </div>
+            <div class="swipe-actions">
+              <div class="swipe-btn no">&#10005;</div>
+              <div class="swipe-btn more">more like this</div>
+              <div class="swipe-btn yes big">&#10084;</div>
+              <div class="swipe-btn more">mute author</div>
+              <div class="swipe-btn">&#8594;</div>
+            </div>
+          </div>
+          <div class="right">
+            <div>
+              <div class="sect-title">Your taste</div>
+              <div class="taste-meter">
+                <div class="taste-bar"><div class="fill" style="width:74%"></div></div>
+                <div class="taste-row"><span>still learning</span><span>74%</span></div>
+              </div>
+            </div>
+            <div>
+              <div class="sect-title">Things you like</div>
+              <div class="vibe-chips">
+                <span class="vibe-chip">restoration</span>
+                <span class="vibe-chip">policy wins</span>
+                <span class="vibe-chip">long arcs</span>
+                <span class="vibe-chip faint">space?</span>
+                <span class="vibe-chip faint">history?</span>
+              </div>
+            </div>
+            <div>
+              <div class="sect-title">Recent reactions</div>
+              <div class="recent">
+                <div class="recent-row"><span class="ico up">&#10084;</span><span>&ldquo;Netherlands hit 64% renewables&hellip;&rdquo;</span></div>
+                <div class="recent-row"><span class="ico dn">&#10005;</span><span>&ldquo;Carbon offsets are a scam&hellip;&rdquo;</span></div>
+                <div class="recent-row"><span class="ico up">&#10084;</span><span>&ldquo;Retrofit subsidies in Italy&hellip;&rdquo;</span></div>
+                <div class="recent-row"><span class="ico dn">&#10005;</span><span>&ldquo;Why the IPCC failed&hellip;&rdquo;</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="frame-mobile">
+        <div class="screen">
+          <div class="notch"></div>
+          <div class="status"><span>9:41</span><span>&middot;&middot;&middot;</span></div>
+          <div class="home-indicator"></div>
+          <div class="v3m">
+            <div class="top"><span class="lf">Ripple</span><span class="count">324 reactions</span></div>
+            <div class="stack">
+              <div class="card behind"></div>
+              <div class="card front">
+                <div class="au">
+                  <div class="av"></div>
+                  <div>
+                    <div class="name">Hannah V&aacute;squez</div>
+                    <div class="hd">@hvasquez &middot; 2h</div>
+                  </div>
+                </div>
+                <div class="tx">Three years of mangrove restoration is starting to show in storm-surge data. Quietly extraordinary.</div>
+              </div>
+            </div>
+            <div class="actions">
+              <div class="ab no">&#10005;</div>
+              <div class="ab yes">&#10084;</div>
+            </div>
+            <div class="meter">
+              <div class="meter-lbl"><span>your taste</span><span>62%</span></div>
+              <div class="meter-bar"><div class="fl"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- 04 — Editorial Briefing                                        -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">04 / Editorial</span>
+      <h2 class="cell-title">Editorial Briefing</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> The product feels like commissioning a magazine, not configuring a filter. Calm, contemplative, makes serious topics feel serious. But the tone discourages quick iteration &mdash; users who want to fiddle will feel they&rsquo;re being held at arm&rsquo;s length.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">literary</span>
+        <span class="cell-tag">serif</span>
+        <span class="cell-tag">single brief</span>
+        <span class="cell-tag">low density</span>
+        <span class="cell-tag warn">slow iteration</span>
+      </div>
+    </header>
+    <div class="frames">
+      <div class="frame-desktop v4">
+        <div class="chrome">
+          <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          <div class="url">ripple.feed&nbsp;&nbsp;&middot;&nbsp;&nbsp;dispatch</div>
+        </div>
+        <div class="body">
+          <div class="head">
+            <span class="mast">Ripple Dispatch</span>
+            <span class="sub">your curator</span>
+            <span class="date">VOL.&nbsp;XII &middot; MON&nbsp;11&nbsp;MAY</span>
+          </div>
+          <div class="stage">
+            <div class="brief">
+              <div class="brief-lbl">Your brief</div>
+              <div class="brief-text">I want climate news but I&rsquo;m exhausted by doom &mdash; more <em>here&rsquo;s what people are actually doing</em>: restoration projects, retrofit subsidies, grid wins. Less collapse, more craft.</div>
+              <div class="curator-note">
+                <div class="who">Curator&rsquo;s note</div>
+                Leaning toward solutions reporting and quiet long-arc science. I&rsquo;ve muted &ldquo;collapse&rdquo; and &ldquo;apocalypse&rdquo; framings. Will surface 30&ndash;40 a day.
+              </div>
+            </div>
+            <div class="columns">
+              <div class="article">
+                <div class="topic">Restoration</div>
+                <div class="ttl">Three years of mangroves are bending the storm surge.</div>
+                <div class="ex">A quietly extraordinary dataset from the Sundarbans suggests restored coastline is doing what we hoped, slowly&hellip;</div>
+                <div class="by">Hannah V&aacute;squez &middot; 2h</div>
+              </div>
+              <div class="article">
+                <div class="topic">Grid</div>
+                <div class="ttl">The Netherlands tipped past 64% renewables.</div>
+                <div class="ex">It happened on a Tuesday afternoon and nobody noticed. The charts, however, are remarkable&hellip;</div>
+                <div class="by">Toma&scaron; Reinhardt &middot; 4h</div>
+              </div>
+              <div class="article">
+                <div class="topic">Retrofits</div>
+                <div class="ttl">A million homes, quietly insulated.</div>
+                <div class="ex">Italy&rsquo;s subsidy scheme has crossed a milestone everyone assumed would never come. The lessons are not what you&rsquo;d expect&hellip;</div>
+                <div class="by">Ena Whitford &middot; 7h</div>
+              </div>
+              <div class="article">
+                <div class="topic">Geothermal</div>
+                <div class="ttl">Cornwall&rsquo;s 4&nbsp;MW heart starts beating.</div>
+                <div class="ex">A long-dormant project finally produces continuous power. What it means for the UK&rsquo;s baseload remains&hellip;</div>
+                <div class="by">Asha Olu &middot; 11h</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="frame-mobile">
+        <div class="screen">
+          <div class="notch"></div>
+          <div class="status"><span>9:41</span><span>&middot;&middot;&middot;</span></div>
+          <div class="home-indicator"></div>
+          <div class="v4m">
+            <div class="head"><span class="mast">Ripple Dispatch</span><span class="date">VOL.&nbsp;XII</span></div>
+            <div class="pad">
+              <div class="brief-lbl">Your brief</div>
+              <div class="brief">I want climate news but I&rsquo;m exhausted by doom &mdash; more <em>what people are actually doing</em>.</div>
+              <div class="note">Leaning solutions reporting and quiet long-arc science. 30&ndash;40 a day.</div>
+              <div class="article">
+                <div class="topic">Restoration</div>
+                <div class="ttl">Three years of mangroves are bending the storm surge.</div>
+                <div class="ex">A quietly extraordinary dataset from the Sundarbans suggests restored coastline is doing what we&hellip;</div>
+              </div>
+              <div class="article">
+                <div class="topic">Grid</div>
+                <div class="ttl">The Netherlands tipped past 64% renewables.</div>
+                <div class="ex">It happened on a Tuesday afternoon and nobody noticed&hellip;</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- 05 — Dashboard / Studio                                        -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">05 / Power tool</span>
+      <h2 class="cell-title">Dashboard&nbsp;/&nbsp;Studio</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> Maximum information per pixel and full keyboard control &mdash; scores visible, match reasons in the inspector, &#x2318;K for everything. Power users get a Linear-grade tool. But the dark-mode density terrifies first-time visitors, and the &ldquo;why am I here&rdquo; isn&rsquo;t obvious.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">keyboard-driven</span>
+        <span class="cell-tag">dark</span>
+        <span class="cell-tag">very high density</span>
+        <span class="cell-tag">power user</span>
+        <span class="cell-tag warn">intimidating</span>
+      </div>
+    </header>
+    <div class="frames">
+      <div class="frame-desktop v5">
+        <div class="chrome">
+          <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          <div class="url">ripple.feed&nbsp;&nbsp;&middot;&nbsp;&nbsp;studio</div>
+        </div>
+        <div class="body">
+          <div class="topbar">
+            <span class="logo">Ripple</span>
+            <span class="kbd"><span class="pal">&#x2318;K</span>&nbsp;&nbsp;palette</span>
+            <span class="kbd">f&nbsp;&middot;&nbsp;filter</span>
+            <span class="kbd">/&nbsp;&middot;&nbsp;search</span>
+            <span class="right"><span class="ok">&#9679; live</span><span>312/d</span><span>idx&nbsp;v2.1</span></span>
+          </div>
+          <div class="filtersbar">
+            <span class="grp">feed:</span><span class="pill">climate-calm</span>
+            <span class="grp" style="margin-left:8px">topics:</span><span class="pill">restoration</span><span class="pill">renewables</span><span class="pill">retrofits</span>
+            <span class="grp" style="margin-left:8px">mute:</span><span class="pill ex">collapse</span><span class="pill ex">apocalypse</span>
+          </div>
+          <div class="sidebar col">
+            <div class="sect">Feeds</div>
+            <div class="item on"><span class="sw" style="background:var(--aurora)"></span>climate-calm</div>
+            <div class="item"><span class="sw" style="background:var(--amber)"></span>indie-dev</div>
+            <div class="item"><span class="sw" style="background:var(--ember)"></span>shows-sf</div>
+            <div class="item"><span class="sw" style="background:var(--rose)"></span>long-reads</div>
+            <div class="sect" style="margin-top:8px">Views</div>
+            <div class="item">unread &middot; 312</div>
+            <div class="item">starred &middot; 18</div>
+            <div class="item">hidden &middot; 4</div>
+          </div>
+          <div class="main">
+            <div class="head-row">
+              <span>scr</span><span>post</span><span>topic</span><span>by</span><span>age</span>
+            </div>
+            <div class="row hl">
+              <span class="sc">0.91</span>
+              <span class="txt">Three years of mangrove restoration is showing in storm-surge data&hellip;</span>
+              <span class="topic-tag">restore</span>
+              <span class="author">hvasquez</span>
+              <span class="age">2h</span>
+            </div>
+            <div class="row">
+              <span class="sc">0.88</span>
+              <span class="txt">Netherlands hit 64% renewables on its grid for the first time&hellip;</span>
+              <span class="topic-tag">grid</span>
+              <span class="author">reinhardt</span>
+              <span class="age">4h</span>
+            </div>
+            <div class="row">
+              <span class="sc">0.84</span>
+              <span class="txt">Retrofit subsidies passed one million homes in Italy this week&hellip;</span>
+              <span class="topic-tag">retrofit</span>
+              <span class="author">enawh</span>
+              <span class="age">7h</span>
+            </div>
+            <div class="row">
+              <span class="sc">0.79</span>
+              <span class="txt">Geothermal pilot in Cornwall hits 4&nbsp;MW continuous output&hellip;</span>
+              <span class="topic-tag">geo</span>
+              <span class="author">asha-o</span>
+              <span class="age">11h</span>
+            </div>
+            <div class="row">
+              <span class="sc">0.76</span>
+              <span class="txt">Quiet milestone &mdash; California EV registrations passed 30% of new cars&hellip;</span>
+              <span class="topic-tag">ev</span>
+              <span class="author">m-lockett</span>
+              <span class="age">13h</span>
+            </div>
+            <div class="row">
+              <span class="sc">0.72</span>
+              <span class="txt">Restoration economics: what the Sundarbans data implies for India&rsquo;s coast&hellip;</span>
+              <span class="topic-tag">restore</span>
+              <span class="author">priya-d</span>
+              <span class="age">15h</span>
+            </div>
+          </div>
+          <div class="inspector">
+            <div class="lbl">Selected</div>
+            <h6>Three years of mangrove restoration is showing in storm-surge data&hellip;</h6>
+            <div class="matchrow"><span class="k">score</span><span class="v">0.912</span></div>
+            <div class="matchrow"><span class="k">topic</span><span class="v">restoration</span></div>
+            <div class="matchrow"><span class="k">vibe</span><span class="v">+hopeful</span></div>
+            <div class="matchrow"><span class="k">lang</span><span class="v">en</span></div>
+            <div class="matchrow"><span class="k">embed&nbsp;d</span><span class="v">0.21</span></div>
+            <div class="section">
+              <div class="lbl">Why matched</div>
+              <div class="preview">solutions framing &middot; long-arc subject &middot; no excluded terms</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="frame-mobile">
+        <div class="screen">
+          <div class="notch"></div>
+          <div class="status"><span>9:41</span><span style="color:var(--aurora)">&#9679;</span></div>
+          <div class="home-indicator"></div>
+          <div class="v5m">
+            <div class="tbar"><span class="logo">Ripple</span><span class="feed">climate-calm</span></div>
+            <div class="fbar">
+              <span class="pill">restoration</span>
+              <span class="pill">renewables</span>
+              <span class="pill ex">collapse</span>
+            </div>
+            <div class="feed-list">
+              <div class="r">
+                <span class="sc">.91</span>
+                <div class="col">
+                  <span class="txt">Three years of mangrove restoration is showing in storm-surge data&hellip;</span>
+                  <span class="meta">hvasquez &middot; 2h &middot; restore</span>
+                </div>
+              </div>
+              <div class="r">
+                <span class="sc">.88</span>
+                <div class="col">
+                  <span class="txt">Netherlands hit 64% renewables this week&hellip;</span>
+                  <span class="meta">reinhardt &middot; 4h &middot; grid</span>
+                </div>
+              </div>
+              <div class="r">
+                <span class="sc">.84</span>
+                <div class="col">
+                  <span class="txt">Retrofit subsidies passed one million homes&hellip;</span>
+                  <span class="meta">enawh &middot; 7h &middot; retrofit</span>
+                </div>
+              </div>
+              <div class="r">
+                <span class="sc">.79</span>
+                <div class="col">
+                  <span class="txt">Geothermal pilot in Cornwall hits 4&nbsp;MW&hellip;</span>
+                  <span class="meta">asha-o &middot; 11h &middot; geo</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- 06 — Canvas / Node Graph                                       -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">06 / Spatial</span>
+      <h2 class="cell-title">Canvas / Node Graph</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> The model of your taste becomes <em>spatial</em> &mdash; topics, vibes, and exclusions are nodes you can see, drag, and connect. Most legible mental model. But the canvas paradigm collapses on small screens and the affordances aren&rsquo;t obvious to new users.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">spatial</span>
+        <span class="cell-tag">node graph</span>
+        <span class="cell-tag">FigJam-y</span>
+        <span class="cell-tag">legible model</span>
+        <span class="cell-tag warn">poor on mobile</span>
+      </div>
+    </header>
+    <div class="frames">
+      <div class="frame-desktop v6">
+        <div class="chrome">
+          <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          <div class="url">ripple.feed&nbsp;&nbsp;&middot;&nbsp;&nbsp;canvas</div>
+        </div>
+        <div class="body">
+          <div class="toolbar">
+            <span class="logo">Ripple</span>
+            <div class="seg"><span class="b on">Canvas</span><span class="b">List</span></div>
+            <span class="right">312/day &middot; auto-fit</span>
+          </div>
+          <div class="canvas">
+            <svg class="lines" viewBox="0 0 640 400" preserveAspectRatio="none">
+              <!-- Lines from "Feed" hub to topic nodes -->
+              <path d="M 320 200 C 240 180, 180 140, 130 110" stroke="#3e8a6c" stroke-width="1.4" fill="none" />
+              <path d="M 320 200 C 260 220, 200 250, 140 270" stroke="#3e8a6c" stroke-width="1.4" fill="none" />
+              <path d="M 320 200 C 280 160, 250 110, 230 70"  stroke="#3e8a6c" stroke-width="1.4" fill="none" />
+              <!-- Vibe to feed -->
+              <path d="M 320 200 C 380 230, 430 260, 480 290" stroke="#e09575" stroke-width="1.4" fill="none" stroke-dasharray="3 3" />
+              <path d="M 320 200 C 380 170, 430 140, 480 110" stroke="#e09575" stroke-width="1.4" fill="none" stroke-dasharray="3 3" />
+              <!-- Exclude (rejected) -->
+              <path d="M 320 200 C 360 230, 420 270, 470 320" stroke="#d88575" stroke-width="1.4" fill="none" stroke-dasharray="2 4" />
+              <!-- Feed to posts -->
+              <path d="M 320 200 C 360 200, 420 200, 540 200" stroke="#0b1814" stroke-width="1.4" fill="none" />
+              <path d="M 320 200 C 360 220, 420 240, 540 260" stroke="#0b1814" stroke-width="1.4" fill="none" />
+              <path d="M 320 200 C 360 180, 420 160, 540 140" stroke="#0b1814" stroke-width="1.4" fill="none" />
+            </svg>
+            <!-- Central hub -->
+            <div class="node" style="left:50%; top:46%; transform:translate(-50%,-50%); border-color: var(--midnight); background: var(--midnight); color: var(--cream);">
+              <div class="lbl" style="color: var(--aurora)">Feed</div>
+              <div style="font-weight:600; font-size:11px">climate, calmly</div>
+            </div>
+            <!-- Topic nodes (left) -->
+            <div class="node topic" style="left:10px; top:18%">
+              <div class="lbl">Topic</div>
+              <div class="node-sub">restoration</div>
+            </div>
+            <div class="node topic" style="left:24px; top:64%">
+              <div class="lbl">Topic</div>
+              <div class="node-sub">renewables</div>
+            </div>
+            <div class="node topic" style="left:26%; top:8%">
+              <div class="lbl">Topic</div>
+              <div class="node-sub">retrofits</div>
+            </div>
+            <!-- Vibe nodes (right top) -->
+            <div class="node vibe" style="right:18%; top:14%">
+              <div class="lbl">Vibe</div>
+              <div class="node-sub">hopeful</div>
+            </div>
+            <div class="node vibe" style="right:8%; top:62%">
+              <div class="lbl">Vibe</div>
+              <div class="node-sub">long-arc</div>
+            </div>
+            <!-- Exclude (bottom right) -->
+            <div class="node ex" style="right:4%; bottom:8%">
+              <div class="lbl">Exclude</div>
+              <div class="node-sub">collapse, apocalypse</div>
+            </div>
+            <!-- Posts streaming out -->
+            <div class="node post" style="right:6%; top:30%; max-width: 130px">
+              <div class="lbl">Post &middot; 0.91</div>
+              <div style="font-size:8px; line-height:1.3">Three years of mangrove restoration&hellip;</div>
+              <div class="who">@hvasquez &middot; 2h</div>
+            </div>
+            <div class="stats">
+              <div>nodes&nbsp;<span class="v">6</span></div>
+              <div>matches&nbsp;<span class="v">312/d</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="frame-mobile">
+        <div class="screen">
+          <div class="notch"></div>
+          <div class="status"><span>9:41</span><span>&middot;&middot;&middot;</span></div>
+          <div class="home-indicator"></div>
+          <div class="v6m">
+            <div class="bar"><span class="logo">Ripple</span><span class="map">map</span></div>
+            <div class="summary">
+              <div class="ln"><strong>climate, calmly</strong></div>
+              <div class="ln"><span class="topic">restoration</span><span class="topic">renewables</span><span class="topic">retrofits</span></div>
+              <div class="ln"><span class="kw">hopeful</span><span class="kw">long-arc</span></div>
+              <div class="ln"><span class="ex">collapse</span><span class="ex">apocalypse</span></div>
+            </div>
+            <div class="feed-list">
+              <div class="post">
+                <div class="au"><div class="av"></div><div><div class="nm">Hannah V&aacute;squez</div><div class="hd">@hvasquez &middot; 2h</div></div></div>
+                <div class="tx">Three years of mangrove restoration is showing in storm-surge data.</div>
+                <div class="why">restoration &times; hopeful &middot; 0.91</div>
+              </div>
+              <div class="post">
+                <div class="au"><div class="av" style="background:linear-gradient(135deg,var(--amber),var(--ember))"></div><div><div class="nm">Toma&scaron; Reinhardt</div><div class="hd">@reinhardt &middot; 4h</div></div></div>
+                <div class="tx">Netherlands hit 64% renewables on its grid.</div>
+                <div class="why">renewables &times; hopeful &middot; 0.88</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+</main>
+
+<footer style="max-width:1600px; margin:0 auto; padding: 0 32px 80px; font-size:12px; color:#7a857f; border-top: 1px solid rgba(6,15,11,0.08); padding-top: 24px;">
+  <div style="display:flex; gap:20px; flex-wrap:wrap;">
+    <span><strong style="color:var(--midnight)">Reading this:</strong> each cell is a static mockup &mdash; no JS. The labels are the tradeoff each direction commits to.</span>
+  </div>
+</footer>
+
+</body>
+</html>

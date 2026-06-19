@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ripple Feed — Swap Mechanism</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --void:        #060f0b;
+    --midnight:    #0b1814;
+    --slate:       #142420;
+    --sage:        #6b9381;
+    --sage-dim:    #8fa89b;
+    --cream:       #f3ecdd;
+    --parchment:   #e6dcc7;
+    --aurora:      #7dcba5;
+    --aurora-deep: #3e8a6c;
+    --mist:        #a8d5bd;
+    --ember:       #e09575;
+    --amber:       #e8b988;
+    --rose:        #d88575;
+
+    --paper:    #fbfaf6;
+    --paper-2:  #f5f2e9;
+    --paper-3:  #ece8de;
+    --ink:      #0b1814;
+    --ink-2:    #3a4a44;
+    --ink-3:    #6a7570;
+    --ink-4:    #a8b0ab;
+
+    --hair: rgba(11,24,20,0.08);
+    --hair-strong: rgba(11,24,20,0.16);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #efece4;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+
+  .page-head {
+    max-width: 1700px;
+    margin: 0 auto;
+    padding: 56px 32px 28px;
+  }
+  .page-head .kicker {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--aurora-deep);
+    margin-bottom: 14px;
+    font-weight: 600;
+  }
+  .page-head h1 {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-weight: 400;
+    font-size: 42px;
+    line-height: 1.05;
+    margin: 0 0 12px;
+    color: var(--midnight);
+    max-width: 880px;
+  }
+  .page-head h1 em { color: var(--aurora-deep); font-style: italic; }
+  .page-head p {
+    max-width: 780px;
+    color: #4a5b53;
+    font-size: 14.5px;
+    line-height: 1.6;
+    margin: 0;
+  }
+  .layout-note {
+    margin-top: 18px;
+    background: #fff;
+    border: 1px solid var(--hair);
+    border-radius: 10px;
+    padding: 14px 18px;
+    max-width: 780px;
+    font-size: 13px;
+    color: var(--ink-2);
+    display: flex; align-items: center; gap: 14px;
+  }
+  .layout-note .pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 10px;
+    background: rgba(125,203,165,0.16);
+    color: var(--aurora-deep);
+    border-radius: 999px;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+  .layout-note .arrow { color: var(--ink-4); font-family: 'JetBrains Mono', monospace; }
+
+  .grid {
+    max-width: 1700px;
+    margin: 0 auto;
+    padding: 16px 32px 80px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 56px;
+  }
+  @media (min-width: 1240px) {
+    .grid { grid-template-columns: 1fr 1fr; gap: 56px 40px; }
+  }
+
+  .cell { display: flex; flex-direction: column; gap: 16px; }
+  .cell-head { display: flex; flex-direction: column; gap: 8px; }
+  .cell-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.2em;
+    color: var(--aurora-deep); text-transform: uppercase;
+  }
+  .cell-title {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-weight: 400; font-size: 28px; line-height: 1.1;
+    color: var(--midnight); margin: 0;
+  }
+  .cell-trade {
+    font-size: 13px; line-height: 1.55; color: #4a5b53;
+    max-width: 720px;
+  }
+  .cell-trade strong { color: var(--midnight); font-weight: 600; }
+  .cell-trade em { font-style: italic; color: var(--aurora-deep); font-weight: 500; }
+  .cell-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .cell-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.06em;
+    padding: 3px 8px; border-radius: 999px;
+    background: rgba(125,203,165,0.16); color: var(--aurora-deep);
+  }
+  .cell-tag.warn { background: rgba(216,133,117,0.18); color: #a44a3b; }
+
+  .frame {
+    aspect-ratio: 16 / 10.2;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow:
+      0 1px 0 rgba(11,24,20,0.04),
+      0 22px 50px -24px rgba(11,24,20,0.22);
+    background: #fff;
+    position: relative;
+  }
+  .chrome {
+    height: 28px;
+    background: var(--paper-3);
+    border-bottom: 1px solid var(--hair);
+    display: flex; align-items: center;
+    padding: 0 10px; gap: 6px;
+  }
+  .chrome .dot { width: 9px; height: 9px; border-radius: 50%; background: #d0c9b8; }
+  .chrome .url {
+    flex: 1; margin-left: 10px;
+    background: var(--paper-2); border-radius: 5px;
+    height: 17px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; color: var(--ink-3);
+    padding: 0 8px; line-height: 17px;
+  }
+  .body { position: absolute; inset: 28px 0 0 0; overflow: hidden; }
+
+  /* ---------------------------------------------------------------- */
+  /*  Shared 3-column shell                                            */
+  /* ---------------------------------------------------------------- */
+  .shell {
+    height: 100%;
+    display: grid;
+    grid-template-columns: 130px 1fr 240px;
+    background: var(--paper);
+  }
+
+  /* Feeds column ---------------------------------------------------- */
+  .feeds {
+    background: var(--paper-2);
+    border-right: 1px solid var(--hair);
+    padding: 12px 8px;
+    display: flex; flex-direction: column; gap: 4px;
+    overflow: hidden;
+  }
+  .feeds .brand {
+    font-family: 'Instrument Serif', serif;
+    font-size: 17px; color: var(--aurora-deep);
+    padding: 0 4px 8px;
+  }
+  .feeds .label {
+    font-size: 8px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3); padding: 0 6px 4px; font-weight: 600;
+  }
+  .feeds .item {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 7px; border-radius: 6px;
+    font-size: 10px; color: var(--ink-2);
+    cursor: pointer;
+  }
+  .feeds .item.on {
+    background: #fff;
+    box-shadow: 0 1px 0 rgba(11,24,20,0.04);
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .feeds .item .sw {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  }
+  .feeds .item .ct {
+    margin-left: auto; font-family: 'JetBrains Mono', monospace;
+    font-size: 8px; color: var(--ink-4);
+  }
+  .feeds .new {
+    margin-top: 6px;
+    padding: 6px; border: 1px dashed var(--hair-strong);
+    border-radius: 6px; text-align: center;
+    font-size: 9px; color: var(--ink-3);
+  }
+  .feeds .foot {
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid var(--hair);
+    display: flex; align-items: center; gap: 6px;
+    font-size: 9px; color: var(--ink-3);
+  }
+  .feeds .foot .avatar {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--amber), var(--ember));
+  }
+
+  /* Posts column (fixed) -------------------------------------------- */
+  .posts {
+    padding: 12px 18px 14px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    border-right: 1px solid var(--hair);
+  }
+  .posts .head {
+    display: flex; align-items: baseline; gap: 10px;
+    margin-bottom: 10px;
+  }
+  .posts .head h3 {
+    margin: 0; font-family: 'Instrument Serif', serif;
+    font-size: 19px; font-weight: 400;
+  }
+  .posts .head .meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; color: var(--ink-3);
+  }
+  .posts .head .live {
+    font-size: 9px; padding: 2px 7px; border-radius: 999px;
+    background: rgba(125,203,165,0.18); color: var(--aurora-deep);
+    letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;
+  }
+  .posts .head .refresh {
+    margin-left: auto;
+    font-size: 9px; color: var(--ink-3);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .posts .post {
+    display: flex; gap: 10px;
+    padding: 9px 0; border-bottom: 1px solid var(--hair);
+  }
+  .posts .post .avatar {
+    width: 24px; height: 24px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .posts .post .av-1 { background: linear-gradient(135deg, var(--aurora), var(--mist)); }
+  .posts .post .av-2 { background: linear-gradient(135deg, var(--amber), var(--ember)); }
+  .posts .post .av-3 { background: linear-gradient(135deg, var(--mist), var(--sage)); }
+  .posts .post .av-4 { background: linear-gradient(135deg, var(--rose), var(--ember)); }
+  .posts .post .col { flex: 1; min-width: 0; }
+  .posts .post .ah {
+    display: flex; align-items: baseline; gap: 6px;
+    font-size: 11px;
+  }
+  .posts .post .name { font-weight: 600; }
+  .posts .post .handle { color: var(--ink-3); font-size: 10px; }
+  .posts .post .time {
+    margin-left: auto; font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; color: var(--ink-4);
+  }
+  .posts .post .text {
+    font-size: 12px; line-height: 1.45;
+    color: var(--ink); margin-top: 3px;
+  }
+  .posts .post .react {
+    margin-top: 5px; display: flex; gap: 6px;
+    font-size: 9px; font-family: 'JetBrains Mono', monospace;
+    color: var(--ink-4);
+  }
+  .posts .post .react .b {
+    padding: 2px 7px; border-radius: 999px;
+    background: var(--paper-2);
+  }
+  .posts .post .react .b.up { color: var(--aurora-deep); background: rgba(125,203,165,0.12); }
+  .posts .post .react .b.dn { color: #a44a3b; }
+  .posts .post .react .score {
+    margin-left: auto; color: var(--aurora-deep);
+  }
+
+  /* Right column (variable) — base styles ---------------------------- */
+  .right { background: var(--paper-2); overflow: hidden; display: flex; flex-direction: column; }
+
+  /* Chat panel content ---------------------------------------------- */
+  .chat-body {
+    padding: 12px 14px;
+    flex: 1; display: flex; flex-direction: column; gap: 9px;
+    overflow: hidden;
+  }
+  .chat-body .msg-bot {
+    font-size: 11px; line-height: 1.5; color: var(--ink);
+    max-width: 95%;
+  }
+  .chat-body .msg-bot strong { color: var(--aurora-deep); font-weight: 600; }
+  .chat-body .msg-user {
+    align-self: flex-end;
+    background: var(--ink); color: var(--cream);
+    padding: 6px 10px; border-radius: 12px 12px 3px 12px;
+    font-size: 11px; line-height: 1.4;
+    max-width: 85%;
+  }
+  .chat-body .composer {
+    margin-top: auto;
+    background: #fff; border: 1px solid var(--hair);
+    border-radius: 10px; padding: 7px 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .chat-body .composer .ph {
+    flex: 1; font-size: 11px; color: var(--ink-4);
+  }
+  .chat-body .composer .send {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--ink); color: var(--cream);
+    display: flex; align-items: center; justify-content: center; font-size: 10px;
+  }
+
+  /* Tune panel content ---------------------------------------------- */
+  .tune-body {
+    padding: 12px 14px;
+    flex: 1; display: flex; flex-direction: column; gap: 12px;
+    overflow: hidden;
+  }
+  .tune-body .sect-lbl {
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600; margin-bottom: 5px;
+  }
+  .tune-body .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tune-body .chip {
+    font-size: 10px; padding: 2px 7px; border-radius: 999px;
+    background: rgba(125,203,165,0.16); color: var(--aurora-deep);
+    border: 1px solid rgba(62,138,108,0.18);
+  }
+  .tune-body .chip.ex {
+    background: rgba(216,133,117,0.16); color: #a44a3b;
+    border-color: rgba(216,133,117,0.3); text-decoration: line-through;
+  }
+  .tune-body .chip.add { background: transparent; color: var(--ink-3); border-style: dashed; }
+  .tune-body .dial { display: flex; flex-direction: column; gap: 4px; }
+  .tune-body .dial .top {
+    display: flex; justify-content: space-between;
+    font-size: 9px; color: var(--ink-3);
+  }
+  .tune-body .dial .top .a { color: var(--ink); font-weight: 500; }
+  .tune-body .dial .track {
+    height: 4px; background: var(--paper-3); border-radius: 999px;
+    position: relative;
+  }
+  .tune-body .dial .track .fill { height: 100%; background: var(--aurora); border-radius: 999px; }
+  .tune-body .dial .track .knob {
+    position: absolute; top: 50%; width: 10px; height: 10px;
+    border-radius: 50%; background: #fff;
+    border: 2px solid var(--aurora-deep);
+    transform: translate(-50%, -50%);
+    box-shadow: 0 1px 3px rgba(11,24,20,0.2);
+  }
+
+  /* =================================================================== */
+  /*  V1 — Segmented toggle                                                */
+  /* =================================================================== */
+  .v1 .right-head {
+    padding: 10px 12px 0;
+    background: var(--paper-2);
+  }
+  .v1 .seg {
+    display: flex;
+    background: var(--paper-3);
+    border-radius: 8px;
+    padding: 2px;
+  }
+  .v1 .seg .b {
+    flex: 1;
+    text-align: center;
+    font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 5px 0;
+    color: var(--ink-3);
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .v1 .seg .b.on {
+    background: #fff;
+    color: var(--ink);
+    box-shadow: 0 1px 2px rgba(11,24,20,0.08);
+  }
+
+  /* =================================================================== */
+  /*  V2 — Tabs with status badges                                         */
+  /* =================================================================== */
+  .v2 .right-head {
+    background: var(--paper-2);
+    padding: 0 6px;
+    border-bottom: 1px solid var(--hair);
+    display: flex; gap: 0;
+  }
+  .v2 .tab {
+    padding: 10px 12px 8px;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px;
+    color: var(--ink-3);
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    margin-bottom: -1px;
+  }
+  .v2 .tab.on {
+    color: var(--ink);
+    font-weight: 600;
+    border-bottom-color: var(--aurora);
+  }
+  .v2 .tab .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    background: rgba(125,203,165,0.18); color: var(--aurora-deep);
+    padding: 1px 6px; border-radius: 999px;
+    font-weight: 600;
+  }
+  .v2 .tab.on .badge {
+    background: var(--aurora-deep); color: #fff;
+  }
+  .v2 .tab .dot-unread {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--ember);
+  }
+
+  /* =================================================================== */
+  /*  V3 — Mode header + swap glyph                                        */
+  /* =================================================================== */
+  .v3 .right-head {
+    padding: 12px 14px 8px;
+    border-bottom: 1px solid var(--hair);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .v3 .mode-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 17px;
+    color: var(--ink);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .v3 .mode-title .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--aurora);
+  }
+  .v3 .swap-btn {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 6px;
+    background: #fff;
+    border: 1px solid var(--hair);
+    border-radius: 999px;
+    padding: 3px 10px 3px 8px;
+    font-size: 9px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--ink-3);
+    letter-spacing: 0.04em;
+    cursor: pointer;
+  }
+  .v3 .swap-btn .ico {
+    font-size: 11px; color: var(--aurora-deep);
+  }
+  .v3 .swap-btn .alt { color: var(--ink); }
+  .v3 .swap-btn .kbd {
+    background: var(--paper-2); border-radius: 3px;
+    padding: 1px 5px; font-size: 8px;
+    margin-left: 4px;
+  }
+
+  /* =================================================================== */
+  /*  V4 — Stacked spines (accordion)                                     */
+  /* =================================================================== */
+  .v4 .right {
+    display: flex; flex-direction: column;
+  }
+  .v4 .panel {
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    border-bottom: 1px solid var(--hair);
+  }
+  .v4 .panel:last-child { border-bottom: none; }
+  .v4 .panel.collapsed {
+    flex: 0 0 auto;
+  }
+  .v4 .panel.expanded {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .v4 .spine {
+    padding: 9px 14px;
+    display: flex; align-items: center; gap: 10px;
+    cursor: pointer;
+    background: var(--paper-2);
+  }
+  .v4 .panel.expanded > .spine {
+    background: #fff;
+    border-bottom: 1px solid var(--hair);
+  }
+  .v4 .spine .name {
+    font-family: 'Instrument Serif', serif;
+    font-size: 15px;
+    color: var(--ink);
+  }
+  .v4 .panel.collapsed .spine .name { color: var(--ink-3); }
+  .v4 .spine .meta {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--ink-4);
+  }
+  .v4 .spine .chev {
+    font-size: 10px; color: var(--ink-4);
+  }
+  .v4 .panel.collapsed .preview {
+    padding: 4px 14px 10px;
+    font-size: 10px;
+    color: var(--ink-3);
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .v4 .panel.collapsed .preview .chip {
+    display: inline-block;
+    font-size: 8px; padding: 1px 5px; border-radius: 999px;
+    background: rgba(125,203,165,0.16); color: var(--aurora-deep);
+    margin-right: 2px; font-family: 'JetBrains Mono', monospace;
+  }
+  .v4 .panel.collapsed .preview .chip.ex {
+    background: rgba(216,133,117,0.16); color: #a44a3b;
+    text-decoration: line-through;
+  }
+
+  /* Shared content snippets ----------------------------------------- */
+  .feeds-content { /* shared */ }
+
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <div class="kicker">Swap mechanism · 3-column layout</div>
+  <h1>Four ways to switch <em>Chat</em> and <em>Tune</em> in the right column.</h1>
+  <p>Feeds list stays on the left; posts stay in the middle (the destination). The right column toggles between the two ways you talk to the system &mdash; conversational and direct. Each variant shows the same content, only the swap UI differs.</p>
+  <div class="layout-note">
+    <span class="pill">Feeds</span>
+    <span class="arrow">&rarr;</span>
+    <span class="pill">Posts &middot; fixed</span>
+    <span class="arrow">&rarr;</span>
+    <span class="pill">Chat &harr; Tune</span>
+  </div>
+</header>
+
+<main class="grid">
+
+  <!-- ============================================================== -->
+  <!-- 01 — Segmented toggle                                          -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">01 / Segmented toggle</span>
+      <h2 class="cell-title">Segmented Toggle</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> The boring answer that&rsquo;s probably right. Two equal-weight buttons at the top of the column, iOS-style. <em>Discoverable, unmistakable, never out of place.</em> The cost: it&rsquo;s a generic affordance &mdash; it doesn&rsquo;t hint at the deeper relationship between Chat and Tune.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">familiar</span>
+        <span class="cell-tag">balanced weight</span>
+        <span class="cell-tag">no surprises</span>
+        <span class="cell-tag warn">no extra signal</span>
+      </div>
+    </header>
+    <div class="frame">
+      <div class="chrome">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <div class="url">ripple.feed &middot; curator</div>
+      </div>
+      <div class="body">
+        <div class="shell v1">
+          <!-- Feeds -->
+          <aside class="feeds">
+            <div class="brand">Ripple</div>
+            <div class="label">Your feeds</div>
+            <div class="item on"><span class="sw" style="background:var(--aurora)"></span>Climate, calmly<span class="ct">312</span></div>
+            <div class="item"><span class="sw" style="background:var(--amber)"></span>Indie dev<span class="ct">88</span></div>
+            <div class="item"><span class="sw" style="background:var(--ember)"></span>Bay shows<span class="ct">24</span></div>
+            <div class="item"><span class="sw" style="background:var(--rose)"></span>Long reads<span class="ct">17</span></div>
+            <div class="new">+ new</div>
+            <div class="foot"><div class="avatar"></div><span>amir</span></div>
+          </aside>
+          <!-- Posts -->
+          <section class="posts">
+            <div class="head">
+              <h3>Climate, calmly</h3>
+              <span class="live">live</span>
+              <span class="meta">312/d</span>
+              <span class="refresh">refresh</span>
+            </div>
+            <div class="post">
+              <div class="avatar av-1"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Hannah V&aacute;squez</span><span class="handle">@hvasquez</span><span class="time">2h</span></div>
+                <div class="text">Three years of mangrove restoration along the Sundarbans is starting to show in storm-surge data. Quietly extraordinary.</div>
+                <div class="react"><span class="b up">&#9650; more</span><span class="b dn">&#9660; less</span><span class="b">save</span><span class="score">0.91</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar av-2"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Toma&scaron; Reinhardt</span><span class="handle">@reinhardt</span><span class="time">4h</span></div>
+                <div class="text">Netherlands hit 64% renewables on its grid for the first time. Thread of charts inside.</div>
+                <div class="react"><span class="b up">&#9650; more</span><span class="b dn">&#9660; less</span><span class="b">save</span><span class="score">0.88</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar av-3"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Ena Whitford</span><span class="handle">@enawh</span><span class="time">7h</span></div>
+                <div class="text">Retrofit subsidies in Italy hit a million homes this week. Boring milestone, huge impact.</div>
+                <div class="react"><span class="b up">&#9650; more</span><span class="b dn">&#9660; less</span><span class="b">save</span><span class="score">0.84</span></div>
+              </div>
+            </div>
+          </section>
+          <!-- Right: segmented toggle -->
+          <aside class="right">
+            <div class="right-head">
+              <div class="seg">
+                <span class="b on">Chat</span>
+                <span class="b">Tune</span>
+              </div>
+            </div>
+            <div class="chat-body">
+              <div class="msg-bot">Reading you as solutions-leaning. I&rsquo;ll lean <strong>hopeful</strong>, mute collapse framings, and surface long-arc restoration.</div>
+              <div class="msg-user">Yes. Also nothing about politicians.</div>
+              <div class="msg-bot">Got it &mdash; damping individual-politician posts and keeping the focus on <strong>projects and outcomes</strong>.</div>
+              <div class="msg-user">Perfect.</div>
+              <div class="composer">
+                <span class="ph">Refine, add a topic, mute&hellip;</span>
+                <span class="send">&#8593;</span>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- 02 — Tabs with status                                          -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">02 / Tabs with status</span>
+      <h2 class="cell-title">Tabs &middot; with status</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> Same idea as #01 but each tab <em>carries information</em> &mdash; Chat shows unread count, Tune shows a dot when there are unsaved edits. You learn something about the other side without switching. Cost: more visual noise, and counts can become anxiety-inducing.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">tabs</span>
+        <span class="cell-tag">status-bearing</span>
+        <span class="cell-tag">browser-like</span>
+        <span class="cell-tag warn">visual noise</span>
+      </div>
+    </header>
+    <div class="frame">
+      <div class="chrome">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <div class="url">ripple.feed &middot; curator</div>
+      </div>
+      <div class="body">
+        <div class="shell v2">
+          <aside class="feeds">
+            <div class="brand">Ripple</div>
+            <div class="label">Your feeds</div>
+            <div class="item on"><span class="sw" style="background:var(--aurora)"></span>Climate, calmly<span class="ct">312</span></div>
+            <div class="item"><span class="sw" style="background:var(--amber)"></span>Indie dev<span class="ct">88</span></div>
+            <div class="item"><span class="sw" style="background:var(--ember)"></span>Bay shows<span class="ct">24</span></div>
+            <div class="item"><span class="sw" style="background:var(--rose)"></span>Long reads<span class="ct">17</span></div>
+            <div class="new">+ new</div>
+            <div class="foot"><div class="avatar"></div><span>amir</span></div>
+          </aside>
+          <section class="posts">
+            <div class="head">
+              <h3>Climate, calmly</h3>
+              <span class="live">live</span>
+              <span class="meta">312/d</span>
+              <span class="refresh">refresh</span>
+            </div>
+            <div class="post">
+              <div class="avatar av-1"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Hannah V&aacute;squez</span><span class="handle">@hvasquez</span><span class="time">2h</span></div>
+                <div class="text">Three years of mangrove restoration along the Sundarbans is showing in storm-surge data. Quietly extraordinary.</div>
+                <div class="react"><span class="b up">&#9650; more</span><span class="b dn">&#9660; less</span><span class="b">save</span><span class="score">0.91</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar av-2"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Toma&scaron; Reinhardt</span><span class="handle">@reinhardt</span><span class="time">4h</span></div>
+                <div class="text">Netherlands hit 64% renewables on its grid for the first time.</div>
+                <div class="react"><span class="b up">&#9650; more</span><span class="b dn">&#9660; less</span><span class="b">save</span><span class="score">0.88</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar av-3"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Ena Whitford</span><span class="handle">@enawh</span><span class="time">7h</span></div>
+                <div class="text">Retrofit subsidies in Italy hit a million homes this week.</div>
+                <div class="react"><span class="b up">&#9650; more</span><span class="b dn">&#9660; less</span><span class="b">save</span><span class="score">0.84</span></div>
+              </div>
+            </div>
+          </section>
+          <aside class="right">
+            <div class="right-head">
+              <span class="tab">Chat <span class="badge">14</span></span>
+              <span class="tab on">Tune <span class="dot-unread"></span></span>
+            </div>
+            <div class="tune-body">
+              <div>
+                <div class="sect-lbl">Topics</div>
+                <div class="chips">
+                  <span class="chip">restoration</span>
+                  <span class="chip">renewables</span>
+                  <span class="chip">retrofits</span>
+                  <span class="chip">policy</span>
+                  <span class="chip add">+</span>
+                </div>
+              </div>
+              <div>
+                <div class="sect-lbl">Mute</div>
+                <div class="chips">
+                  <span class="chip ex">collapse</span>
+                  <span class="chip ex">apocalypse</span>
+                  <span class="chip ex">politicians</span>
+                  <span class="chip add">+</span>
+                </div>
+              </div>
+              <div>
+                <div class="sect-lbl">Vibe</div>
+                <div class="dial">
+                  <div class="top"><span>doomy</span><span class="a">hopeful</span></div>
+                  <div class="track"><div class="fill" style="width:78%"></div><div class="knob" style="left:78%"></div></div>
+                </div>
+                <div class="dial" style="margin-top:6px">
+                  <div class="top"><span class="a">scientist</span><span>journalist</span></div>
+                  <div class="track"><div class="fill" style="width:36%"></div><div class="knob" style="left:36%"></div></div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- 03 — Mode header + swap glyph                                  -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">03 / Mode header + swap</span>
+      <h2 class="cell-title">Single Mode + Swap</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> Only the current mode is named, in a calm serif header. A subtle pill on the right hints at the other mode plus a keyboard shortcut. <em>Quietest UI</em> &mdash; no toggles competing for attention. Cost: the inactive mode is one click further away and slightly less discoverable.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">quiet UI</span>
+        <span class="cell-tag">single name</span>
+        <span class="cell-tag">keyboardable</span>
+        <span class="cell-tag warn">less discoverable</span>
+      </div>
+    </header>
+    <div class="frame">
+      <div class="chrome">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <div class="url">ripple.feed &middot; curator</div>
+      </div>
+      <div class="body">
+        <div class="shell v3">
+          <aside class="feeds">
+            <div class="brand">Ripple</div>
+            <div class="label">Your feeds</div>
+            <div class="item on"><span class="sw" style="background:var(--aurora)"></span>Climate, calmly<span class="ct">312</span></div>
+            <div class="item"><span class="sw" style="background:var(--amber)"></span>Indie dev<span class="ct">88</span></div>
+            <div class="item"><span class="sw" style="background:var(--ember)"></span>Bay shows<span class="ct">24</span></div>
+            <div class="item"><span class="sw" style="background:var(--rose)"></span>Long reads<span class="ct">17</span></div>
+            <div class="new">+ new</div>
+            <div class="foot"><div class="avatar"></div><span>amir</span></div>
+          </aside>
+          <section class="posts">
+            <div class="head">
+              <h3>Climate, calmly</h3>
+              <span class="live">live</span>
+              <span class="meta">312/d</span>
+              <span class="refresh">refresh</span>
+            </div>
+            <div class="post">
+              <div class="avatar av-1"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Hannah V&aacute;squez</span><span class="handle">@hvasquez</span><span class="time">2h</span></div>
+                <div class="text">Three years of mangrove restoration along the Sundarbans is showing in storm-surge data. Quietly extraordinary.</div>
+                <div class="react"><span class="b up">&#9650; more</span><span class="b dn">&#9660; less</span><span class="b">save</span><span class="score">0.91</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar av-2"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Toma&scaron; Reinhardt</span><span class="handle">@reinhardt</span><span class="time">4h</span></div>
+                <div class="text">Netherlands hit 64% renewables on its grid for the first time.</div>
+                <div class="react"><span class="b up">&#9650; more</span><span class="b dn">&#9660; less</span><span class="b">save</span><span class="score">0.88</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar av-3"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Ena Whitford</span><span class="handle">@enawh</span><span class="time">7h</span></div>
+                <div class="text">Retrofit subsidies in Italy hit a million homes this week.</div>
+                <div class="react"><span class="b up">&#9650; more</span><span class="b dn">&#9660; less</span><span class="b">save</span><span class="score">0.84</span></div>
+              </div>
+            </div>
+          </section>
+          <aside class="right">
+            <div class="right-head">
+              <div class="mode-title"><span class="dot"></span>Chat</div>
+              <div class="swap-btn">
+                <span class="ico">&#8646;</span><span class="alt">Tune</span><span class="kbd">T</span>
+              </div>
+            </div>
+            <div class="chat-body">
+              <div class="msg-bot">Reading you as solutions-leaning. I&rsquo;ll lean <strong>hopeful</strong>, mute collapse framings, and surface long-arc restoration.</div>
+              <div class="msg-user">Yes. Also nothing about politicians.</div>
+              <div class="msg-bot">Got it &mdash; damping individual-politician posts and keeping the focus on <strong>projects and outcomes</strong>.</div>
+              <div class="msg-user">Perfect.</div>
+              <div class="composer">
+                <span class="ph">Refine, add a topic, mute&hellip;</span>
+                <span class="send">&#8593;</span>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- 04 — Stacked spines (accordion)                                -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">04 / Stacked spines</span>
+      <h2 class="cell-title">Stacked Spines</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> Both modes are <em>always present</em> as compact headers; one is expanded, the other a thin spine you can read at a glance (a few preview chips for Tune; an unread badge for Chat). Click the spine to expand it; the previous mode collapses. Cost: it&rsquo;s more elaborate than a toggle and the collapsed preview can feel cramped.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">always-present</span>
+        <span class="cell-tag">preview spines</span>
+        <span class="cell-tag">accordion</span>
+        <span class="cell-tag warn">more complex</span>
+      </div>
+    </header>
+    <div class="frame">
+      <div class="chrome">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <div class="url">ripple.feed &middot; curator</div>
+      </div>
+      <div class="body">
+        <div class="shell v4">
+          <aside class="feeds">
+            <div class="brand">Ripple</div>
+            <div class="label">Your feeds</div>
+            <div class="item on"><span class="sw" style="background:var(--aurora)"></span>Climate, calmly<span class="ct">312</span></div>
+            <div class="item"><span class="sw" style="background:var(--amber)"></span>Indie dev<span class="ct">88</span></div>
+            <div class="item"><span class="sw" style="background:var(--ember)"></span>Bay shows<span class="ct">24</span></div>
+            <div class="item"><span class="sw" style="background:var(--rose)"></span>Long reads<span class="ct">17</span></div>
+            <div class="new">+ new</div>
+            <div class="foot"><div class="avatar"></div><span>amir</span></div>
+          </aside>
+          <section class="posts">
+            <div class="head">
+              <h3>Climate, calmly</h3>
+              <span class="live">live</span>
+              <span class="meta">312/d</span>
+              <span class="refresh">refresh</span>
+            </div>
+            <div class="post">
+              <div class="avatar av-1"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Hannah V&aacute;squez</span><span class="handle">@hvasquez</span><span class="time">2h</span></div>
+                <div class="text">Three years of mangrove restoration along the Sundarbans is showing in storm-surge data. Quietly extraordinary.</div>
+                <div class="react"><span class="b up">&#9650; more</span><span class="b dn">&#9660; less</span><span class="b">save</span><span class="score">0.91</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar av-2"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Toma&scaron; Reinhardt</span><span class="handle">@reinhardt</span><span class="time">4h</span></div>
+                <div class="text">Netherlands hit 64% renewables on its grid for the first time.</div>
+                <div class="react"><span class="b up">&#9650; more</span><span class="b dn">&#9660; less</span><span class="b">save</span><span class="score">0.88</span></div>
+              </div>
+            </div>
+            <div class="post">
+              <div class="avatar av-3"></div>
+              <div class="col">
+                <div class="ah"><span class="name">Ena Whitford</span><span class="handle">@enawh</span><span class="time">7h</span></div>
+                <div class="text">Retrofit subsidies in Italy hit a million homes this week.</div>
+                <div class="react"><span class="b up">&#9650; more</span><span class="b dn">&#9660; less</span><span class="b">save</span><span class="score">0.84</span></div>
+              </div>
+            </div>
+          </section>
+          <aside class="right">
+            <div class="panel expanded">
+              <div class="spine">
+                <span class="name">Chat</span>
+                <span class="meta">14 msgs</span>
+                <span class="chev">&#9662;</span>
+              </div>
+              <div class="chat-body">
+                <div class="msg-bot">Reading you as solutions-leaning. I&rsquo;ll lean <strong>hopeful</strong>, mute collapse framings, and surface long-arc restoration.</div>
+                <div class="msg-user">Yes. Also nothing about politicians.</div>
+                <div class="msg-bot">Got it &mdash; damping individual-politician posts.</div>
+                <div class="msg-user">Perfect.</div>
+                <div class="composer">
+                  <span class="ph">Refine, add, mute&hellip;</span>
+                  <span class="send">&#8593;</span>
+                </div>
+              </div>
+            </div>
+            <div class="panel collapsed">
+              <div class="spine">
+                <span class="name">Tune</span>
+                <span class="meta">7 chips</span>
+                <span class="chev">&#9656;</span>
+              </div>
+              <div class="preview">
+                <span class="chip">restoration</span>
+                <span class="chip">renewables</span>
+                <span class="chip">retrofits</span>
+                <span class="chip ex">collapse</span>
+                <span class="chip ex">apocalypse</span>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </article>
+
+</main>
+
+<footer style="max-width:1700px; margin:0 auto; padding: 0 32px 80px; font-size:12px; color:#7a857f; border-top: 1px solid rgba(11,24,20,0.08); padding-top: 24px;">
+  Same layout, four swap mechanisms. The Posts column never moves &mdash; the right column carries the tool you&rsquo;re currently using.
+</footer>
+
+</body>
+</html>

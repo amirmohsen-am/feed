@@ -1,0 +1,1519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ripple Feed — Copilot Variants</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500&display=swap" rel="stylesheet">
+<style>
+  /* ------------------------------------------------------------------ */
+  /*  Tokens                                                              */
+  /* ------------------------------------------------------------------ */
+  :root {
+    --void:        #060f0b;
+    --midnight:    #0b1814;
+    --slate:       #142420;
+    --sage:        #6b9381;
+    --sage-dim:    #8fa89b;
+    --cream:       #f3ecdd;
+    --parchment:   #e6dcc7;
+    --aurora:      #7dcba5;
+    --aurora-deep: #3e8a6c;
+    --mist:        #a8d5bd;
+    --ember:       #e09575;
+    --amber:       #e8b988;
+    --rose:        #d88575;
+
+    --paper:    #fbfaf6;
+    --paper-2:  #f5f2e9;
+    --paper-3:  #ece8de;
+    --ink:      #0b1814;
+    --ink-2:    #3a4a44;
+    --ink-3:    #6a7570;
+    --ink-4:    #a8b0ab;
+
+    --hair: rgba(11,24,20,0.08);
+    --hair-strong: rgba(11,24,20,0.16);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #efece4;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+
+  .page-head {
+    max-width: 1700px;
+    margin: 0 auto;
+    padding: 56px 32px 32px;
+  }
+  .page-head .kicker {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--aurora-deep);
+    margin-bottom: 16px;
+    font-weight: 600;
+  }
+  .page-head h1 {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-weight: 400;
+    font-size: 44px;
+    line-height: 1.05;
+    margin: 0 0 14px;
+    color: var(--midnight);
+    max-width: 880px;
+  }
+  .page-head h1 em { color: var(--aurora-deep); font-style: italic; }
+  .page-head p {
+    max-width: 760px;
+    color: #4a5b53;
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 0;
+  }
+  .page-head .legend {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-top: 22px;
+    font-size: 11px; color: var(--ink-3); font-family: 'JetBrains Mono', monospace;
+  }
+  .page-head .legend span {
+    padding: 3px 10px; border-radius: 999px;
+    background: rgba(125,203,165,0.14);
+    color: var(--aurora-deep);
+    letter-spacing: 0.04em;
+  }
+
+  /* Grid */
+  .grid {
+    max-width: 1700px;
+    margin: 0 auto;
+    padding: 16px 32px 80px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 56px;
+  }
+  @media (min-width: 1240px) {
+    .grid { grid-template-columns: 1fr 1fr; gap: 56px 40px; }
+  }
+
+  .cell { display: flex; flex-direction: column; gap: 16px; }
+  .cell-head { display: flex; flex-direction: column; gap: 8px; }
+  .cell-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.2em;
+    color: var(--aurora-deep); text-transform: uppercase;
+  }
+  .cell-title {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-weight: 400; font-size: 30px; line-height: 1.1;
+    color: var(--midnight); margin: 0;
+  }
+  .cell-trade {
+    font-size: 13px; line-height: 1.55; color: #4a5b53;
+    max-width: 720px;
+  }
+  .cell-trade strong { color: var(--midnight); font-weight: 600; }
+  .cell-trade em { font-style: italic; color: var(--aurora-deep); font-weight: 500; }
+  .cell-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .cell-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.06em;
+    padding: 3px 8px; border-radius: 999px;
+    background: rgba(125,203,165,0.16); color: var(--aurora-deep);
+  }
+  .cell-tag.warn { background: rgba(216,133,117,0.18); color: #a44a3b; }
+
+  /* Frame */
+  .frame {
+    aspect-ratio: 16 / 10;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow:
+      0 1px 0 rgba(11,24,20,0.04),
+      0 22px 50px -24px rgba(11,24,20,0.22);
+    background: #fff;
+    position: relative;
+  }
+  .chrome {
+    height: 28px;
+    background: var(--paper-3);
+    border-bottom: 1px solid var(--hair);
+    display: flex; align-items: center;
+    padding: 0 10px; gap: 6px;
+  }
+  .chrome .dot { width: 9px; height: 9px; border-radius: 50%; background: #d0c9b8; }
+  .chrome .url {
+    flex: 1; margin-left: 10px;
+    background: var(--paper-2); border-radius: 5px;
+    height: 17px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; color: var(--ink-3);
+    padding: 0 8px; line-height: 17px;
+    overflow: hidden; white-space: nowrap;
+  }
+  .body { position: absolute; inset: 28px 0 0 0; overflow: hidden; }
+
+  /* Reusable post / chip ------------------------------------------- */
+  .avatar { border-radius: 50%; flex-shrink: 0; }
+  .av-1 { background: linear-gradient(135deg, var(--aurora), var(--mist)); }
+  .av-2 { background: linear-gradient(135deg, var(--amber), var(--ember)); }
+  .av-3 { background: linear-gradient(135deg, var(--mist), var(--sage)); }
+  .av-4 { background: linear-gradient(135deg, var(--rose), var(--ember)); }
+  .av-5 { background: linear-gradient(135deg, var(--amber), var(--mist)); }
+
+  /* =================================================================== */
+  /*  V1 — Interactive Transcript                                         */
+  /*       Tuning chips live inline inside the assistant's messages.      */
+  /* =================================================================== */
+  .v1 .body { background: var(--paper); display: grid; grid-template-columns: 1.05fr 1fr; }
+  .v1 .pane-l { padding: 18px 20px 16px; display:flex; flex-direction:column; border-right: 1px solid var(--hair); min-height: 0; }
+  .v1 .pane-r { padding: 18px 20px; display:flex; flex-direction:column; min-height: 0; background: var(--paper-2); }
+  .v1 .topbar { display:flex; align-items:center; gap:10px; margin-bottom: 14px; }
+  .v1 .logo { font-family: 'Instrument Serif', serif; font-size: 18px; color: var(--aurora-deep); }
+  .v1 .breadcrumb { font-size: 11px; color: var(--ink-3); }
+  .v1 .breadcrumb b { color: var(--ink); font-weight: 500; }
+  .v1 .chat {
+    flex: 1; display:flex; flex-direction:column; gap: 12px;
+    overflow:hidden;
+  }
+  .v1 .msg-user {
+    align-self: flex-end; max-width: 78%;
+    background: var(--ink); color: var(--cream);
+    padding: 8px 12px; border-radius: 14px 14px 4px 14px;
+    font-size: 12px; line-height: 1.4;
+  }
+  .v1 .msg-bot {
+    font-size: 12px; line-height: 1.55; color: var(--ink);
+    max-width: 92%;
+  }
+  .v1 .msg-bot p { margin: 0 0 6px; }
+  .v1 .msg-bot p:last-child { margin-bottom: 0; }
+  .v1 .inline-chip {
+    display:inline-flex; align-items:center; gap: 4px;
+    padding: 1px 8px 2px; border-radius: 999px;
+    font-size: 11px; font-weight: 500;
+    background: rgba(125,203,165,0.18);
+    color: var(--aurora-deep);
+    margin: 0 2px;
+    cursor: pointer; vertical-align: baseline;
+    border: 1px solid rgba(62,138,108,0.22);
+  }
+  .v1 .inline-chip.ex {
+    background: rgba(216,133,117,0.16);
+    color: #a44a3b;
+    border-color: rgba(216,133,117,0.3);
+    text-decoration: line-through;
+  }
+  .v1 .inline-chip.vibe {
+    background: rgba(232,185,136,0.22);
+    color: #8c6622;
+    border-color: rgba(232,185,136,0.4);
+  }
+  .v1 .inline-chip .x { opacity: 0.45; font-size: 9px; }
+  .v1 .agentbar {
+    margin: 8px 0 6px; display:flex; gap:6px; align-items:center;
+    font-size: 11px; color: var(--ink-3);
+  }
+  .v1 .pulse { width: 6px; height:6px; border-radius:50%; background: var(--aurora); box-shadow: 0 0 0 3px rgba(125,203,165,0.22); }
+  .v1 .composer {
+    margin-top: 10px;
+    background: #fff; border:1px solid var(--hair);
+    border-radius: 12px; padding: 8px 10px;
+    display:flex; align-items:center; gap: 10px;
+    box-shadow: 0 1px 0 rgba(11,24,20,0.04);
+  }
+  .v1 .composer .ph { flex: 1; font-size: 12px; color: var(--ink-4); }
+  .v1 .composer .send {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--ink); display:flex; align-items:center; justify-content:center;
+    color: var(--cream); font-size: 11px;
+  }
+  .v1 .pane-r .head {
+    display:flex; align-items:center; justify-content:space-between;
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3); margin-bottom: 12px;
+  }
+  .v1 .pane-r .head .ct { color: var(--aurora-deep); font-family: 'JetBrains Mono', monospace; }
+  .v1 .feed-card {
+    background: #fff; border: 1px solid var(--hair);
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 8px;
+    position: relative;
+  }
+  .v1 .feed-card .author { display:flex; align-items:center; gap: 6px; margin-bottom: 5px; }
+  .v1 .feed-card .avatar { width: 18px; height: 18px; }
+  .v1 .feed-card .name { font-size: 11px; font-weight: 600; }
+  .v1 .feed-card .handle { font-size: 10px; color: var(--ink-3); }
+  .v1 .feed-card .text { font-size: 12px; line-height: 1.45; color: var(--ink-2); }
+  .v1 .feed-card .ftr {
+    margin-top: 8px; display:flex; justify-content:space-between;
+    font-size: 10px; color: var(--ink-4); font-family: 'JetBrains Mono', monospace;
+  }
+  .v1 .feed-card .ftr .react { display:flex; gap:8px; }
+  .v1 .feed-card .ftr .react span { color: var(--ink-3); cursor: pointer; }
+  .v1 .feed-card .ftr .react span:hover { color: var(--aurora-deep); }
+  .v1 .feed-card .score { color: var(--aurora-deep); }
+
+  /* =================================================================== */
+  /*  V2 — Ambient Recipe                                                  */
+  /*       Chat is hero. A small "recipe" card floats top-right with       */
+  /*       current state. Feed is below.                                   */
+  /* =================================================================== */
+  .v2 .body { background: var(--paper); display: grid; grid-template-rows: 1fr 1fr; }
+  .v2 .top {
+    position: relative; padding: 18px 24px;
+    border-bottom: 1px solid var(--hair);
+    overflow: hidden;
+  }
+  .v2 .topbar { display:flex; align-items:center; gap:10px; margin-bottom: 14px; }
+  .v2 .logo { font-family: 'Instrument Serif', serif; font-size: 20px; color: var(--aurora-deep); }
+  .v2 .subtitle { font-size: 11px; color: var(--ink-3); }
+  .v2 .subtitle b { color: var(--ink); font-weight: 500; }
+  .v2 .chat-strip {
+    display:flex; flex-direction:column; gap: 10px;
+    max-width: 70%;
+  }
+  .v2 .msg-bot {
+    font-family: 'Instrument Serif', serif;
+    font-size: 18px; line-height: 1.3;
+    color: var(--ink); max-width: 95%;
+  }
+  .v2 .msg-bot em { font-style: italic; color: var(--aurora-deep); }
+  .v2 .msg-context { font-size: 10px; color: var(--ink-3); letter-spacing: 0.1em; text-transform: uppercase; }
+  .v2 .composer {
+    margin-top: 14px; max-width: 72%;
+    background: #fff; border:1px solid var(--hair-strong);
+    border-radius: 22px; padding: 10px 16px;
+    display:flex; align-items:center; gap: 10px;
+    box-shadow: 0 4px 16px -8px rgba(11,24,20,0.16);
+  }
+  .v2 .composer .ph { flex: 1; font-size: 13px; color: var(--ink-3); }
+  .v2 .composer .send {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--aurora-deep); color: #fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size: 12px;
+  }
+  .v2 .recipe {
+    position: absolute; top: 16px; right: 18px;
+    width: 200px;
+    background: #fff; border: 1px solid var(--hair-strong);
+    border-radius: 12px; padding: 12px;
+    box-shadow: 0 12px 28px -16px rgba(11,24,20,0.2);
+  }
+  .v2 .recipe .head {
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom: 8px;
+  }
+  .v2 .recipe .head .ttl {
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600;
+  }
+  .v2 .recipe .head .edit {
+    font-size: 9px; color: var(--aurora-deep);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .v2 .recipe-name {
+    font-family: 'Instrument Serif', serif;
+    font-size: 15px; color: var(--ink); margin-bottom: 8px;
+    display:flex; align-items:center; gap: 6px;
+  }
+  .v2 .recipe-name .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--aurora);
+  }
+  .v2 .recipe-section { margin-bottom: 6px; }
+  .v2 .recipe-section .lbl {
+    font-size: 8px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-3); margin-bottom: 3px; font-family: 'JetBrains Mono', monospace;
+  }
+  .v2 .recipe-section .chips { display:flex; flex-wrap:wrap; gap: 3px; }
+  .v2 .chip {
+    font-size: 9px; padding: 2px 6px; border-radius: 999px;
+    background: rgba(125,203,165,0.16); color: var(--aurora-deep);
+  }
+  .v2 .chip.ex { background: rgba(216,133,117,0.16); color: #a44a3b; text-decoration: line-through; }
+  .v2 .chip.vibe { background: rgba(232,185,136,0.22); color: #8c6622; }
+  .v2 .recipe-stat {
+    margin-top: 8px; padding-top: 6px;
+    border-top: 1px solid var(--hair);
+    display:flex; justify-content:space-between;
+    font-family: 'JetBrains Mono', monospace; font-size: 9px;
+  }
+  .v2 .recipe-stat .k { color: var(--ink-3); }
+  .v2 .recipe-stat .v { color: var(--aurora-deep); font-weight: 600; }
+  .v2 .feed {
+    padding: 14px 24px; display:flex; flex-direction:column; gap: 8px;
+    overflow: hidden;
+  }
+  .v2 .feed .head {
+    display:flex; justify-content:space-between; align-items:baseline;
+    margin-bottom: 4px;
+  }
+  .v2 .feed .head .ttl {
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600;
+  }
+  .v2 .feed .head .meta { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-3); }
+  .v2 .post { padding: 7px 0; border-bottom: 1px solid var(--hair); display: flex; gap: 10px; }
+  .v2 .post:last-child { border-bottom: none; }
+  .v2 .post .avatar { width: 22px; height: 22px; flex-shrink: 0; }
+  .v2 .post .body-c { flex: 1; min-width: 0; }
+  .v2 .post .ah { display:flex; gap: 5px; font-size: 10px; align-items: baseline; }
+  .v2 .post .name { font-weight: 600; color: var(--ink); }
+  .v2 .post .handle { color: var(--ink-3); }
+  .v2 .post .text { font-size: 12px; line-height: 1.4; color: var(--ink-2); margin-top: 2px; }
+  .v2 .post .react {
+    display:flex; gap: 8px; margin-top: 4px;
+    font-size: 9px; color: var(--ink-4); font-family: 'JetBrains Mono', monospace;
+  }
+  .v2 .post .react span:hover { color: var(--aurora-deep); cursor: pointer; }
+
+  /* =================================================================== */
+  /*  V3 — Reading-First                                                  */
+  /*       Feed is hero (60-70% of canvas). Chat collapsed to a top       */
+  /*       suggestion bar + input. Tuning rail on right.                  */
+  /* =================================================================== */
+  .v3 .body { background: var(--paper); display: grid; grid-template-columns: 1fr 220px; grid-template-rows: 38px 1fr; }
+  .v3 .topbar {
+    grid-column: 1 / -1;
+    background: #fff;
+    border-bottom: 1px solid var(--hair);
+    display: flex; align-items: center;
+    padding: 0 18px; gap: 10px;
+  }
+  .v3 .logo { font-family: 'Instrument Serif', serif; font-size: 16px; color: var(--aurora-deep); }
+  .v3 .feedname {
+    margin-left: 4px;
+    font-size: 12px; color: var(--ink); font-weight: 500;
+  }
+  .v3 .feedname .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background: var(--aurora); margin-right: 6px; vertical-align: middle; }
+  .v3 .suggestion {
+    flex: 1; margin: 0 16px;
+    background: rgba(125,203,165,0.1); border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11px; color: var(--ink-2);
+    display: flex; align-items: center; gap: 8px;
+    border: 1px dashed rgba(62,138,108,0.3);
+  }
+  .v3 .suggestion .ai {
+    font-size: 8px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--aurora-deep); font-weight: 600; font-family: 'JetBrains Mono', monospace;
+  }
+  .v3 .suggestion .yes { color: var(--aurora-deep); font-size: 10px; margin-left: auto; cursor: pointer; }
+  .v3 .suggestion .no { color: var(--ink-3); font-size: 10px; cursor: pointer; }
+  .v3 .composer-btn {
+    font-size: 11px; color: var(--ink-3);
+    background: var(--paper-2); border: 1px solid var(--hair);
+    border-radius: 6px; padding: 4px 10px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .v3 .composer-btn .kbd {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px;
+    background: #fff; border: 1px solid var(--hair); border-radius: 3px; padding: 0 4px;
+  }
+  .v3 .feed {
+    padding: 18px 24px;
+    overflow: hidden;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .v3 .feed-head {
+    display:flex; align-items:baseline; gap:12px;
+    margin-bottom: 4px;
+  }
+  .v3 .feed-head h3 {
+    margin: 0; font-family: 'Instrument Serif', serif;
+    font-size: 22px; font-weight: 400;
+  }
+  .v3 .feed-head .ct {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--ink-3);
+  }
+  .v3 .post {
+    display: flex; gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--hair);
+    position: relative;
+  }
+  .v3 .post .avatar { width: 28px; height: 28px; flex-shrink: 0; }
+  .v3 .post .ah {
+    display: flex; gap: 6px; font-size: 11px; align-items: baseline;
+  }
+  .v3 .post .name { font-weight: 600; }
+  .v3 .post .handle { color: var(--ink-3); font-size: 10px; }
+  .v3 .post .time { color: var(--ink-4); font-size: 10px; margin-left: auto; font-family: 'JetBrains Mono', monospace; }
+  .v3 .post .text {
+    margin-top: 4px;
+    font-size: 12.5px; line-height: 1.5; color: var(--ink);
+  }
+  .v3 .post .react {
+    margin-top: 6px;
+    display: flex; gap: 6px; font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--ink-4);
+    opacity: 0.9;
+  }
+  .v3 .post .react .b {
+    padding: 2px 7px; border-radius: 999px;
+    background: var(--paper-2);
+    border: 1px solid transparent;
+  }
+  .v3 .post .react .b.up { color: var(--aurora-deep); }
+  .v3 .post .react .b.dn { color: #a44a3b; }
+  .v3 .rail {
+    background: var(--paper-2);
+    border-left: 1px solid var(--hair);
+    padding: 16px 14px;
+    display: flex; flex-direction: column; gap: 14px;
+    overflow: hidden;
+  }
+  .v3 .rail .sect-lbl {
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .v3 .rail .chips { display:flex; flex-wrap:wrap; gap: 4px; }
+  .v3 .rail .chip {
+    font-size: 10px; padding: 2px 7px; border-radius: 999px;
+    background: rgba(125,203,165,0.16); color: var(--aurora-deep);
+  }
+  .v3 .rail .chip.ex { background: rgba(216,133,117,0.16); color: #a44a3b; text-decoration: line-through; }
+  .v3 .rail .chip.add { background: transparent; color: var(--ink-3); border: 1px dashed var(--hair-strong); }
+  .v3 .rail .dial {
+    background: #fff; border: 1px solid var(--hair);
+    border-radius: 8px; padding: 8px 10px;
+  }
+  .v3 .rail .dial .top {
+    display:flex; justify-content:space-between;
+    font-size: 9px; color: var(--ink-3);
+    margin-bottom: 4px;
+  }
+  .v3 .rail .dial .top .a { color: var(--ink); font-weight: 500; }
+  .v3 .rail .dial .track {
+    height: 4px; background: var(--paper-3); border-radius: 999px; position: relative;
+  }
+  .v3 .rail .dial .track .fill { height: 100%; background: var(--aurora); border-radius: 999px; }
+  .v3 .rail .dial .track .knob {
+    position: absolute; top: 50%; width: 10px; height: 10px;
+    border-radius: 50%; background: #fff;
+    border: 2px solid var(--aurora-deep);
+    transform: translate(-50%, -50%);
+    box-shadow: 0 1px 3px rgba(11,24,20,0.2);
+  }
+
+  /* =================================================================== */
+  /*  V4 — Tabbed Workspace                                                */
+  /*       Top tabs: Chat · Tune. Feed always pinned to the right.        */
+  /*       Sticky summary strip below tabs.                                */
+  /* =================================================================== */
+  .v4 .body { background: var(--paper); display: grid; grid-template-columns: 1fr 240px; grid-template-rows: 30px 30px 1fr; }
+  .v4 .topbar {
+    grid-column: 1 / -1;
+    display: flex; align-items: center;
+    padding: 0 16px; gap: 12px;
+    background: #fff; border-bottom: 1px solid var(--hair);
+  }
+  .v4 .logo { font-family: 'Instrument Serif', serif; font-size: 15px; color: var(--aurora-deep); }
+  .v4 .tabs { display: flex; margin-left: 10px; gap: 0; align-items: stretch; height: 100%; }
+  .v4 .tab {
+    padding: 0 14px;
+    display: flex; align-items: center;
+    font-size: 11px; letter-spacing: 0.08em;
+    color: var(--ink-3); text-transform: uppercase;
+    border-bottom: 2px solid transparent;
+  }
+  .v4 .tab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--aurora); }
+  .v4 .tab .num { font-family: 'JetBrains Mono', monospace; font-size: 9px; margin-left: 4px; color: var(--ink-4); }
+  .v4 .right-btn { margin-left: auto; font-size: 10px; color: var(--ink-3); font-family: 'JetBrains Mono', monospace; }
+  .v4 .summary-strip {
+    grid-column: 1 / -1;
+    background: var(--paper-2);
+    border-bottom: 1px solid var(--hair);
+    padding: 0 16px;
+    display:flex; align-items:center; gap: 4px;
+    font-size: 10px; font-family: 'JetBrains Mono', monospace;
+  }
+  .v4 .summary-strip .lbl { color: var(--ink-3); margin-right: 6px; }
+  .v4 .summary-strip .chip {
+    padding: 1px 6px; border-radius: 4px;
+    background: rgba(125,203,165,0.2); color: var(--aurora-deep);
+    margin-right: 3px;
+  }
+  .v4 .summary-strip .chip.ex { background: rgba(216,133,117,0.18); color: #a44a3b; text-decoration: line-through; }
+  .v4 .summary-strip .chip.vibe { background: rgba(232,185,136,0.25); color: #8c6622; }
+  .v4 .summary-strip .sep { color: var(--ink-4); margin: 0 4px; }
+  .v4 .main {
+    padding: 16px 20px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    background: var(--paper);
+  }
+  .v4 .main .heading {
+    font-family: 'Instrument Serif', serif;
+    font-size: 18px; color: var(--ink);
+    margin-bottom: 8px;
+  }
+  .v4 .tune-section {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .v4 .tune-card {
+    background: #fff; border:1px solid var(--hair);
+    border-radius: 10px; padding: 10px 12px;
+  }
+  .v4 .tune-card .lbl {
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600; margin-bottom: 6px;
+  }
+  .v4 .tune-card .chips { display:flex; flex-wrap:wrap; gap: 4px; }
+  .v4 .tune-card .chip {
+    font-size: 10px; padding: 2px 7px; border-radius: 999px;
+    background: rgba(125,203,165,0.16); color: var(--aurora-deep);
+    border: 1px solid rgba(62,138,108,0.18);
+  }
+  .v4 .tune-card .chip.ex { background: rgba(216,133,117,0.16); color: #a44a3b; border-color: rgba(216,133,117,0.3); text-decoration: line-through; }
+  .v4 .tune-card .chip.add { background: transparent; color: var(--ink-3); border-style: dashed; }
+  .v4 .tune-card .dial {
+    margin-top: 6px;
+  }
+  .v4 .tune-card .dial .top {
+    display:flex; justify-content:space-between;
+    font-size: 9px; color: var(--ink-3); margin-bottom: 3px;
+  }
+  .v4 .tune-card .dial .top .a { color: var(--ink); font-weight: 500; }
+  .v4 .tune-card .dial .track { height: 3px; background: var(--paper-3); border-radius: 999px; position: relative; }
+  .v4 .tune-card .dial .track .fill { height: 100%; background: var(--aurora); border-radius: 999px; }
+  .v4 .tune-card .dial .track .knob {
+    position: absolute; top: 50%; width: 9px; height: 9px;
+    border-radius: 50%; background: #fff; border: 2px solid var(--aurora-deep);
+    transform: translate(-50%,-50%);
+  }
+  .v4 .feed-pane {
+    background: var(--paper-2);
+    border-left: 1px solid var(--hair);
+    padding: 14px 12px;
+    display: flex; flex-direction: column; gap: 8px;
+    overflow: hidden;
+  }
+  .v4 .feed-pane .ttl {
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600;
+    display:flex; justify-content:space-between;
+  }
+  .v4 .feed-pane .ttl .ct { color: var(--aurora-deep); font-family: 'JetBrains Mono', monospace; }
+  .v4 .feed-pane .post {
+    padding: 6px 0; border-bottom: 1px solid var(--hair);
+  }
+  .v4 .feed-pane .post:last-child { border-bottom: none; }
+  .v4 .feed-pane .ah { display:flex; gap:5px; font-size: 10px; }
+  .v4 .feed-pane .name { font-weight: 600; }
+  .v4 .feed-pane .handle { color: var(--ink-3); font-size: 9px; }
+  .v4 .feed-pane .text { font-size: 11px; line-height: 1.4; color: var(--ink-2); margin-top: 3px; }
+  .v4 .feed-pane .meta { font-size: 9px; color: var(--ink-4); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+
+  /* =================================================================== */
+  /*  V5 — Equal Split + Modal Tune                                       */
+  /*       Chat left, feed right (50/50). A pill button opens a tune       */
+  /*       sheet overlay. Posts have inline more/less affordances.        */
+  /* =================================================================== */
+  .v5 .body { background: var(--paper); display: grid; grid-template-columns: 1fr 1fr; }
+  .v5 .pane {
+    padding: 18px 20px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .v5 .pane.l { border-right: 1px solid var(--hair); }
+  .v5 .pane.r { background: var(--paper-2); }
+  .v5 .head {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+  }
+  .v5 .head .logo { font-family: 'Instrument Serif', serif; font-size: 17px; color: var(--aurora-deep); }
+  .v5 .head .name { font-size: 12px; font-weight: 500; }
+  .v5 .head .meta { font-size: 10px; color: var(--ink-3); font-family: 'JetBrains Mono', monospace; margin-left: auto; }
+  .v5 .chat { flex: 1; display:flex; flex-direction:column; gap: 10px; overflow:hidden; }
+  .v5 .msg-bot { font-size: 12px; line-height: 1.5; max-width: 95%; }
+  .v5 .msg-bot strong { color: var(--aurora-deep); font-weight: 600; }
+  .v5 .msg-user {
+    align-self: flex-end; max-width: 80%;
+    background: var(--ink); color: var(--cream);
+    padding: 7px 10px; border-radius: 12px 12px 3px 12px;
+    font-size: 12px; line-height: 1.4;
+  }
+  .v5 .composer {
+    margin-top: 8px;
+    background: #fff; border: 1px solid var(--hair);
+    border-radius: 12px; padding: 8px 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .v5 .composer .ph { flex: 1; font-size: 12px; color: var(--ink-4); }
+  .v5 .composer .send {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--ink); color: var(--cream);
+    display: flex; align-items: center; justify-content: center; font-size: 11px;
+  }
+  .v5 .pane.r .ttl {
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600;
+    margin-bottom: 6px;
+    display:flex; justify-content:space-between;
+  }
+  .v5 .pane.r .ttl .ct { color: var(--aurora-deep); font-family: 'JetBrains Mono', monospace; }
+  .v5 .post {
+    background: #fff; border: 1px solid var(--hair);
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 8px;
+    position: relative;
+  }
+  .v5 .post .ah { display:flex; gap:6px; align-items:center; margin-bottom: 4px; }
+  .v5 .post .avatar { width: 18px; height: 18px; }
+  .v5 .post .name { font-size: 11px; font-weight: 600; }
+  .v5 .post .handle { font-size: 10px; color: var(--ink-3); }
+  .v5 .post .text { font-size: 12px; line-height: 1.4; color: var(--ink-2); }
+  .v5 .post .react {
+    margin-top: 8px;
+    display: flex; gap: 6px;
+  }
+  .v5 .post .react .b {
+    font-size: 9px; font-family: 'JetBrains Mono', monospace;
+    padding: 2px 7px; border-radius: 999px;
+    background: var(--paper-2); color: var(--ink-3);
+    border: 1px solid var(--hair);
+  }
+  .v5 .post .react .b.up { color: var(--aurora-deep); background: rgba(125,203,165,0.1); border-color: rgba(62,138,108,0.2); }
+  .v5 .post .react .b.dn { color: #a44a3b; }
+  .v5 .post .react .b.score { color: var(--aurora-deep); margin-left: auto; background: transparent; border: none; }
+  .v5 .tune-pill {
+    position: absolute; top: 18px; right: 20px;
+    background: var(--ink); color: var(--cream);
+    padding: 5px 11px; border-radius: 999px;
+    font-size: 10px; font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.06em; display:flex; gap: 6px; align-items: center;
+    box-shadow: 0 8px 20px -10px rgba(11,24,20,0.4);
+    z-index: 10;
+  }
+  .v5 .tune-pill .ico { width: 5px; height: 5px; border-radius: 50%; background: var(--aurora); }
+  .v5 .tune-sheet {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -45%);
+    width: 62%;
+    background: #fff;
+    border-radius: 14px;
+    border: 1px solid var(--hair-strong);
+    padding: 16px 18px;
+    box-shadow:
+      0 30px 80px -20px rgba(11,24,20,0.35),
+      0 1px 0 rgba(11,24,20,0.06);
+    z-index: 20;
+  }
+  .v5 .tune-sheet .head {
+    display:flex; justify-content:space-between; align-items:baseline;
+    margin-bottom: 14px;
+  }
+  .v5 .tune-sheet h4 {
+    margin: 0; font-family: 'Instrument Serif', serif;
+    font-size: 18px; font-weight: 400;
+  }
+  .v5 .tune-sheet .esc { font-size: 9px; font-family: 'JetBrains Mono', monospace; color: var(--ink-4); }
+  .v5 .tune-sheet .grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  }
+  .v5 .tune-sheet .card .lbl {
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600; margin-bottom: 6px;
+  }
+  .v5 .tune-sheet .chips { display:flex; flex-wrap:wrap; gap: 4px; }
+  .v5 .tune-sheet .chip {
+    font-size: 10px; padding: 2px 7px; border-radius: 999px;
+    background: rgba(125,203,165,0.16); color: var(--aurora-deep);
+  }
+  .v5 .tune-sheet .chip.ex { background: rgba(216,133,117,0.16); color: #a44a3b; text-decoration: line-through; }
+  .v5 .tune-sheet .dial { margin-top: 6px; }
+  .v5 .tune-sheet .dial .top { display:flex; justify-content:space-between; font-size:9px; color: var(--ink-3); margin-bottom: 3px; }
+  .v5 .tune-sheet .dial .top .a { color: var(--ink); font-weight:500; }
+  .v5 .tune-sheet .dial .track { height: 3px; background: var(--paper-3); border-radius: 999px; position: relative; }
+  .v5 .tune-sheet .dial .track .fill { height: 100%; background: var(--aurora); border-radius: 999px; }
+  .v5 .tune-sheet .dial .track .knob {
+    position: absolute; top: 50%; width: 9px; height: 9px; border-radius: 50%;
+    background: #fff; border: 2px solid var(--aurora-deep);
+    transform: translate(-50%, -50%);
+  }
+  .v5 .backdrop {
+    position: absolute; inset: 0;
+    background: rgba(11,24,20,0.18);
+    backdrop-filter: blur(2px);
+    z-index: 15;
+  }
+
+  /* =================================================================== */
+  /*  V6 — Conversational Feed (woven)                                    */
+  /*       Single column. Posts are the canvas; the assistant interjects   */
+  /*       inline. Editable recipe header pinned at top.                  */
+  /* =================================================================== */
+  .v6 .body {
+    background: var(--cream);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .v6 .masthead {
+    padding: 14px 28px 10px;
+    border-bottom: 1px solid var(--hair);
+    background: var(--paper);
+  }
+  .v6 .masthead .row {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+  }
+  .v6 .masthead .logo { font-family: 'Instrument Serif', serif; font-size: 18px; color: var(--aurora-deep); }
+  .v6 .masthead .date { font-size: 10px; color: var(--ink-3); font-family: 'JetBrains Mono', monospace; letter-spacing: 0.1em; margin-left: auto; }
+  .v6 .recipe-line {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 3px;
+    font-size: 11px; color: var(--ink-2);
+    line-height: 1.6;
+  }
+  .v6 .recipe-line .name {
+    font-family: 'Instrument Serif', serif; font-size: 14px;
+    color: var(--ink); margin-right: 8px;
+  }
+  .v6 .recipe-line .name::before {
+    content: ""; display:inline-block; width: 7px; height: 7px;
+    background: var(--aurora); border-radius: 50%;
+    margin-right: 6px; vertical-align: middle;
+  }
+  .v6 .recipe-line .lab {
+    font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600; margin-right: 4px; font-family: 'JetBrains Mono', monospace;
+  }
+  .v6 .recipe-line .chip {
+    font-size: 10px; padding: 1px 7px; border-radius: 999px;
+    background: rgba(125,203,165,0.18); color: var(--aurora-deep);
+    border: 1px solid rgba(62,138,108,0.16);
+  }
+  .v6 .recipe-line .chip.ex { background: rgba(216,133,117,0.16); color: #a44a3b; border-color: rgba(216,133,117,0.25); text-decoration: line-through; }
+  .v6 .recipe-line .chip.vibe { background: rgba(232,185,136,0.22); color: #8c6622; border-color: rgba(232,185,136,0.4); }
+  .v6 .recipe-line .chip.add {
+    background: transparent; color: var(--ink-3); border-style: dashed;
+  }
+  .v6 .recipe-line .sep { color: var(--ink-4); margin: 0 6px; font-size: 9px; }
+  .v6 .stream {
+    flex: 1; overflow: hidden;
+    padding: 12px 32px 16px;
+    display: flex; flex-direction: column;
+    gap: 10px;
+    max-width: 640px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .v6 .post {
+    padding: 10px 0; border-bottom: 1px solid var(--hair);
+    display: flex; gap: 10px;
+  }
+  .v6 .post .avatar { width: 26px; height: 26px; flex-shrink: 0; }
+  .v6 .post .col { flex: 1; min-width: 0; }
+  .v6 .post .ah {
+    display:flex; align-items:baseline; gap: 6px; font-size: 11px;
+  }
+  .v6 .post .name { font-weight: 600; }
+  .v6 .post .handle { color: var(--ink-3); font-size: 10px; }
+  .v6 .post .time { color: var(--ink-4); font-size: 10px; margin-left: auto; font-family: 'JetBrains Mono', monospace; }
+  .v6 .post .text {
+    margin-top: 3px;
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 13.5px; line-height: 1.5; color: var(--ink);
+  }
+  .v6 .post .react {
+    margin-top: 6px; display:flex; gap: 8px;
+    font-size: 9px; font-family: 'JetBrains Mono', monospace;
+    color: var(--ink-4);
+  }
+  .v6 .post .react span:hover { color: var(--aurora-deep); cursor: pointer; }
+  .v6 .interject {
+    background: rgba(125,203,165,0.1);
+    border-left: 2px solid var(--aurora);
+    padding: 9px 12px;
+    border-radius: 0 8px 8px 0;
+    font-size: 12px; line-height: 1.5;
+    color: var(--ink);
+    margin: 4px 0 4px 36px;
+  }
+  .v6 .interject .who {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--aurora-deep);
+    margin-bottom: 4px; font-weight: 600;
+  }
+  .v6 .interject .actions {
+    display:flex; gap: 8px; margin-top: 6px;
+    font-size: 10px; font-family: 'JetBrains Mono', monospace;
+  }
+  .v6 .interject .actions .a {
+    padding: 2px 8px; border-radius: 999px;
+    background: #fff; border: 1px solid rgba(62,138,108,0.3);
+    color: var(--aurora-deep);
+  }
+  .v6 .interject .actions .a.dn { border-color: var(--hair); color: var(--ink-3); }
+  .v6 .composer {
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+    width: 540px; max-width: 78%;
+    background: #fff; border: 1px solid var(--hair-strong);
+    border-radius: 22px;
+    padding: 9px 16px;
+    display:flex; align-items:center; gap: 10px;
+    box-shadow: 0 16px 36px -16px rgba(11,24,20,0.22), 0 1px 0 rgba(11,24,20,0.04);
+  }
+  .v6 .composer .ai-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 0 3px rgba(125,203,165,0.2); }
+  .v6 .composer .ph { flex: 1; font-size: 12px; color: var(--ink-3); }
+  .v6 .composer .send {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--ink); color: var(--cream);
+    display:flex; align-items:center; justify-content:center; font-size: 11px;
+  }
+
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <div class="kicker">Copilot variants · how to surface tuning</div>
+  <h1>Six ways to put the <em>tune</em> next to the <em>chat</em> next to the <em>feed</em>.</h1>
+  <p>The chat copilot stays the lead instrument. What changes is where the model of your taste lives &mdash; whether it&rsquo;s inline in the assistant&rsquo;s words, a quiet recipe card in the corner, a rail on the side, a sheet you summon, or woven directly into the post stream. Each cell labels the tradeoff it&rsquo;s making.</p>
+  <div class="legend">
+    <span>chat</span>
+    <span>feed</span>
+    <span>tuning</span>
+    <span>light theme</span>
+    <span>desktop only</span>
+  </div>
+</header>
+
+<main class="grid">
+
+  <!-- ============================================================== -->
+  <!-- 01 — Interactive Transcript                                    -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">01 / Tuning lives in the conversation</span>
+      <h2 class="cell-title">Interactive Transcript</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> <em>Tuning is contextual.</em> Every chip the assistant proposes sits inside the message that created it &mdash; click to keep, click again to drop. Nothing else competes for attention. But scrolling back to find &ldquo;where did I mute &lsquo;collapse&rsquo; again?&rdquo; becomes archaeology.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">inline chips</span>
+        <span class="cell-tag">two-column</span>
+        <span class="cell-tag">warm, dialogic</span>
+        <span class="cell-tag">medium density</span>
+        <span class="cell-tag warn">tuning is hidden in history</span>
+      </div>
+    </header>
+    <div class="frame v1">
+      <div class="chrome">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <div class="url">ripple.feed &middot; curator</div>
+      </div>
+      <div class="body">
+        <div class="pane-l">
+          <div class="topbar">
+            <span class="logo">Ripple</span>
+            <span class="breadcrumb">curating <b>climate, calmly</b></span>
+          </div>
+          <div class="chat">
+            <div class="msg-user">I want climate news but not doom &mdash; more &ldquo;here&rsquo;s what people are doing.&rdquo;</div>
+            <div class="msg-bot">
+              <p>Reading that as solutions-leaning. I&rsquo;ll keep these in:</p>
+              <p style="margin: 4px 0 8px">
+                <span class="inline-chip">restoration <span class="x">&times;</span></span>
+                <span class="inline-chip">policy wins <span class="x">&times;</span></span>
+                <span class="inline-chip">retrofits <span class="x">&times;</span></span>
+                <span class="inline-chip">renewables <span class="x">&times;</span></span>
+              </p>
+              <p>Want to mute the doom framings? People sometimes block &ldquo;collapse&rdquo; here.</p>
+            </div>
+            <div class="msg-user">Yeah, no collapse, no apocalypse takes.</div>
+            <div class="msg-bot">
+              <p>Done. Adding:</p>
+              <p style="margin: 4px 0 8px">
+                <span class="inline-chip ex">collapse <span class="x">&times;</span></span>
+                <span class="inline-chip ex">apocalypse <span class="x">&times;</span></span>
+              </p>
+              <p>And shifting the vibe slightly toward
+                <span class="inline-chip vibe">hopeful <span class="x">&times;</span></span>
+                and
+                <span class="inline-chip vibe">long-arc <span class="x">&times;</span></span>.
+                Sound right?</p>
+            </div>
+            <div class="agentbar">
+              <span class="pulse"></span>
+              <span>assistant is shaping the feed&hellip;</span>
+            </div>
+          </div>
+          <div class="composer">
+            <span class="ph">Refine the feed, mute an author, ask anything&hellip;</span>
+            <span class="send">&#8593;</span>
+          </div>
+        </div>
+        <div class="pane-r">
+          <div class="head">
+            <span>Live feed &middot; climate, calmly</span>
+            <span class="ct">312/day</span>
+          </div>
+          <div class="feed-card">
+            <div class="author">
+              <div class="avatar av-1"></div>
+              <div><div class="name">Hannah V&aacute;squez</div><div class="handle">@hvasquez.bsky.social</div></div>
+            </div>
+            <div class="text">Three years of mangrove restoration along the Sundarbans is starting to show in storm-surge data. Quietly extraordinary.</div>
+            <div class="ftr">
+              <div class="react"><span>more like this</span><span>less like this</span></div>
+              <span class="score">0.91</span>
+            </div>
+          </div>
+          <div class="feed-card">
+            <div class="author">
+              <div class="avatar av-2"></div>
+              <div><div class="name">Toma&scaron; Reinhardt</div><div class="handle">@reinhardt.bsky.social</div></div>
+            </div>
+            <div class="text">The Netherlands just hit 64% renewables on its grid for the first time. Quiet milestone.</div>
+            <div class="ftr">
+              <div class="react"><span>more like this</span><span>less like this</span></div>
+              <span class="score">0.88</span>
+            </div>
+          </div>
+          <div class="feed-card">
+            <div class="author">
+              <div class="avatar av-3"></div>
+              <div><div class="name">Ena Whitford</div><div class="handle">@enawh.bsky.social</div></div>
+            </div>
+            <div class="text">Retrofit subsidies passed a million homes in Italy this week. Boring milestone, huge impact.</div>
+            <div class="ftr">
+              <div class="react"><span>more like this</span><span>less like this</span></div>
+              <span class="score">0.84</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- 02 — Ambient Recipe                                            -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">02 / Chat is hero, recipe ambient</span>
+      <h2 class="cell-title">Ambient Recipe</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> The assistant&rsquo;s last word is the focus, set in <em>serif</em> as if a thought worth pausing on. The recipe card floats top-right as glanceable state &mdash; you can see your taste, but you can&rsquo;t accidentally bump it. Click to expand. The cost: the recipe feels detached from the chat that produced it.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">chat-hero</span>
+        <span class="cell-tag">floating receipt</span>
+        <span class="cell-tag">low density</span>
+        <span class="cell-tag">calm, deliberate</span>
+        <span class="cell-tag warn">tuning feels remote</span>
+      </div>
+    </header>
+    <div class="frame v2">
+      <div class="chrome">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <div class="url">ripple.feed &middot; curate</div>
+      </div>
+      <div class="body">
+        <div class="top">
+          <div class="topbar">
+            <span class="logo">Ripple</span>
+            <span class="subtitle">a feed about <b>climate, calmly</b> &middot; 3rd session</span>
+          </div>
+          <div class="chat-strip">
+            <span class="msg-context">Last exchange</span>
+            <div class="msg-bot">&ldquo;Solutions-leaning, no doom. Leaning more <em>scientist</em> than <em>journalist</em>, with a soft spot for long-arc restoration stories.&rdquo;</div>
+          </div>
+          <div class="composer">
+            <span class="ph">Tell me what to change. Add a topic. Drop a vibe. Anything.</span>
+            <span class="send">&#8593;</span>
+          </div>
+          <div class="recipe">
+            <div class="head">
+              <span class="ttl">Recipe</span>
+              <span class="edit">expand</span>
+            </div>
+            <div class="recipe-name"><span class="dot"></span>climate, calmly</div>
+            <div class="recipe-section">
+              <div class="lbl">Topics</div>
+              <div class="chips">
+                <span class="chip">restoration</span>
+                <span class="chip">renewables</span>
+                <span class="chip">retrofits</span>
+                <span class="chip">policy</span>
+              </div>
+            </div>
+            <div class="recipe-section">
+              <div class="lbl">Vibe</div>
+              <div class="chips">
+                <span class="chip vibe">hopeful</span>
+                <span class="chip vibe">long-arc</span>
+              </div>
+            </div>
+            <div class="recipe-section">
+              <div class="lbl">Mute</div>
+              <div class="chips">
+                <span class="chip ex">collapse</span>
+                <span class="chip ex">apocalypse</span>
+              </div>
+            </div>
+            <div class="recipe-stat">
+              <span class="k">posts/day</span><span class="v">312</span>
+            </div>
+          </div>
+        </div>
+        <div class="feed">
+          <div class="head">
+            <span class="ttl">Today &middot; latest</span>
+            <span class="meta">47 new &middot; refresh</span>
+          </div>
+          <div class="post">
+            <div class="avatar av-1" style="width:22px; height:22px"></div>
+            <div class="body-c">
+              <div class="ah"><span class="name">Hannah V&aacute;squez</span><span class="handle">@hvasquez &middot; 2h</span></div>
+              <div class="text">Three years of mangrove restoration along the Sundarbans is starting to show in storm-surge data.</div>
+              <div class="react"><span>&#9650; more</span><span>&#9660; less</span><span>mute author</span></div>
+            </div>
+          </div>
+          <div class="post">
+            <div class="avatar av-2" style="width:22px; height:22px"></div>
+            <div class="body-c">
+              <div class="ah"><span class="name">Toma&scaron; Reinhardt</span><span class="handle">@reinhardt &middot; 4h</span></div>
+              <div class="text">Netherlands hit 64% renewables on its grid for the first time.</div>
+              <div class="react"><span>&#9650; more</span><span>&#9660; less</span><span>mute author</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- 03 — Reading-First                                             -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">03 / Feed is hero, chat is a thin assistant</span>
+      <h2 class="cell-title">Reading-First</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> Optimized for what users actually came to do &mdash; <em>read</em>. The chat collapses to a single suggestion bar with a Spotlight-style invocation (&#8984;K). Tuning lives in a slim right rail. Best for power readers; first-timers may not realize there&rsquo;s a copilot at all.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">feed-hero</span>
+        <span class="cell-tag">chat collapsed</span>
+        <span class="cell-tag">right rail tune</span>
+        <span class="cell-tag">low chrome</span>
+        <span class="cell-tag warn">copilot is discoverable, barely</span>
+      </div>
+    </header>
+    <div class="frame v3">
+      <div class="chrome">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <div class="url">ripple.feed &middot; read</div>
+      </div>
+      <div class="body">
+        <div class="topbar">
+          <span class="logo">Ripple</span>
+          <span class="feedname"><span class="dot"></span>climate, calmly</span>
+          <div class="suggestion">
+            <span class="ai">assistant</span>
+            <span>You scrolled past 3 collapse posts &mdash; want me to mute that framing?</span>
+            <span class="yes">yes, mute</span>
+            <span class="no">dismiss</span>
+          </div>
+          <div class="composer-btn">refine &middot; <span class="kbd">&#8984;K</span></div>
+        </div>
+        <div class="feed">
+          <div class="feed-head">
+            <h3>Today, quietly</h3>
+            <span class="ct">47 new &middot; 312/day</span>
+          </div>
+          <div class="post">
+            <div class="avatar av-1"></div>
+            <div style="flex:1; min-width:0">
+              <div class="ah">
+                <span class="name">Hannah V&aacute;squez</span>
+                <span class="handle">@hvasquez.bsky.social</span>
+                <span class="time">2h &middot; 0.91</span>
+              </div>
+              <div class="text">Three years of mangrove restoration along the Sundarbans is starting to show in storm-surge data. Quietly extraordinary.</div>
+              <div class="react">
+                <span class="b up">&#9650; more like this</span>
+                <span class="b dn">&#9660; less</span>
+                <span class="b">save</span>
+              </div>
+            </div>
+          </div>
+          <div class="post">
+            <div class="avatar av-2"></div>
+            <div style="flex:1; min-width:0">
+              <div class="ah">
+                <span class="name">Toma&scaron; Reinhardt</span>
+                <span class="handle">@reinhardt.bsky.social</span>
+                <span class="time">4h &middot; 0.88</span>
+              </div>
+              <div class="text">The Netherlands just hit 64% renewables on its grid for the first time. Threadgood charts inside.</div>
+              <div class="react">
+                <span class="b up">&#9650; more like this</span>
+                <span class="b dn">&#9660; less</span>
+                <span class="b">save</span>
+              </div>
+            </div>
+          </div>
+          <div class="post">
+            <div class="avatar av-3"></div>
+            <div style="flex:1; min-width:0">
+              <div class="ah">
+                <span class="name">Ena Whitford</span>
+                <span class="handle">@enawh.bsky.social</span>
+                <span class="time">7h &middot; 0.84</span>
+              </div>
+              <div class="text">Retrofit subsidies in Italy hit a million homes this week. Boring milestone, huge impact.</div>
+              <div class="react">
+                <span class="b up">&#9650; more like this</span>
+                <span class="b dn">&#9660; less</span>
+                <span class="b">save</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="rail">
+          <div>
+            <div class="sect-lbl">Topics</div>
+            <div class="chips">
+              <span class="chip">restoration</span>
+              <span class="chip">renewables</span>
+              <span class="chip">retrofits</span>
+              <span class="chip add">+</span>
+            </div>
+          </div>
+          <div>
+            <div class="sect-lbl">Mute</div>
+            <div class="chips">
+              <span class="chip ex">collapse</span>
+              <span class="chip ex">apocalypse</span>
+              <span class="chip add">+</span>
+            </div>
+          </div>
+          <div>
+            <div class="sect-lbl">Vibe</div>
+            <div class="dial">
+              <div class="top"><span>doomy</span><span class="a">hopeful</span></div>
+              <div class="track"><div class="fill" style="width:78%"></div><div class="knob" style="left:78%"></div></div>
+            </div>
+            <div class="dial" style="margin-top:6px">
+              <div class="top"><span class="a">scientist</span><span>journalist</span></div>
+              <div class="track"><div class="fill" style="width:36%"></div><div class="knob" style="left:36%"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- 04 — Tabbed Workspace                                          -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">04 / Modes, with a sticky receipt</span>
+      <h2 class="cell-title">Tabbed Workspace</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> Clear separation of concerns &mdash; <em>Chat</em>, <em>Tune</em>, both feed-backed by a live preview pane. A sticky summary strip means you never lose sight of what the feed currently <em>is</em>. The cost: switching tabs creates micro-context-loss; some users will live in just one tab and forget the other exists.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">tabs</span>
+        <span class="cell-tag">always-visible preview</span>
+        <span class="cell-tag">sticky summary</span>
+        <span class="cell-tag">medium density</span>
+        <span class="cell-tag warn">mode confusion risk</span>
+      </div>
+    </header>
+    <div class="frame v4">
+      <div class="chrome">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <div class="url">ripple.feed &middot; workbench</div>
+      </div>
+      <div class="body">
+        <div class="topbar">
+          <span class="logo">Ripple</span>
+          <div class="tabs">
+            <span class="tab">Chat <span class="num">14</span></span>
+            <span class="tab on">Tune</span>
+          </div>
+          <span class="right-btn">climate, calmly &middot; 312/d</span>
+        </div>
+        <div class="summary-strip">
+          <span class="lbl">recipe</span>
+          <span class="chip">restoration</span>
+          <span class="chip">renewables</span>
+          <span class="chip">retrofits</span>
+          <span class="sep">&middot;</span>
+          <span class="chip vibe">hopeful</span>
+          <span class="chip vibe">long-arc</span>
+          <span class="sep">&middot;</span>
+          <span class="chip ex">collapse</span>
+          <span class="chip ex">apocalypse</span>
+        </div>
+        <div class="main">
+          <div class="heading">Tune what counts.</div>
+          <div class="tune-section">
+            <div class="tune-card">
+              <div class="lbl">Topics &middot; include</div>
+              <div class="chips">
+                <span class="chip">restoration</span>
+                <span class="chip">renewables</span>
+                <span class="chip">retrofits</span>
+                <span class="chip">policy wins</span>
+                <span class="chip add">+ add</span>
+              </div>
+            </div>
+            <div class="tune-card">
+              <div class="lbl">Mute</div>
+              <div class="chips">
+                <span class="chip ex">collapse</span>
+                <span class="chip ex">apocalypse</span>
+                <span class="chip ex">populist takes</span>
+                <span class="chip add">+ add</span>
+              </div>
+            </div>
+            <div class="tune-card" style="grid-column: 1 / -1">
+              <div class="lbl">Vibe</div>
+              <div class="dial">
+                <div class="top"><span>doomy</span><span class="a">hopeful</span></div>
+                <div class="track"><div class="fill" style="width:78%"></div><div class="knob" style="left:78%"></div></div>
+              </div>
+              <div class="dial">
+                <div class="top"><span class="a">scientist</span><span>journalist</span></div>
+                <div class="track"><div class="fill" style="width:36%"></div><div class="knob" style="left:36%"></div></div>
+              </div>
+              <div class="dial">
+                <div class="top"><span>breaking</span><span class="a">evergreen</span></div>
+                <div class="track"><div class="fill" style="width:62%"></div><div class="knob" style="left:62%"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="feed-pane">
+          <div class="ttl"><span>Live preview</span><span class="ct">312/d</span></div>
+          <div class="post">
+            <div class="ah"><span class="name">H. V&aacute;squez</span><span class="handle">@hvasquez</span></div>
+            <div class="text">Three years of mangrove restoration is showing in storm-surge data.</div>
+            <div class="meta">2h &middot; 0.91 &middot; restore</div>
+          </div>
+          <div class="post">
+            <div class="ah"><span class="name">T. Reinhardt</span><span class="handle">@reinhardt</span></div>
+            <div class="text">Netherlands hit 64% renewables on its grid this week.</div>
+            <div class="meta">4h &middot; 0.88 &middot; grid</div>
+          </div>
+          <div class="post">
+            <div class="ah"><span class="name">E. Whitford</span><span class="handle">@enawh</span></div>
+            <div class="text">Retrofit subsidies passed a million homes in Italy.</div>
+            <div class="meta">7h &middot; 0.84 &middot; retrofit</div>
+          </div>
+          <div class="post">
+            <div class="ah"><span class="name">A. Olu</span><span class="handle">@asha-o</span></div>
+            <div class="text">Geothermal pilot in Cornwall hits 4 MW continuous output.</div>
+            <div class="meta">11h &middot; 0.79 &middot; geo</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- 05 — Equal Split + Modal Tune                                  -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">05 / Chat and feed, side by side</span>
+      <h2 class="cell-title">Equal Split + Tune Sheet</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> 50/50 layout lets you watch the feed <em>change</em> as you chat. Tuning lives behind a single pill that opens a focused sheet &mdash; one job at a time. Best for fast iteration. Cost: the modal is a context shift, and per-post feedback can quietly do most of the work, making the sheet feel optional.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">balanced</span>
+        <span class="cell-tag">live preview</span>
+        <span class="cell-tag">on-demand sheet</span>
+        <span class="cell-tag">post-level reactions</span>
+        <span class="cell-tag warn">modal context shift</span>
+      </div>
+    </header>
+    <div class="frame v5">
+      <div class="chrome">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <div class="url">ripple.feed &middot; live</div>
+      </div>
+      <div class="body">
+        <div class="pane l">
+          <div class="head">
+            <span class="logo">Ripple</span>
+            <span class="name">climate, calmly</span>
+            <span class="meta">312/d</span>
+          </div>
+          <div class="chat">
+            <div class="msg-bot">Reading you as solutions-leaning. I&rsquo;ll lean <strong>hopeful</strong>, mute collapse framings, and surface long-arc restoration. Sound right?</div>
+            <div class="msg-user">Yes. Also nothing about politicians.</div>
+            <div class="msg-bot">Got it &mdash; I&rsquo;ll damp posts about individual politicians and keep the focus on <strong>projects and outcomes</strong>.</div>
+            <div class="msg-user">Perfect.</div>
+            <div class="msg-bot">Watching the live preview on your right &mdash; tell me if anything shouldn&rsquo;t be there.</div>
+          </div>
+          <div class="composer">
+            <span class="ph">Refine, add a topic, mute a name&hellip;</span>
+            <span class="send">&#8593;</span>
+          </div>
+        </div>
+        <div class="pane r">
+          <div class="ttl"><span>Live feed</span><span class="ct">47 new</span></div>
+          <div class="post">
+            <div class="ah"><div class="avatar av-1"></div><span class="name">Hannah V&aacute;squez</span><span class="handle">@hvasquez &middot; 2h</span></div>
+            <div class="text">Three years of mangrove restoration along the Sundarbans is showing in storm-surge data. Quietly extraordinary.</div>
+            <div class="react">
+              <span class="b up">&#9650; more</span>
+              <span class="b dn">&#9660; less</span>
+              <span class="b score">0.91</span>
+            </div>
+          </div>
+          <div class="post">
+            <div class="ah"><div class="avatar av-2"></div><span class="name">Toma&scaron; Reinhardt</span><span class="handle">@reinhardt &middot; 4h</span></div>
+            <div class="text">Netherlands hit 64% renewables on its grid for the first time.</div>
+            <div class="react">
+              <span class="b up">&#9650; more</span>
+              <span class="b dn">&#9660; less</span>
+              <span class="b score">0.88</span>
+            </div>
+          </div>
+        </div>
+        <div class="tune-pill"><span class="ico"></span>Tune &middot; <span style="opacity:0.6">T</span></div>
+        <div class="backdrop"></div>
+        <div class="tune-sheet">
+          <div class="head">
+            <h4>Tune the recipe</h4>
+            <span class="esc">esc</span>
+          </div>
+          <div class="grid">
+            <div class="card">
+              <div class="lbl">Topics</div>
+              <div class="chips">
+                <span class="chip">restoration</span>
+                <span class="chip">renewables</span>
+                <span class="chip">retrofits</span>
+                <span class="chip">policy</span>
+              </div>
+            </div>
+            <div class="card">
+              <div class="lbl">Mute</div>
+              <div class="chips">
+                <span class="chip ex">collapse</span>
+                <span class="chip ex">apocalypse</span>
+                <span class="chip ex">politicians</span>
+              </div>
+            </div>
+            <div class="card" style="grid-column: 1 / -1">
+              <div class="lbl">Vibe</div>
+              <div class="dial">
+                <div class="top"><span>doomy</span><span class="a">hopeful</span></div>
+                <div class="track"><div class="fill" style="width:78%"></div><div class="knob" style="left:78%"></div></div>
+              </div>
+              <div class="dial">
+                <div class="top"><span class="a">scientist</span><span>journalist</span></div>
+                <div class="track"><div class="fill" style="width:36%"></div><div class="knob" style="left:36%"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============================================================== -->
+  <!-- 06 — Conversational Feed (woven)                               -->
+  <!-- ============================================================== -->
+  <article class="cell">
+    <header class="cell-head">
+      <span class="cell-num">06 / Chat woven into the stream</span>
+      <h2 class="cell-title">Conversational Feed</h2>
+      <p class="cell-trade"><strong>Tradeoff:</strong> The whole product is a single column. The recipe is an editable masthead at top, posts are the body, the assistant occasionally <em>interjects</em> with a card noticing patterns (&ldquo;you scrolled past three collapse posts &mdash; mute?&rdquo;). Most ambient and magazine-like. Cost: the assistant has to be tasteful about when to speak, or it gets annoying fast.</p>
+      <div class="cell-tags">
+        <span class="cell-tag">single column</span>
+        <span class="cell-tag">editable masthead</span>
+        <span class="cell-tag">inline interjections</span>
+        <span class="cell-tag">editorial tone</span>
+        <span class="cell-tag warn">assistant-pacing risk</span>
+      </div>
+    </header>
+    <div class="frame v6">
+      <div class="chrome">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <div class="url">ripple.feed &middot; daily</div>
+      </div>
+      <div class="body">
+        <div class="masthead">
+          <div class="row">
+            <span class="logo">Ripple</span>
+            <span class="date">MON 11 MAY &middot; VOL. XII</span>
+          </div>
+          <div class="recipe-line">
+            <span class="name">climate, calmly</span>
+            <span class="lab">on</span>
+            <span class="chip">restoration</span>
+            <span class="chip">renewables</span>
+            <span class="chip">retrofits</span>
+            <span class="chip add">+</span>
+            <span class="sep">&middot;</span>
+            <span class="lab">vibe</span>
+            <span class="chip vibe">hopeful</span>
+            <span class="chip vibe">long-arc</span>
+            <span class="sep">&middot;</span>
+            <span class="lab">mute</span>
+            <span class="chip ex">collapse</span>
+            <span class="chip ex">apocalypse</span>
+          </div>
+        </div>
+        <div class="stream">
+          <div class="post">
+            <div class="avatar av-1"></div>
+            <div class="col">
+              <div class="ah"><span class="name">Hannah V&aacute;squez</span><span class="handle">@hvasquez.bsky.social</span><span class="time">2h &middot; 0.91</span></div>
+              <div class="text">Three years of mangrove restoration along the Sundarbans is starting to show in storm-surge data. Quietly extraordinary.</div>
+              <div class="react"><span>&#9650; more like this</span><span>&#9660; less</span><span>save</span></div>
+            </div>
+          </div>
+          <div class="interject">
+            <div class="who">Ripple noticed</div>
+            You&rsquo;ve favorited three restoration posts this week. Want me to pin <strong>restoration</strong> at the top of the recipe?
+            <div class="actions">
+              <span class="a">yes, pin it</span>
+              <span class="a dn">not now</span>
+            </div>
+          </div>
+          <div class="post">
+            <div class="avatar av-2"></div>
+            <div class="col">
+              <div class="ah"><span class="name">Toma&scaron; Reinhardt</span><span class="handle">@reinhardt.bsky.social</span><span class="time">4h &middot; 0.88</span></div>
+              <div class="text">The Netherlands just hit 64% renewables on its grid for the first time.</div>
+              <div class="react"><span>&#9650; more like this</span><span>&#9660; less</span><span>save</span></div>
+            </div>
+          </div>
+          <div class="post">
+            <div class="avatar av-3"></div>
+            <div class="col">
+              <div class="ah"><span class="name">Ena Whitford</span><span class="handle">@enawh.bsky.social</span><span class="time">7h &middot; 0.84</span></div>
+              <div class="text">Retrofit subsidies in Italy hit a million homes this week.</div>
+              <div class="react"><span>&#9650; more like this</span><span>&#9660; less</span><span>save</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="composer">
+          <span class="ai-dot"></span>
+          <span class="ph">Ask Ripple to change anything &mdash; topics, vibe, mutes, an author&hellip;</span>
+          <span class="send">&#8593;</span>
+        </div>
+      </div>
+    </div>
+  </article>
+
+</main>
+
+<footer style="max-width:1700px; margin:0 auto; padding: 0 32px 80px; font-size:12px; color:#7a857f; border-top: 1px solid rgba(11,24,20,0.08); padding-top: 24px;">
+  Six static mockups &mdash; pick one to push further, or have me try a different mix.
+</footer>
+
+</body>
+</html>
