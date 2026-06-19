@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import {
   createFeed,
+  ensureHomeFeed,
   listFeedsForUser,
   updateFeed,
   deleteFeed,
@@ -18,6 +19,8 @@ export async function GET(req: NextRequest) {
   const auth = await requireAuth();
   const tAuth = performance.now();
 
+  // Always ensure the home feed exists before listing.
+  await ensureHomeFeed(auth.userId);
   const feeds = await listFeedsForUser(auth.userId);
   const tFeeds = performance.now();
   console.log(
@@ -67,6 +70,10 @@ export async function PATCH(req: NextRequest) {
   const feed = await getFeedForUser(id, auth.userId);
   if (!feed)
     return NextResponse.json({ error: "Feed not found" }, { status: 404 });
+
+  // Home feed name is fixed.
+  if (feed.is_home && name !== undefined)
+    return NextResponse.json({ error: "Home feed name cannot be changed" }, { status: 400 });
 
   let cleanSubs: string[] | undefined;
   if (subqueries !== undefined) {
@@ -124,6 +131,9 @@ export async function DELETE(req: NextRequest) {
   const feed = await getFeedForUser(id, auth.userId);
   if (!feed)
     return NextResponse.json({ error: "Feed not found" }, { status: 404 });
+
+  if (feed.is_home)
+    return NextResponse.json({ error: "Home feed cannot be deleted" }, { status: 400 });
 
   await deleteFeed(id);
   return NextResponse.json({ ok: true });

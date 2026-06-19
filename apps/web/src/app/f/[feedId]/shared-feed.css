@@ -1,15 +1,15 @@
 /* Public shared-feed page (/f/[feedId]) — read-only, no session required. */
 
 .sf-root{
-  --paper: #fbfaf6;
-  --paper-2: #f5f3ec;
-  --ink: #0b1814;
-  --ink-2: #3d4a44;
-  --ink-3: #6b7a72;
-  --hair: rgba(11, 24, 20, 0.08);
-  --hair-strong: rgba(11, 24, 20, 0.16);
-  --aurora: #7E9BEC;
-  --aurora-deep: #5A3E9E;
+  --paper: #f0f7f3;
+  --paper-2: #e6f1ea;
+  --ink: #0d0b1e;
+  --ink-2: #362f60;
+  --ink-3: #626090;
+  --hair: rgba(13, 11, 30, 0.08);
+  --hair-strong: rgba(13, 11, 30, 0.16);
+  --aurora: #8890d8;
+  --aurora-deep: #5558b8;
 
   min-height: 100dvh;
   background: var(--paper);

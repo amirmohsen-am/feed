@@ -12,6 +12,7 @@ export interface DbFeed {
   id: number;
   user_id: string;
   name: string;
+  is_home: boolean;
   mechanical_filters: MechanicalFilters;
   subqueries: string[];
   candidate_budget: number;
@@ -37,6 +38,7 @@ interface DbFeedRow {
   id: number;
   user_id: string;
   name: string;
+  is_home: boolean | null;
   mechanical_filters: MechanicalFilters | string;
   subqueries: string[] | string | null;
   candidate_budget: number | null;
@@ -68,6 +70,7 @@ export function rowToFeed(row: DbFeedRow): DbFeed {
     id: row.id,
     user_id: row.user_id,
     name: row.name,
+    is_home: row.is_home === true,
     mechanical_filters: mech,
     subqueries,
     candidate_budget:
@@ -97,6 +100,20 @@ export async function createFeed(
   const res = await query(
     `INSERT INTO feeds (user_id, name) VALUES ($1, $2) RETURNING *`,
     [userId, name]
+  );
+  return rowToFeed(res.rows[0]);
+}
+
+/** Returns the user's home feed, creating it if it doesn't exist yet. */
+export async function ensureHomeFeed(userId: string): Promise<DbFeed> {
+  const existing = await query(
+    "SELECT * FROM feeds WHERE user_id = $1 AND is_home = true",
+    [userId]
+  );
+  if (existing.rows[0]) return rowToFeed(existing.rows[0]);
+  const res = await query(
+    `INSERT INTO feeds (user_id, name, is_home) VALUES ($1, 'Home', true) RETURNING *`,
+    [userId]
   );
   return rowToFeed(res.rows[0]);
 }
@@ -148,7 +165,8 @@ export async function getFeedForUser(
 
 export async function listFeedsForUser(userId: string): Promise<DbFeed[]> {
   const res = await query(
-    "SELECT * FROM feeds WHERE user_id = $1 ORDER BY updated_at DESC",
+    `SELECT * FROM feeds WHERE user_id = $1
+     ORDER BY is_home DESC, updated_at DESC`,
     [userId]
   );
   return res.rows.map(rowToFeed);

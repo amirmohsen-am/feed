@@ -29,6 +29,7 @@ import FeedbackModal from "@/components/FeedbackModal";
 import EditableFeedName from "@/components/EditableFeedName";
 import PublishFeedModal from "@/components/PublishFeedModal";
 import FeedSearch from "@/components/FeedSearch";
+import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
 import { authedFetch } from "@/lib/authed-fetch";
 import { useResizable } from "./useResizable";
 import {
@@ -175,6 +176,13 @@ function CuratorShell({
     }
   }
   const [activePostCount, setActivePostCount] = useState(0);
+  const [pipelineStage, setPipelineStage] = useState<PipelineStage>("idle");
+  const [pipelineCandidates, setPipelineCandidates] = useState<number | undefined>(undefined);
+  const [pipelineHits, setPipelineHits] = useState<number | undefined>(undefined);
+  const [pipelineImages, setPipelineImages] = useState<number | undefined>(undefined);
+  const [pipelineModel, setPipelineModel] = useState<string | undefined>(undefined);
+  const [pipelineThinkingEnabled, setPipelineThinkingEnabled] = useState<boolean | undefined>(undefined);
+  const [branchOverlayName, setBranchOverlayName] = useState<string | null>(null);
   // Feed-first on mobile: the chat is a slide-up overlay ("chat" = open).
   // Drafting feeds auto-open it via the tab-reset logic below.
   const [mobileTab, setMobileTab] = useState<MobileTab>("feed");
@@ -219,6 +227,8 @@ function CuratorShell({
         name: string;
         subqueries?: string[];
         created_at: string;
+        is_home?: boolean;
+        parent_feed_id?: number | null;
       }[] = data.feeds || [];
       const mapped: SavedFeed[] = serverFeeds.map((f, i) => ({
         id: String(f.id),
@@ -226,6 +236,8 @@ function CuratorShell({
         color: FEED_COLORS[i % FEED_COLORS.length],
         subqueries: f.subqueries ?? [],
         createdAt: f.created_at,
+        isHome: f.is_home === true,
+        parentFeedId: f.parent_feed_id != null ? String(f.parent_feed_id) : null,
       }));
       setFeeds(mapped);
     } catch {
@@ -350,6 +362,20 @@ function CuratorShell({
         openPublish: () => setShowPublish(true),
         openTune: () => openTuneRef.current?.(),
         registerOpenTune: (fn: () => void) => { openTuneRef.current = fn; },
+        pipelineStage,
+        setPipelineStage,
+        pipelineCandidates,
+        setPipelineCandidates,
+        pipelineHits,
+        setPipelineHits,
+        pipelineImages,
+        setPipelineImages,
+        pipelineModel,
+        setPipelineModel,
+        pipelineThinkingEnabled,
+        setPipelineThinkingEnabled,
+        branchOverlayName,
+        setBranchOverlayName,
       }}
     >
       <div className="curator-shell">
@@ -370,12 +396,30 @@ function CuratorShell({
             <Link href="/" className="cur-wordmark">willow</Link>
           </div>
 
+          {(() => {
+            const homeFeed = feeds.find((f) => f.isHome);
+            const isHomeActive = homeFeed && activeFeedId === homeFeed.id;
+            return homeFeed ? (
+              <Link
+                href={`/curator/${homeFeed.id}`}
+                prefetch={false}
+                className={`cur-feed-item cur-feed-item-home${isHomeActive ? " active" : ""}`}
+                onClick={handleFeedClick}
+              >
+                <span className="cur-feed-home-icon" aria-hidden>⌂</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="fi-name">Home</div>
+                </div>
+              </Link>
+            ) : null;
+          })()}
+
           <div className="cur-sidebar-label">
-            Your Feeds · {feeds.length.toString().padStart(2, "0")}
+            Your Topics · {feeds.filter((f) => !f.isHome).length.toString().padStart(2, "0")}
           </div>
 
           <div className="cur-feed-list">
-            {feeds.map((feed) => {
+            {feeds.filter((f) => !f.isHome).map((feed) => {
               const isActive = activeFeedId === feed.id;
               const isComplete = feedIsComplete(feed);
               return (
@@ -418,7 +462,7 @@ function CuratorShell({
               );
             })}
 
-            {feeds.length === 0 && (
+            {feeds.filter((f) => !f.isHome).length === 0 && (
               <div
                 style={{
                   padding: "20px 12px",
@@ -433,29 +477,8 @@ function CuratorShell({
             )}
           </div>
 
-          <div className="cur-verify-box">
-            <div className="cur-verify-head">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
-              <span>Verify your identity</span>
-            </div>
-            <p className="cur-verify-desc">
-              First 150 verified users get free early access — claim your spot.
-            </p>
-            <div className="cur-verify-bar-track">
-              <div className="cur-verify-bar-fill" style={{ width: "13%" }} />
-            </div>
-            <div className="cur-verify-bar-label">
-              <span>20 / 150 spots claimed</span>
-            </div>
-            <button className="cur-verify-btn" onClick={() => { /* TODO: wire up verification flow */ }}>
-              Claim your spot
-            </button>
-          </div>
-
           <button className="cur-new-feed" onClick={startNewFeed}>
-            + New feed
+            + New Topic
           </button>
 
           <div
@@ -463,7 +486,6 @@ function CuratorShell({
             style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
           >
             <Link href="/">← Home</Link>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button
               type="button"
               className="cur-profile-btn cur-sidebar-gear"
@@ -479,132 +501,6 @@ function CuratorShell({
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
               </svg>
             </button>
-            <Dialog
-              open={profileOpen}
-              onOpenChange={(open) => {
-                setProfileOpen(open);
-                // On mobile the dialog is opened from inside the drawer —
-                // close the drawer so the dialog stands alone.
-                if (open) setSidebarOpen(false);
-              }}
-            >
-              <DialogTrigger className="cur-profile-btn" title="Profile">
-                {profile.photoURL ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={profile.photoURL}
-                    alt=""
-                    className="cur-profile-photo"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <circle cx="12" cy="8" r="4" />
-                    <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
-                  </svg>
-                )}
-              </DialogTrigger>
-              <DialogContent className="profile-dialog">
-                <DialogHeader>
-                  <DialogTitle style={{ fontFamily: "var(--rf-display)", fontSize: 24, fontWeight: 400 }}>
-                    Profile
-                  </DialogTitle>
-                </DialogHeader>
-                <Separator />
-                <div className="profile-section">
-                  <div className="profile-label">Account</div>
-                  <div className="profile-row">
-                    <span className="profile-key">Name</span>
-                    <span className="profile-val">{profile.name}</span>
-                  </div>
-                  <div className="profile-row">
-                    <span className="profile-key">Email</span>
-                    <span className="profile-val">{profile.email}</span>
-                  </div>
-                </div>
-                <Separator />
-                <div className="profile-section">
-                  <div className="profile-label">Bluesky</div>
-                  <div className="profile-row">
-                    <span className="profile-key">Handle</span>
-                    <span className="profile-val">
-                      {profile.blueskyHandle ? `@${profile.blueskyHandle}` : "Not connected"}
-                    </span>
-                  </div>
-                  <div className="profile-row">
-                    <span className="profile-key">Status</span>
-                    {profile.blueskyDid ? (
-                      bskyOAuthReady ? (
-                        <span className="profile-val" style={{ color: "var(--aurora-deep)" }}>
-                          ● Connected
-                        </span>
-                      ) : (
-                        <button
-                          className="cur-bsky-connect-btn"
-                          onClick={() => {
-                            setProfileOpen(false);
-                            setShowBskyConnect(true);
-                          }}
-                        >
-                          Reconnect Bluesky
-                        </button>
-                      )
-                    ) : (
-                      <button
-                        className="cur-bsky-connect-btn"
-                        onClick={() => {
-                          setProfileOpen(false);
-                          setShowBskyConnect(true);
-                        }}
-                      >
-                        Connect Bluesky
-                      </button>
-                    )}
-                  </div>
-                  <div className="profile-row">
-                    <span className="profile-key">Feed status</span>
-                    <span className="profile-val">{activeHasCriteria ? "Active" : "Not configured"}</span>
-                  </div>
-                </div>
-                <Separator />
-                <div className="profile-section">
-                  <div className="profile-label">Usage</div>
-                  <div className="profile-row">
-                    <span className="profile-key">Posts scored</span>
-                    <span className="profile-val">{activePostCount}</span>
-                  </div>
-                  <div className="profile-row">
-                    <span className="profile-key">Feeds created</span>
-                    <span className="profile-val">{feeds.length}</span>
-                  </div>
-                </div>
-                <Separator />
-                <div className="profile-section" style={{ paddingBottom: 0 }}>
-                  {profile.blueskyDid ? (
-                    <button
-                      type="button"
-                      className="profile-auth-btn logout"
-                      disabled={loggingOut}
-                      onClick={handleLogout}
-                    >
-                      {loggingOut ? "Logging out…" : "Log out"}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="profile-auth-btn login"
-                      onClick={() => {
-                        setProfileOpen(false);
-                        setShowBskyConnect(true);
-                      }}
-                    >
-                      Log in with Bluesky
-                    </button>
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
-            </div>
           </div>
         </div>
 
@@ -787,19 +683,37 @@ function CuratorShell({
               </svg>
             </button>
             <div className="cur-topbar-left">
-              {activeFeed ? (
+              {branchOverlayName ? (
+                <h2>{branchOverlayName}</h2>
+              ) : activeFeed ? (
                 <h2>
-                  <EditableFeedName
-                    feedId={activeFeed.id}
-                    name={activeFeed.name}
-                    variant="topbar"
-                    onRenamed={(name) => renameFeed(activeFeed.id, name)}
-                  />
+                  {activeFeed.isHome ? (
+                    "Home"
+                  ) : (
+                    <EditableFeedName
+                      feedId={activeFeed.id}
+                      name={activeFeed.name}
+                      variant="topbar"
+                      onRenamed={(name) => renameFeed(activeFeed.id, name)}
+                    />
+                  )}
                 </h2>
               ) : (
                 <h2>Curate a feed</h2>
               )}
-              {activeHasCriteria && <span className="live-badge">live</span>}
+              {pipelineStage !== "idle" ? (
+                <PipelineLoader
+                  stage={pipelineStage}
+                  candidates={pipelineCandidates}
+                  hits={pipelineHits}
+                  images={pipelineImages}
+                  model={pipelineModel}
+                  thinkingEnabled={pipelineThinkingEnabled}
+                  topK={25}
+                />
+              ) : (
+                activePostCount > 0 && <span className="live-badge">{activePostCount} post{activePostCount === 1 ? "" : "s"}</span>
+              )}
             </div>
             <div className="cur-topbar-right">
               {profile.blueskyHandle ? (
@@ -1019,22 +933,143 @@ function CuratorShell({
               <button
                 type="button"
                 className="cur-topbar-icon cur-topbar-share"
-                onClick={() => handleShare(activeFeed)}
-                title={shareCopied ? "Link copied!" : "Share this feed"}
-                aria-label="Share this feed"
+                onClick={() => setProfileOpen(true)}
+                title="Profile &amp; share"
+                aria-label="Profile and share"
               >
-                {shareCopied ? (
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+                {profile.photoURL ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={profile.photoURL} alt="" className="cur-profile-photo" referrerPolicy="no-referrer" />
                 ) : (
-                  /* forward/share arrow (like message-forwarding), not export-up */
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M21 11.5 13 4.5v4C6.5 9 3.5 13 3 19c2.6-3.4 5.8-5 10-5v4l8-6.5z" />
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                    <circle cx="12" cy="8" r="4" />
+                    <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
                   </svg>
                 )}
               </button>
             )}
+            <Dialog
+              open={profileOpen}
+              onOpenChange={setProfileOpen}
+            >
+              <DialogContent className="profile-dialog">
+                <DialogHeader>
+                  <DialogTitle style={{ fontFamily: "var(--rf-display)", fontSize: 24, fontWeight: 400 }}>
+                    Profile
+                  </DialogTitle>
+                </DialogHeader>
+                <Separator />
+                <div className="profile-section">
+                  <div className="profile-label">Account</div>
+                  <div className="profile-row">
+                    <span className="profile-key">Name</span>
+                    <span className="profile-val">{profile.name}</span>
+                  </div>
+                  <div className="profile-row">
+                    <span className="profile-key">Email</span>
+                    <span className="profile-val">{profile.email}</span>
+                  </div>
+                </div>
+                <Separator />
+                <div className="profile-section">
+                  <div className="profile-label">Bluesky</div>
+                  <div className="profile-row">
+                    <span className="profile-key">Handle</span>
+                    <span className="profile-val">
+                      {profile.blueskyHandle ? `@${profile.blueskyHandle}` : "Not connected"}
+                    </span>
+                  </div>
+                  <div className="profile-row">
+                    <span className="profile-key">Status</span>
+                    {profile.blueskyDid ? (
+                      bskyOAuthReady ? (
+                        <span className="profile-val" style={{ color: "var(--aurora-deep)" }}>
+                          ● Connected
+                        </span>
+                      ) : (
+                        <button
+                          className="cur-bsky-connect-btn"
+                          onClick={() => {
+                            setProfileOpen(false);
+                            setShowBskyConnect(true);
+                          }}
+                        >
+                          Reconnect Bluesky
+                        </button>
+                      )
+                    ) : (
+                      <button
+                        className="cur-bsky-connect-btn"
+                        onClick={() => {
+                          setProfileOpen(false);
+                          setShowBskyConnect(true);
+                        }}
+                      >
+                        Connect Bluesky
+                      </button>
+                    )}
+                  </div>
+                  <div className="profile-row">
+                    <span className="profile-key">Feed status</span>
+                    <span className="profile-val">{activeHasCriteria ? "Active" : "Not configured"}</span>
+                  </div>
+                </div>
+                <Separator />
+                <div className="profile-section">
+                  <div className="profile-label">Usage</div>
+                  <div className="profile-row">
+                    <span className="profile-key">Posts scored</span>
+                    <span className="profile-val">{activePostCount}</span>
+                  </div>
+                  <div className="profile-row">
+                    <span className="profile-key">Feeds created</span>
+                    <span className="profile-val">{feeds.length}</span>
+                  </div>
+                </div>
+                {activeFeed && activeHasCriteria && (
+                  <>
+                    <Separator />
+                    <div className="profile-section">
+                      <div className="profile-label">Share</div>
+                      <div className="profile-row">
+                        <span className="profile-key">This feed</span>
+                        <button
+                          type="button"
+                          className="cur-bsky-connect-btn"
+                          onClick={() => handleShare(activeFeed)}
+                        >
+                          {shareCopied ? "Link copied!" : "Copy link"}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+                <Separator />
+                <div className="profile-section" style={{ paddingBottom: 0 }}>
+                  {profile.blueskyDid ? (
+                    <button
+                      type="button"
+                      className="profile-auth-btn logout"
+                      disabled={loggingOut}
+                      onClick={handleLogout}
+                    >
+                      {loggingOut ? "Logging out…" : "Log out"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="profile-auth-btn login"
+                      onClick={() => {
+                        setProfileOpen(false);
+                        setShowBskyConnect(true);
+                      }}
+                    >
+                      Log in with Bluesky
+                    </button>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
 
           {children}

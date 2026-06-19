@@ -17,7 +17,7 @@ interface TourStep {
 const STEPS: TourStep[] = [
   {
     target: ".cur-feed-list",
-    label: "Switch between your feeds here",
+    label: "Switch between your topics here",
     cursorOffsetPct: { x: 0.65, y: 0.2 },
     labelPos: "below-right",
   },
