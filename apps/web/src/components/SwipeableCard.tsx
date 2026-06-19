@@ -5,48 +5,111 @@ import {
   motion,
   useMotionValue,
   useTransform,
+  useMotionValueEvent,
   animate,
   type PanInfo,
 } from "framer-motion";
 
 export type SwipeVerdict = "approve" | "reject";
 
-// Past this much horizontal travel (offset + a slice of velocity), the swipe
-// commits and the card flings off-screen.
 const SWIPE_THRESHOLD = 120;
+const COLLAPSE_DISTANCE = 260;
+// How far the card must travel for onRightProgress to reach t=1.
+// Larger than SWIPE_THRESHOLD so the panel is still rising at release — the
+// CSS spring then finishes the job after the card is let go.
+const RIGHT_PROGRESS_DISTANCE = 400;
 
-/**
- * Wraps a feed card so it can be dragged horizontally: left-to-right = approve
- * (keep), right-to-left = reject (nope). Vertical scrolling still works because
- * framer-motion sets touch-action: pan-y for drag="x".
- *
- * While dragging (and for a beat after), the card's contents get
- * pointer-events: none so the gesture can't accidentally activate a link inside
- * the post — without that, a swipe over an external-link card would open that
- * link in a new tab on release. A genuine tap (no drag) still works normally.
- */
 export default function SwipeableCard({
   children,
+  followupContent,
   onSwipe,
+  onFirstLeftDrag,
+  onFirstRightDrag,
+  onRightProgress,
   disabled = false,
 }: {
   children: ReactNode;
+  followupContent?: ReactNode;
   onSwipe: (v: SwipeVerdict) => void;
+  onFirstLeftDrag?: () => void;
+  onFirstRightDrag?: () => void;
+  /** Called on every right-drag frame with t ∈ [0,1] (0 = at rest, 1 = at threshold). */
+  onRightProgress?: (t: number) => void;
   disabled?: boolean;
 }) {
   const x = useMotionValue(0);
-  const rotate = useTransform(x, [-260, 0, 260], [-7, 0, 7]);
-  const keepOpacity = useTransform(x, [30, 150], [0, 1]);
-  const nopeOpacity = useTransform(x, [-150, -30], [1, 0]);
-  const tintKeep = useTransform(x, [20, 200], [0, 0.14]);
-  const tintNope = useTransform(x, [-200, -20], [0.14, 0]);
+  const y = useMotionValue(0);
+  const scale = useTransform(x, [-260, 0, 260], [0.82, 1, 1.08]);
   const decidedRef = useRef(false);
+  const firstLeftFired = useRef(false);
+  const firstRightFired = useRef(false);
   const unlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [locked, setLocked] = useState(false);
 
-  // Eat the synthetic click the browser fires on release after a drag, so it
-  // can't activate a post link / focus something underneath. Chat clicks pass
-  // through so the chat the swipe opens stays usable.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const naturalH = useRef(0);
+
+  const followupRef = useRef<HTMLDivElement>(null);
+  const followupNaturalH = useRef(0);
+
+  // Tint overlay that appears inside the card when dragging right, signalling
+  // "this opens something new".
+  const branchTintRef = useRef<HTMLDivElement>(null);
+
+  useMotionValueEvent(x, "change", (latest) => {
+    if (latest < 0 && !firstLeftFired.current && onFirstLeftDrag) {
+      firstLeftFired.current = true;
+      onFirstLeftDrag();
+    }
+    if (latest > 0 && !firstRightFired.current && onFirstRightDrag) {
+      firstRightFired.current = true;
+      onFirstRightDrag();
+    }
+    if (onRightProgress && latest > 0) {
+      onRightProgress(Math.min(1, latest / RIGHT_PROGRESS_DISTANCE));
+    }
+
+    const card = wrapperRef.current;
+    if (card) {
+      if (latest >= 0) {
+        card.style.height = "";
+        card.style.overflow = "";
+      } else {
+        if (!naturalH.current) naturalH.current = card.scrollHeight;
+        const t = Math.min(1, -latest / COLLAPSE_DISTANCE);
+        card.style.height = `${naturalH.current * (1 - t)}px`;
+        card.style.overflow = "hidden";
+      }
+    }
+
+    // Aurora tint builds up as you drag right toward the commit threshold.
+    const tint = branchTintRef.current;
+    if (tint) {
+      tint.style.opacity = latest > 0 ? String(Math.min(1, latest / SWIPE_THRESHOLD)) : "0";
+    }
+
+    const followup = followupRef.current;
+    if (followup) {
+      if (latest >= 0) {
+        followup.style.height = "0";
+        followup.style.overflow = "hidden";
+        followup.style.opacity = "0";
+      } else {
+        if (!followupNaturalH.current) {
+          const prev = followup.style.height;
+          followup.style.height = "auto";
+          followupNaturalH.current = followup.scrollHeight;
+          followup.style.height = prev;
+        }
+        const t = Math.min(1, -latest / COLLAPSE_DISTANCE);
+        const h = followupNaturalH.current || 120;
+        followup.style.height = `${h * t}px`;
+        followup.style.overflow = "hidden";
+        followup.style.opacity = String(t);
+      }
+    }
+  });
+
   const swallowNextClick = useCallback(() => {
     const swallow = (e: MouseEvent) => {
       const t = e.target;
@@ -79,6 +142,10 @@ export default function SwipeableCard({
   function handleDragStart() {
     if (unlockTimer.current) clearTimeout(unlockTimer.current);
     setLocked(true);
+    if (wrapperRef.current) {
+      wrapperRef.current.style.position = "relative";
+      wrapperRef.current.style.zIndex = "10";
+    }
   }
 
   function handleDragEnd(_: unknown, info: PanInfo) {
@@ -92,51 +159,41 @@ export default function SwipeableCard({
       return;
     }
     animate(x, 0, { type: "spring", stiffness: 340, damping: 32 });
-    // Keep contents inert briefly so the trailing click after the spring-back
-    // doesn't open a link the finger happened to lift over.
+    animate(y, 0, { type: "spring", stiffness: 340, damping: 32 });
+    if (wrapperRef.current) {
+      wrapperRef.current.style.position = "";
+      wrapperRef.current.style.zIndex = "";
+    }
     unlockTimer.current = setTimeout(() => setLocked(false), 350);
   }
 
   return (
-    <motion.div
-      className="cur-swipe-wrap"
-      style={{ x, rotate }}
-      drag={disabled ? false : "x"}
-      dragMomentum={false}
-      onDragStart={disabled ? undefined : handleDragStart}
-      onDragEnd={disabled ? undefined : handleDragEnd}
-      whileTap={disabled ? undefined : { cursor: "grabbing" }}
-    >
-      <motion.span
-        className="cur-swipe-tint cur-swipe-tint-keep"
-        style={{ opacity: tintKeep }}
-        aria-hidden
-      />
-      <motion.span
-        className="cur-swipe-tint cur-swipe-tint-nope"
-        style={{ opacity: tintNope }}
-        aria-hidden
-      />
-      <motion.span
-        className="cur-swipe-stamp cur-swipe-keep"
-        style={{ opacity: keepOpacity }}
-        aria-hidden
-      >
-        KEEP
-      </motion.span>
-      <motion.span
-        className="cur-swipe-stamp cur-swipe-nope"
-        style={{ opacity: nopeOpacity }}
-        aria-hidden
-      >
-        NOPE
-      </motion.span>
-      <div
-        className="cur-swipe-content"
-        style={{ pointerEvents: locked ? "none" : undefined }}
-      >
-        {children}
+    <>
+      <div ref={wrapperRef}>
+        <motion.div
+          className="cur-swipe-wrap"
+          style={{ x, y, scale }}
+          drag={disabled ? false : true}
+          dragMomentum={false}
+          onDragStart={disabled ? undefined : handleDragStart}
+          onDragEnd={disabled ? undefined : handleDragEnd}
+          whileTap={disabled ? undefined : { cursor: "grabbing" }}
+        >
+          {/* Branch tint: aurora wash that builds as you drag right */}
+          <div ref={branchTintRef} className="cur-swipe-branch-tint" style={{ opacity: 0 }} aria-hidden />
+          <div
+            className="cur-swipe-content"
+            style={{ pointerEvents: locked ? "none" : undefined }}
+          >
+            {children}
+          </div>
+        </motion.div>
       </div>
-    </motion.div>
+      {followupContent != null && (
+        <div ref={followupRef} style={{ height: 0, overflow: "hidden", opacity: 0 }}>
+          {followupContent}
+        </div>
+      )}
+    </>
   );
 }

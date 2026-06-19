@@ -2,6 +2,7 @@
 
 import { createContext, useContext } from "react";
 import type { UserProfile } from "@/lib/types";
+import type { PipelineStage } from "@/components/PipelineLoader";
 
 export interface SavedFeed {
   id: string;
@@ -9,6 +10,8 @@ export interface SavedFeed {
   color: string;
   subqueries: string[];
   createdAt: string;
+  isHome: boolean;
+  parentFeedId: string | null;
 }
 
 export type MobileTab = "chat" | "feed";
@@ -42,6 +45,21 @@ export interface CuratorContextValue {
   openPublish: () => void;
   openTune: () => void;
   registerOpenTune: (fn: () => void) => void;
+  pipelineStage: PipelineStage;
+  setPipelineStage: (s: PipelineStage) => void;
+  pipelineCandidates: number | undefined;
+  setPipelineCandidates: (n: number | undefined) => void;
+  pipelineHits: number | undefined;
+  setPipelineHits: (n: number | undefined) => void;
+  pipelineImages: number | undefined;
+  setPipelineImages: (n: number | undefined) => void;
+  pipelineModel: string | undefined;
+  setPipelineModel: (s: string | undefined) => void;
+  pipelineThinkingEnabled: boolean | undefined;
+  setPipelineThinkingEnabled: (b: boolean | undefined) => void;
+  /** When set, overrides the feed name shown in the topbar (e.g. branch overlay). */
+  branchOverlayName: string | null;
+  setBranchOverlayName: (name: string | null) => void;
 }
 
 const CuratorContext = createContext<CuratorContextValue | null>(null);

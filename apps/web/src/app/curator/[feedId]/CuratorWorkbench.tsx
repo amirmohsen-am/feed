@@ -4,7 +4,19 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import SwipeableCard, { type SwipeVerdict } from "@/components/SwipeableCard";
+import SwipeFollowupCard from "@/components/SwipeFollowupCard";
+import BranchTopicsHeader from "@/components/BranchTopicsHeader";
+import MockBranchOverlay from "@/components/MockBranchOverlay";
 import "../swipe-card.css";
+
+// Passed across client-side navigations so the destination branch feed can
+// show the full set of topic chips without an extra round-trip.
+let incomingBranchOptions: import("@/lib/branch").BranchOption[] | null = null;
+
+// When the user right-swipes to create a branch feed, we snapshot the parent
+// feed's posts here so the component can restore them instantly on back
+// navigation — avoiding the blank-then-load flash.
+let parentFeedSnapshot: { feedId: string | number; posts: unknown[] } | null = null;
 import FilterPanel from "@/components/FilterPanel";
 import SendButton from "@/components/SendButton";
 import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
@@ -142,6 +154,12 @@ const RIGHT_W_KEY = "curator:rightWidth";
 const RIGHT_MIN = 280;
 const RIGHT_MAX = 960;
 
+// Branch overlay timing — keep in sync with the CSS animation durations in
+// .cur-mock-branch-in (BRANCH_OVERLAY_OPEN_MS) and .cur-mock-branch-out (in
+// MockBranchOverlay.tsx BRANCH_OVERLAY_CLOSE_MS).
+const BRANCH_CARD_EXIT_MS = 140;   // time for the card to clear the frame before overlay appears
+const BRANCH_OVERLAY_OPEN_MS = 380; // matches .cur-mock-branch-in animation duration
+
 function parseMessage(content: string) {
   // Server stores the agent's question text + numbered option lines (rendered
   // from a present_options tool call). Pull those numbered lines out so we
@@ -241,6 +259,13 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     setUnavailableCount,
     openPublish,
     registerOpenTune,
+    setPipelineStage,
+    setPipelineCandidates,
+    setPipelineHits,
+    setPipelineImages,
+    setPipelineModel,
+    setPipelineThinkingEnabled,
+    setBranchOverlayName,
   } = useCurator();
 
   const [rightPane, setRightPane] = useState<"chat" | "tune">("chat");
@@ -327,6 +352,37 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // (keep). A swiped card is hidden and its context is pulled straight into the
   // main chat (the same one that opens from "Describe your ideal feed").
   const [swipedUris, setSwipedUris] = useState<Set<string>>(() => new Set());
+  // Keyed by post URI: null = loading, array = done.
+  const [followupTopics, setFollowupTopics] = useState<
+    Map<string, BranchOption[] | null>
+  >(() => new Map());
+  // Right-swipe branch options (prefetched on first rightward drag).
+  const [swipeRightTopics, setSwipeRightTopics] = useState<
+    Map<string, BranchOption[] | null>
+  >(() => new Map());
+  // URI of card whose right-swipe is waiting for options before creating branch.
+  const [branchPendingUri, setBranchPendingUri] = useState<string | null>(null);
+  // Branch topic chips consumed once on mount by the destination branch feed.
+  const [branchHeaderOptions] = useState<BranchOption[] | null>(() => {
+    const opts = incomingBranchOptions;
+    incomingBranchOptions = null;
+    return opts;
+  });
+  // Set on first rightward drag. options=null means topics are still loading.
+  const [pendingBranch, setPendingBranch] = useState<{
+    post: Post;
+    options: BranchOption[] | null;
+    branchFeedId?: number;
+    branchFeedName?: string;
+  } | null>(null);
+  // Ref to the rising panel so onRightProgress can drive it imperatively.
+  const risingPanelRef = useRef<HTMLDivElement>(null);
+  // Set to true when a right swipe commits so the drag callback stops
+  // fighting the CSS spring-to-open animation.
+  const branchCommittedRef = useRef(false);
+  // Incremented per post URI when returning from the branch overlay — forces
+  // SwipeableCard to re-mount with fresh x=0 state (invisible, overlay covers it).
+  const [branchReturnKeys, setBranchReturnKeys] = useState<Map<string, number>>(() => new Map());
   // In-session lookup so swipe messages can render the reacted post as a card.
   const [swipedPostCache, setSwipedPostCache] = useState<
     Record<string, { displayName: string; handle: string | null; text: string }>
@@ -340,11 +396,155 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   }
 
   function handleCardSwipe(post: Post, verdict: SwipeVerdict) {
-    setSwipedUris((prev) => {
-      const next = new Set(prev);
-      next.add(post.uri);
-      return next;
-    });
+    if (verdict === "reject") return;
+    // Spring the panel open.
+    branchCommittedRef.current = true;
+    const el = risingPanelRef.current;
+    if (el) {
+      el.style.transition = "transform 0.45s cubic-bezier(0.34, 1.4, 0.64, 1)";
+      el.style.transform = "translateY(0)";
+      setTimeout(() => { if (el) el.style.transition = ""; }, 450);
+    }
+    setTimeout(() => {
+      setBranchReturnKeys((prev) => {
+        const next = new Map(prev);
+        next.set(post.uri, (prev.get(post.uri) ?? 0) + 1);
+        return next;
+      });
+    }, BRANCH_CARD_EXIT_MS + 60);
+    // If topics are ready, create the branch feed now; otherwise defer until they arrive.
+    const options = swipeRightTopics.get(post.uri);
+    if (Array.isArray(options) && options.length > 0) {
+      void createBranchForOverlay(post, options);
+    } else {
+      setBranchPendingUri(post.uri);
+    }
+  }
+
+  function fetchSwipeRightTopics(post: Post) {
+    if (swipeRightTopics.has(post.uri)) return;
+    setSwipeRightTopics((prev) => { const next = new Map(prev); next.set(post.uri, null); return next; });
+    void authedFetch("/api/branch/options", {
+      method: "POST",
+      body: JSON.stringify({ feedId, postUri: post.uri }),
+    })
+      .then(async (res) => {
+        const d = await res.json();
+        const topics: BranchOption[] = Array.isArray(d.options) ? d.options : [];
+        setSwipeRightTopics((prev) => { const next = new Map(prev); next.set(post.uri, topics); return next; });
+      })
+      .catch(() => {
+        setSwipeRightTopics((prev) => { const next = new Map(prev); next.set(post.uri, []); return next; });
+      });
+  }
+
+  // Creates the branch feed in the background and updates pendingBranch with
+  // the new feedId so the panel can load real posts. Does NOT navigate.
+  async function createBranchForOverlay(post: Post, options: BranchOption[]) {
+    const effective: BranchOption[] = options.length > 0 ? options : [{
+      kind: "deeper",
+      label: post.text.slice(0, 40).trim() || "this topic",
+      subquery: post.text.replace(/\s+/g, " ").trim().slice(0, 200),
+    }];
+    try {
+      const res = await authedFetch("/api/feeds/branch", {
+        method: "POST",
+        body: JSON.stringify({
+          parentFeedId: feedId,
+          sourcePostUri: post.uri,
+          subqueries: effective.map((o) => o.subquery),
+          labels: effective.map((o) => o.label),
+        }),
+      });
+      const d = await res.json();
+      if (d.feed?.id) {
+        reloadFeeds();
+        setPendingBranch((prev) => prev ? { ...prev, branchFeedId: d.feed.id, branchFeedName: d.feed.name } : prev);
+      }
+    } catch { /* panel still shows topics; posts can be loaded on retry */ }
+  }
+
+  async function createBranchFromSwipe(_post: Post, _options: BranchOption[]) {
+    // TODO: uncomment when re-enabling real branch creation:
+    // const effective: BranchOption[] = options.length > 0 ? options : [{
+    //   kind: "deeper",
+    //   label: post.text.slice(0, 40).trim() || "this topic",
+    //   subquery: post.text.replace(/\s+/g, " ").trim().slice(0, 200),
+    // }];
+    // setSwipedUris((prev) => { const next = new Set(prev); next.add(post.uri); return next; });
+    // try {
+    //   const res = await authedFetch("/api/feeds/branch", {
+    //     method: "POST",
+    //     body: JSON.stringify({
+    //       parentFeedId: feedId,
+    //       sourcePostUri: post.uri,
+    //       subqueries: effective.map((o) => o.subquery),
+    //       labels: effective.map((o) => o.label),
+    //     }),
+    //   });
+    //   const d = await res.json();
+    //   if (d.feed?.id) {
+    //     incomingBranchOptions = effective;
+    //     parentFeedSnapshot = { feedId, posts: postsRef.current };
+    //     reloadFeeds();
+    //     router.push(`/curator/${d.feed.id}`);
+    //   }
+    // } catch { /* user can retry via branch button */ }
+  }
+
+  // When topics arrive, update the panel's topic chips and (if a swipe committed
+  // before topics were ready) kick off branch feed creation.
+  useEffect(() => {
+    if (!pendingBranch) return;
+    const uri = pendingBranch.post.uri;
+    const topics = swipeRightTopics.get(uri);
+    if (!Array.isArray(topics) || topics.length === 0) return;
+    // Update panel chips if still loading.
+    if (pendingBranch.options === null) {
+      setPendingBranch((prev) => prev ? { ...prev, options: topics } : prev);
+    }
+    // Trigger deferred branch creation if the swipe already committed.
+    if (branchPendingUri === uri) {
+      setBranchPendingUri(null);
+      void createBranchForOverlay(pendingBranch.post, topics);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [swipeRightTopics]);
+
+  // Legacy pending-branch effect (kept for the commented-out navigation path).
+  useEffect(() => {
+    if (!branchPendingUri) return;
+    const options = swipeRightTopics.get(branchPendingUri);
+    if (!Array.isArray(options)) return;
+    const post = posts.find((p) => p.uri === branchPendingUri);
+    if (!post) return;
+    setBranchPendingUri(null);
+    void createBranchFromSwipe(post, options);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [swipeRightTopics, branchPendingUri]);
+
+  function fetchFollowupTopics(post: Post) {
+    // Kick off once on the first leftward drag for this card.
+    if (followupTopics.has(post.uri)) return;
+    setFollowupTopics((prev) => { const next = new Map(prev); next.set(post.uri, null); return next; });
+    void authedFetch("/api/branch/options", {
+      method: "POST",
+      body: JSON.stringify({ feedId, postUri: post.uri }),
+    })
+      .then(async (res) => {
+        const d = await res.json();
+        const topics: BranchOption[] = Array.isArray(d.options)
+          ? (d.options as BranchOption[]).filter((o) => o.kind === "deeper")
+          : [];
+        setFollowupTopics((prev) => { const next = new Map(prev); next.set(post.uri, topics); return next; });
+      })
+      .catch(() => {
+        setFollowupTopics((prev) => { const next = new Map(prev); next.set(post.uri, []); return next; });
+      });
+  }
+
+  function sendFollowupMessage(post: Post, reason: string) {
+    const token = `\u27e6swipe:reject:${post.uri}\u27e7`;
     setSwipedPostCache((prev) => ({
       ...prev,
       [post.uri]: {
@@ -356,21 +556,20 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         text: post.text,
       },
     }));
-    // Post the verdict into the chat. The message is prefixed with a parseable
-    // token so the chat renders the post as a card; the rest is what the agent
-    // reads. We explicitly ask the agent to collect a reason (with options)
-    // before tuning, rather than just acknowledging.
-    const author = authorLabel(post);
-    const raw = post.text.replace(/\s+/g, " ").trim();
-    const snippet = `${raw.slice(0, 200)}${raw.length > 200 ? "\u2026" : ""}`;
-    const token = `\u27e6swipe:${verdict}:${post.uri}\u27e7`;
-    const instruction =
-      verdict === "approve"
-        ? `I kept this post (I want more like it) by ${author}: "${snippet}". Before you tune anything, ask me one quick follow-up about what specifically landed for me — give me 2-4 concrete options to pick from — then update the feed to surface more like it.`
-        : `I skipped this post (not interested) by ${author}: "${snippet}". Before you tune anything, ask me one quick follow-up about why this kind of post misses for me — give me 2-4 concrete reasons to pick from — then update the feed to show less like it.`;
-    setRightPane("chat");
-    openMobileChat();
-    void send(`${token} ${instruction}`);
+    void send(`${token} ${reason} Update my feed to show less of this.`);
+  }
+
+  function handleFollowupChipSend(post: Post, reason: string) {
+    sendFollowupMessage(post, reason);
+    setSwipedUris((prev) => { const next = new Set(prev); next.add(post.uri); return next; });
+  }
+
+  function handleFollowupTextSend(post: Post, reason: string) {
+    sendFollowupMessage(post, reason);
+  }
+
+  function handleFollowupDismiss(uri: string) {
+    setSwipedUris((prev) => { const next = new Set(prev); next.add(uri); return next; });
   }
   const [aiLabels, setAiLabels] = useState<Record<string, { ai_generated: boolean; scores: number[] }>>({});
   const [lightbox, setLightbox] = useState<{ urls: string[]; index: number } | null>(null);
@@ -649,12 +848,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // fade the feed to signal it's changing; cleared once posts finish loading
   // (or when the turn ends without triggering a re-query).
   const [feedRefreshing, setFeedRefreshing] = useState(false);
-  const [pipelineStage, setPipelineStage] = useState<PipelineStage>("idle");
-  const [pipelineCandidates, setPipelineCandidates] = useState<number | undefined>(undefined);
-  const [pipelineHits, setPipelineHits] = useState<number | undefined>(undefined);
-  const [pipelineImages, setPipelineImages] = useState<number | undefined>(undefined);
-  const [pipelineModel, setPipelineModel] = useState<string | undefined>(undefined);
-  const [pipelineThinkingEnabled, setPipelineThinkingEnabled] = useState<boolean | undefined>(undefined);
   const [chatLoading, setChatLoading] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
   const [mechanicalFilters, setMechanicalFilters] = useState<MechanicalFilters | null>(null);
@@ -853,8 +1046,12 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               // than leaving the "done" summary with empty "queued" steps.
               setPipelineStage(ev.cached ? "idle" : "done");
               const nextCount = ev.total_stored || (ev.posts?.length ?? 0);
-              setPosts(ev.posts || []);
-              setSwipedUris(new Set());
+              const incoming = ev.posts || [];
+              setPosts(prev => {
+                const seen = new Set(prev.map(p => p.uri));
+                const fresh = incoming.filter(p => !seen.has(p.uri));
+                return fresh.length > 0 ? [...prev, ...fresh] : prev;
+              });
               setPostCount(nextCount);
               setActivePostCount(nextCount);
               if (ev.mechanical_filters) setMechanicalFilters(ev.mechanical_filters);
@@ -893,21 +1090,64 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // outside the synchronous effect body, avoiding a cascading render.
   useEffect(() => {
     const t = setTimeout(async () => {
+      // If we navigated back from a branch feed, restore the snapshotted posts
+      // immediately so the View Transitions animation shows a fully-populated feed.
+      const snap = parentFeedSnapshot;
+      if (snap && String(snap.feedId) === String(feedId)) {
+        parentFeedSnapshot = null;
+        setPosts(snap.posts as Post[]);
+        setPostsLoading(false);
+        await loadChat(feedId);
+        return;
+      }
       const chat = await loadChat(feedId);
-      // A freshly-branched feed (has a source post but no chat yet) loads its
-      // posts via the branch-init turn (see branchInit), which first writes the
-      // rerank prompt and only then queries. Firing loadPosts here too would
-      // run the pipeline prematurely — before the rerank prompt exists — and
-      // pre-populate feed_result_cache, so the branch-init reload gets served a
-      // stale, non-reranked cached result instead of recomputing. Skip it and
-      // let branchInit own the first load.
+      void loadPosts(feedId);
       const isFreshBranch = !!chat.sourcePost && chat.messages.length === 0;
-      if (!isFreshBranch) loadPosts(feedId);
     }, 0);
     return () => clearTimeout(t);
   }, [feedId, loadChat, loadPosts]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  // Sync ref so createBranchFromSwipe (and the snapshot cleanup) can read
+  // posts without stale closures.
+  const postsRef = useRef<Post[]>([]);
+  useEffect(() => { postsRef.current = posts; }, [posts]);
+
+  // Whenever the user navigates away from this feed, snapshot its posts so
+  // navigating back (via router.back() or sidebar) restores them instantly.
+  useEffect(() => {
+    return () => {
+      if (postsRef.current.length > 0) {
+        parentFeedSnapshot = { feedId, posts: postsRef.current };
+      }
+    };
+  // feedId is stable for the lifetime of this effect — the dep is intentional.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedId]);
+
+  // Drives the rising panel position from the card's drag progress.
+  // Stable (no deps): reads only from refs so the motion event never captures a stale closure.
+  const handleRightProgress = useCallback((t: number) => {
+    if (branchCommittedRef.current) return;
+    const el = risingPanelRef.current;
+    if (!el) return;
+    const eased = 1 - Math.pow(1 - t, 2);
+    el.style.transform = `translateY(${(1 - eased) * 100}vh)`;
+  }, []);
+
+  // TODO: re-enable prefetch once rate limits allow.
+  // const prefetchedRef = useRef(new Set<string>());
+  // useEffect(() => {
+  //   if (posts.length === 0) return;
+  //   posts.forEach((post, i) => {
+  //     if (prefetchedRef.current.has(post.uri)) return;
+  //     prefetchedRef.current.add(post.uri);
+  //     setTimeout(() => fetchSwipeRightTopics(post), i * 200);
+  //   });
+  // // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [posts]);
+
 
   // Pull-to-refresh gesture wiring (mobile only). Tracks a downward drag that
   // starts with the page at the top, rubber-bands the pane, and on release
@@ -1517,42 +1757,31 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         </div>
 
         {/* POSTS PANE (middle) */}
-        <div className="cur-feed-posts" ref={feedPaneRef}>
-          {/* One header row: pipeline status on the left, post count (and
-              Refresh on desktop) top-right — no extra row for either. */}
-          <div className="cur-feed-posts-header">
-            <div className="cur-feed-loader">
-              {pipelineStage !== "idle" && (
-                <PipelineLoader
-                  stage={pipelineStage}
-                  candidates={pipelineCandidates}
-                  hits={pipelineHits}
-                  images={pipelineImages}
-                  model={pipelineModel}
-                  thinkingEnabled={pipelineThinkingEnabled}
-                  topK={25}
-                />
-              )}
-            </div>
-            <span className="cur-toolbar-count">
-              {posts.length > 0 && `${posts.length} post${posts.length === 1 ? "" : "s"}`}
-            </span>
-            <div className="cur-toolbar">
-              <button
-                type="button"
-                className="cur-toolbar-btn"
-                disabled={postsLoading}
-                onClick={() => loadPosts(feedId, { force: true })}
-                title="Refresh posts"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-                </svg>
-                Refresh
-              </button>
-            </div>
-          </div>
+        <div className="cur-feed-posts" ref={feedPaneRef} style={{ position: "relative" }}>
           <div className={`cur-feed-posts-inner${feedRefreshing ? " refreshing" : ""}`}>
+            {(() => {
+              const thisFeed = feeds.find((f) => f.id === String(feedId));
+              if (thisFeed?.isHome) return null;
+              const homeFeed = feeds.find((f) => f.isHome);
+              const parentId = thisFeed?.parentFeedId ?? homeFeed?.id;
+              if (!parentId) return null;
+              return (
+                <button
+                  type="button"
+                  className="cur-branch-back"
+                  onClick={() => router.push(`/curator/${parentId}`)}
+                  aria-label="Back"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <polyline points="15 18 9 12 15 6" />
+                  </svg>
+                  Back
+                </button>
+              );
+            })()}
+            {branchHeaderOptions && (
+              <BranchTopicsHeader options={branchHeaderOptions} />
+            )}
             {posts.length === 0 ? (
               <div className="cur-empty">
                 {postsLoading ? (
@@ -1650,8 +1879,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 );
               })
             ) : (
-              posts.map((post) => {
-                if (swipedUris.has(post.uri)) return null;
+              posts.filter(post => !swipedUris.has(post.uri)).map((post) => {
                 const bskyUrl = (() => {
                   const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
                   return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
@@ -1675,7 +1903,28 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 })();
                 return (
                   <div key={post.uri} className="cur-post-item">
-                  <SwipeableCard onSwipe={(v) => handleCardSwipe(post, v)}>
+                  <SwipeableCard
+                    key={`${post.uri}-${branchReturnKeys.get(post.uri) ?? 0}`}
+                    onSwipe={(v) => handleCardSwipe(post, v)}
+                    onFirstLeftDrag={() => fetchFollowupTopics(post)}
+                    onFirstRightDrag={() => {
+                      const prefetched = swipeRightTopics.get(post.uri);
+                      const options = Array.isArray(prefetched) && prefetched.length > 0
+                        ? prefetched : null;
+                      setPendingBranch({ post, options });
+                      fetchSwipeRightTopics(post);
+                    }}
+                    onRightProgress={handleRightProgress}
+                    followupContent={
+                      <SwipeFollowupCard
+                        post={post}
+                        topics={followupTopics.get(post.uri)}
+                        onChipSend={(reason) => handleFollowupChipSend(post, reason)}
+                        onTextSend={(reason) => handleFollowupTextSend(post, reason)}
+                        onDismiss={() => handleFollowupDismiss(post.uri)}
+                      />
+                    }
+                  >
                   <article className="cur-post-card">
                     {post.is_reply && (
                       <div className="cur-post-reply-banner">
@@ -1910,6 +2159,32 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                   </button>
                 </div>
               </div>
+            )}
+          </div>
+          {/* Rising branch panel — position:absolute inside cur-feed-posts so it
+              covers only the feed column, not the sidebar, topbar, or chat pane.
+              translateY(100vh) keeps it below the fold until onRightProgress
+              drives it up. ALWAYS mounted so risingPanelRef is valid from the
+              very first rightward drag pixel. */}
+          <div
+            ref={risingPanelRef}
+            className="cur-branch-rising-panel"
+            aria-hidden={!pendingBranch}
+          >
+            {pendingBranch && (
+              <MockBranchOverlay
+                options={pendingBranch.options}
+                branchFeedId={pendingBranch.branchFeedId}
+                feedName={pendingBranch.branchFeedName}
+                panelRef={risingPanelRef}
+                onBack={() => {
+                  branchCommittedRef.current = false;
+                  setPendingBranch(null);
+                  setBranchOverlayName(null);
+                  setPipelineStage("idle");
+                  setActivePostCount(postCount);
+                }}
+              />
             )}
           </div>
         </div>

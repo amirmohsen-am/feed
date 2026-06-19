@@ -19,6 +19,22 @@
   z-index: 1;
 }
 
+/* Aurora wash that builds up inside the card as you drag right, signalling
+   "this opens a new branch." Opacity driven imperatively from x motion value. */
+.cur-swipe-branch-tint {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(
+    ellipse 80% 100% at 110% 50%,
+    rgba(85, 88, 184, 0.22) 0%,
+    rgba(85, 88, 184, 0.06) 55%,
+    transparent 100%
+  );
+}
+
 /* Swipe message rendered in the chat: a verdict tag above a branch-style card
    showing the reacted-to post. */
 .cur-swipe-card {
@@ -36,7 +52,7 @@
 }
 .cur-swipe-card-tag-approve {
   background: rgba(62, 138, 108, 0.14);
-  color: var(--aurora-deep, #3e8a6c);
+  color: #3e8a6c;
 }
 .cur-swipe-card-tag-reject {
   background: rgba(216, 133, 117, 0.18);
@@ -92,11 +108,104 @@
 }
 .cur-swipe-keep {
   left: 18px;
-  color: var(--aurora-deep);
+  color: #3e8a6c;
   transform: rotate(-12deg);
 }
 .cur-swipe-nope {
   right: 18px;
-  color: var(--rose);
+  color: #b35a48;
   transform: rotate(12deg);
+}
+
+/* Inline followup card that replaces a swiped-away post */
+.cur-swipe-followup{
+  position: relative;
+  padding: 14px 16px 14px;
+  background: rgba(62, 138, 108, 0.08);
+  border-top: 1px solid rgba(62, 138, 108, 0.18);
+  border-bottom: 1px solid rgba(62, 138, 108, 0.18);
+}
+.cur-swipe-followup-out{
+  animation: cur-followup-fall 0.18s ease-in both;
+}
+@keyframes cur-followup-fall{
+  from{ opacity:1; transform:translateY(0); max-height:300px; }
+  to{ opacity:0; transform:translateY(6px); max-height:0; overflow:hidden; }
+}
+.cur-swipe-followup-dismiss{
+  position: absolute;
+  top: 10px; right: 12px;
+  background: none; border: none;
+  color: var(--ink-3); cursor: pointer;
+  padding: 4px; border-radius: 4px;
+  line-height: 1;
+}
+.cur-swipe-followup-dismiss:hover{ color: var(--ink); }
+.cur-swipe-followup-label{
+  font-family: var(--rf-mono, monospace);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 10px;
+}
+.cur-swipe-followup-topics{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+  min-height: 26px;
+  align-items: center;
+}
+.cur-swipe-followup-chip{
+  font-size: 12px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--hair-strong);
+  background: var(--paper);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  font-family: inherit;
+}
+.cur-swipe-followup-chip:hover{
+  background: color-mix(in srgb, var(--aurora-deep) 10%, transparent);
+  border-color: var(--aurora-deep);
+  color: var(--aurora-deep);
+}
+.cur-swipe-followup-input-row{
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.cur-swipe-followup-input{
+  flex: 1;
+  min-height: 36px;
+  background: var(--paper);
+  border: 1px solid var(--hair-strong);
+  border-radius: 10px;
+  padding: 7px 13px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  resize: none;
+  field-sizing: content;
+  max-height: 120px;
+}
+.cur-swipe-followup-input:focus{
+  outline: none;
+  border-color: var(--aurora-deep);
+}
+.cur-swipe-followup-receipt-wrap{
+  /* no dismiss button; compact */
+  padding-bottom: 16px;
+}
+.cur-swipe-followup-receipt{
+  font-size: 13px;
+  color: var(--ink-2);
+  background: var(--paper);
+  border: 1px solid var(--hair-strong);
+  border-radius: 10px;
+  padding: 8px 13px;
+  line-height: 1.45;
 }
