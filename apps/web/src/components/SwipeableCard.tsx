@@ -38,7 +38,6 @@ export default function SwipeableCard({
   disabled?: boolean;
 }) {
   const x = useMotionValue(0);
-  const y = useMotionValue(0);
   const scale = useTransform(x, [-260, 0, 260], [0.82, 1, 1.08]);
   const decidedRef = useRef(false);
   const firstLeftFired = useRef(false);
@@ -65,8 +64,8 @@ export default function SwipeableCard({
       firstRightFired.current = true;
       onFirstRightDrag();
     }
-    if (onRightProgress && latest > 0) {
-      onRightProgress(Math.min(1, latest / RIGHT_PROGRESS_DISTANCE));
+    if (onRightProgress) {
+      onRightProgress(latest > 0 ? Math.min(1, latest / RIGHT_PROGRESS_DISTANCE) : 0);
     }
 
     const card = wrapperRef.current;
@@ -159,7 +158,6 @@ export default function SwipeableCard({
       return;
     }
     animate(x, 0, { type: "spring", stiffness: 340, damping: 32 });
-    animate(y, 0, { type: "spring", stiffness: 340, damping: 32 });
     if (wrapperRef.current) {
       wrapperRef.current.style.position = "";
       wrapperRef.current.style.zIndex = "";
@@ -172,8 +170,8 @@ export default function SwipeableCard({
       <div ref={wrapperRef}>
         <motion.div
           className="cur-swipe-wrap"
-          style={{ x, y, scale }}
-          drag={disabled ? false : true}
+          style={{ x, scale }}
+          drag={disabled ? false : "x"}
           dragMomentum={false}
           onDragStart={disabled ? undefined : handleDragStart}
           onDragEnd={disabled ? undefined : handleDragEnd}
