@@ -14,6 +14,12 @@ const INSTANCE_CONNECTION_NAME =
 
 const SECRET_NAME = process.env.BSKY_DATABASE_SECRET ?? "bsky-database-url";
 
+// Local-dev switch (symmetric with feed-db's LOCAL_DATABASE_URL). Normally
+// LEFT UNSET — bsky-db holds the post embeddings + pgvector index and only
+// exists in prod, so local search reads prod. Set this only if you stand up a
+// local bsky_posts with pgvector + data.
+const LOCAL_BSKY_DATABASE_URL = process.env.LOCAL_BSKY_DATABASE_URL;
+
 let _pool: Pool | null = null;
 let _poolInit: Promise<Pool> | null = null;
 let _connector: Connector | null = null;
@@ -32,6 +38,21 @@ export async function getBskyPool(): Promise<Pool> {
   if (_pool) return _pool;
   if (_poolInit) return _poolInit;
   const init = (async () => {
+    if (LOCAL_BSKY_DATABASE_URL) {
+      const pool = new Pool({
+        connectionString: LOCAL_BSKY_DATABASE_URL,
+        max: 10,
+        idleTimeoutMillis: 30_000,
+        connectionTimeoutMillis: 5_000,
+      });
+      pool.on("error", (err) => {
+        console.error("[bsky-pg] local pool error:", err.message);
+      });
+      _pool = pool;
+      console.log("[bsky-pg] bsky-db: LOCAL mode (LOCAL_BSKY_DATABASE_URL)");
+      return pool;
+    }
+
     const dsn = await getSecret(SECRET_NAME);
     const u = new URL(dsn);
     const user = decodeURIComponent(u.username);

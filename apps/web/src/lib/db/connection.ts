@@ -18,6 +18,12 @@ const INSTANCE_CONNECTION_NAME =
   process.env.CLOUDSQL_CONNECTION_NAME ??
   "timelines-492720:us-central1:feed-db";
 
+// Local-dev switch: when LOCAL_DATABASE_URL is set we connect directly to a
+// standard Postgres (e.g. a local Docker container), bypassing the Cloud SQL
+// connector AND Secret Manager. Unset it to go back to the prod feed-db.
+// This is the only thing that decides local vs prod for feed-db.
+const LOCAL_DATABASE_URL = process.env.LOCAL_DATABASE_URL;
+
 let _pool: Pool | null = null;
 let _poolInit: Promise<Pool> | null = null;
 let _connector: Connector | null = null;
@@ -36,6 +42,22 @@ export async function getPool(): Promise<Pool> {
   if (_pool) return _pool;
   if (_poolInit) return _poolInit;
   const init = (async () => {
+    // Local mode — direct connection, no connector, no secrets.
+    if (LOCAL_DATABASE_URL) {
+      const pool = new Pool({
+        connectionString: LOCAL_DATABASE_URL,
+        max: 10,
+        idleTimeoutMillis: 30_000,
+        connectionTimeoutMillis: 5_000,
+      });
+      pool.on("error", (err) => {
+        console.error("[pg] local pool error:", err.message);
+      });
+      _pool = pool;
+      console.log("[pg] feed-db: LOCAL mode (LOCAL_DATABASE_URL)");
+      return pool;
+    }
+
     const dsn = await getSecret("database-url");
     const u = new URL(dsn);
     const user = decodeURIComponent(u.username);
