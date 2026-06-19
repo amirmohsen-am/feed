@@ -1368,15 +1368,16 @@
    transform applied during pull-to-refresh. translateY(100vh) keeps it one
    screen-height below the visible area at all scroll positions. */
 .cur-branch-rising-panel{
-  /* Absolute inside cur-feed-posts (position:relative) — covers only the feed
-     column, leaving the sidebar, topbar, and chat pane fully interactive. */
-  position: absolute;
-  inset: 0;
-  z-index: 10;
+  /* position:fixed; exact coordinates set by JS from the feed pane's
+     getBoundingClientRect() so the panel covers only the feed column.
+     display:none by default; JS sets display:block only during an active swipe. */
+  position: fixed;
+  /* left/right/top/bottom set imperatively — no defaults needed */
+  z-index: 50;
   will-change: transform;
   background: var(--paper);
   overflow-y: auto;
-  transform: translateY(100vh);
+  display: none;
 }
 
 /* Inner overlay content — fills the fixed panel. */

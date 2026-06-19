@@ -10,7 +10,7 @@ import { jsonError } from "@/lib/api";
  * Body: { params: string } — the full query string from the OAuth redirect
  *
  * Exchanges the authorization code for tokens and links the Bluesky DID
- * to the Willow user for this browser session.
+ * to the amadi user for this browser session.
  */
 export async function POST(req: NextRequest) {
   const auth = await requireAuth();

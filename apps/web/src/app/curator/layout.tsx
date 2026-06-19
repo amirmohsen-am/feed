@@ -393,7 +393,7 @@ function CuratorShell({
           style={{ ["--cur-sidebar-w" as string]: `${sidebarWidth}px` }}
         >
           <div className="cur-sidebar-head">
-            <Link href="/" className="cur-wordmark">willow</Link>
+            <Link href="/" className="cur-wordmark">amadi</Link>
           </div>
 
           {(() => {
@@ -929,25 +929,23 @@ function CuratorShell({
                 </svg>
               </button>
             )}
-            {activeFeed && activeHasCriteria && (
-              <button
-                type="button"
-                className="cur-topbar-icon cur-topbar-share"
-                onClick={() => setProfileOpen(true)}
-                title="Profile &amp; share"
-                aria-label="Profile and share"
-              >
-                {profile.photoURL ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={profile.photoURL} alt="" className="cur-profile-photo" referrerPolicy="no-referrer" />
-                ) : (
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-                    <circle cx="12" cy="8" r="4" />
-                    <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
-                  </svg>
-                )}
-              </button>
-            )}
+            <button
+              type="button"
+              className="cur-topbar-icon cur-topbar-share"
+              onClick={() => setProfileOpen(true)}
+              title="Profile &amp; share"
+              aria-label="Profile and share"
+            >
+              {profile.photoURL ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={profile.photoURL} alt="" className="cur-profile-photo" referrerPolicy="no-referrer" />
+              ) : (
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
+                </svg>
+              )}
+            </button>
             <Dialog
               open={profileOpen}
               onOpenChange={setProfileOpen}

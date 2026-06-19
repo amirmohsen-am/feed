@@ -1,4 +1,4 @@
--- Many browser sessions → one Willow user (cross-device Bluesky login).
+-- Many browser sessions → one amadi user (cross-device Bluesky login).
 -- Apply against feed-db (database: feed_curator). Idempotent.
 
 CREATE TABLE IF NOT EXISTS user_sessions (
@@ -64,7 +64,7 @@ SET bluesky_did = NULL, bluesky_handle = NULL, updated_at = now()
 FROM dup_groups dg
 WHERE u.bluesky_did = dg.bluesky_did AND u.id <> dg.canonical_id;
 
--- One Bluesky account maps to one Willow user row.
+-- One Bluesky account maps to one amadi user row.
 CREATE UNIQUE INDEX IF NOT EXISTS users_bluesky_did_unique
   ON users(bluesky_did) WHERE bluesky_did IS NOT NULL;
 
