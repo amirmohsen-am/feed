@@ -73,12 +73,16 @@ export default function MockBranchOverlay({
           const { done, value } = await reader.read();
           if (done) break;
           buf += dec.decode(value, { stream: true });
+          // The endpoint emits NDJSON (one JSON object per line) — NOT SSE, so
+          // there is no "data: " prefix. Parse each complete line directly;
+          // keep the trailing partial line buffered for the next chunk.
           const lines = buf.split("\n");
           buf = lines.pop() ?? "";
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
+          for (const raw of lines) {
+            const line = raw.trim();
+            if (!line) continue;
             try {
-              const ev = JSON.parse(line.slice(6));
+              const ev = JSON.parse(line);
               if (ev.event === "stage") {
                 if (ev.stage === "searching") {
                   setPipelineStage("searching");
@@ -90,9 +94,15 @@ export default function MockBranchOverlay({
                   if (typeof ev.model === "string") setPipelineModel(ev.model);
                   if (typeof ev.thinking_enabled === "boolean") setPipelineThinkingEnabled(ev.thinking_enabled);
                 }
+                // "skipped_rerank" needs no handling — the "done" event follows.
               } else if (ev.event === "done") {
                 setPipelineStage(ev.cached ? "idle" : "done");
                 if (Array.isArray(ev.posts)) setBranchPosts(ev.posts);
+              } else if (ev.event === "error") {
+                // Don't leave the loader pinned at "searching" if the pipeline
+                // failed — surface idle so the UI isn't stuck.
+                console.warn("[branch-overlay] stream error:", ev.message);
+                setPipelineStage("idle");
               }
             } catch { /* skip malformed */ }
           }
