@@ -14,22 +14,12 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import type { UserProfile } from "@/lib/types";
 import FeedbackModal from "@/components/FeedbackModal";
 import EditableFeedName from "@/components/EditableFeedName";
 import PublishFeedModal from "@/components/PublishFeedModal";
 import FeedSearch from "@/components/FeedSearch";
-import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
+import { type PipelineStage } from "@/components/PipelineLoader";
 import { authedFetch } from "@/lib/authed-fetch";
 import { useResizable } from "./useResizable";
 import {
@@ -48,15 +38,6 @@ const VIEW_MODE_KEY = "curator:viewMode";
 const HIDE_UNAVAIL_KEY = "curator:hideUnavailable";
 const SHOW_DEBUG_KEY = "curator:showDebug";
 
-const FEED_COLORS = [
-  "var(--aurora)",
-  "var(--amber)",
-  "var(--ember)",
-  "var(--rose)",
-  "var(--aurora-deep)",
-  "var(--mist)",
-];
-
 const ANON_PROFILE: UserProfile = {
   uid: "",
   name: "Anonymous",
@@ -71,6 +52,13 @@ const ANON_PROFILE: UserProfile = {
 export default function CuratorLayout({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile>(ANON_PROFILE);
   const [bskyOAuthReady, setBskyOAuthReady] = useState(false);
+  // Gate the app on session provisioning. A brand-new visitor's sid cookie has
+  // no user row yet; rendering the shell would fire several /api/* calls in
+  // parallel against a not-yet-created user. We block on the first /api/user
+  // call (which runs requireAuth → ensureSessionUser and creates the row),
+  // showing a loading boilerplate, then mount the shell so every later fetch
+  // sees an existing user.
+  const [ready, setReady] = useState(false);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -107,10 +95,30 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
         window.history.replaceState({}, "", url.pathname + url.search);
       }
     }
-    fetchProfile();
+    let cancelled = false;
+    // fetchProfile swallows its own errors, so this always resolves — we never
+    // strand the user on the loading screen even if provisioning hiccups.
+    fetchProfile().finally(() => {
+      if (!cancelled) setReady(true);
+    });
+    return () => { cancelled = true; };
   }, [fetchProfile]);
 
+  if (!ready) return <CuratorBoot />;
+
   return <CuratorShell profile={profile} bskyOAuthReady={bskyOAuthReady} refreshProfile={fetchProfile}>{children}</CuratorShell>;
+}
+
+/** Loading boilerplate shown while the anonymous session/user is provisioned. */
+function CuratorBoot() {
+  return (
+    <div className="cur-boot" role="status" aria-label="Loading">
+      <span className="cur-boot-mark">amadi</span>
+      <span className="cur-boot-dots" aria-hidden>
+        <span /><span /><span />
+      </span>
+    </div>
+  );
 }
 
 function CuratorShell({
@@ -133,7 +141,15 @@ function CuratorShell({
     SIDEBAR_W_KEY, 264, SIDEBAR_MIN, SIDEBAR_MAX, "left"
   );
   const [feeds, setFeeds] = useState<SavedFeed[]>([]);
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  // Topics edit mode (mobile-first). Off by default: tapping a topic only opens
+  // it. "Edit" at the top of the list reveals a delete control and inline
+  // rename per row; one row renames at a time.
+  const [editingTopics, setEditingTopics] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  // Tapping a row's "−" slides it open to reveal a "Delete" confirm button
+  // (iOS style) — no modal. Only one row is open at a time.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showPublish, setShowPublish] = useState(false);
@@ -231,10 +247,9 @@ function CuratorShell({
         is_home?: boolean;
         parent_feed_id?: number | null;
       }[] = data.feeds || [];
-      const mapped: SavedFeed[] = serverFeeds.map((f, i) => ({
+      const mapped: SavedFeed[] = serverFeeds.map((f) => ({
         id: String(f.id),
         name: f.name,
-        color: FEED_COLORS[i % FEED_COLORS.length],
         subqueries: f.subqueries ?? [],
         createdAt: f.created_at,
         isHome: f.is_home === true,
@@ -249,6 +264,27 @@ function CuratorShell({
   const renameFeed = useCallback((feedId: string, name: string) => {
     setFeeds((prev) => prev.map((f) => (f.id === feedId ? { ...f, name } : f)));
   }, []);
+
+  function startRename(feed: SavedFeed) {
+    setConfirmDeleteId(null);
+    setRenameDraft(feed.name);
+    setRenamingId(feed.id);
+  }
+
+  async function commitRename(feed: SavedFeed) {
+    const trimmed = renameDraft.trim().slice(0, 80);
+    setRenamingId(null);
+    if (!trimmed || trimmed === feed.name) return;
+    renameFeed(feed.id, trimmed); // optimistic
+    try {
+      await authedFetch("/api/feeds", {
+        method: "PATCH",
+        body: JSON.stringify({ id: Number(feed.id), name: trimmed }),
+      });
+    } catch {
+      /* ServerErrorToast surfaces failures; reloadFeeds on next mount corrects */
+    }
+  }
 
   useEffect(() => { reloadFeeds(); }, [reloadFeeds, profile.uid]);
 
@@ -291,15 +327,14 @@ function CuratorShell({
     }
   }
 
-  async function confirmDeleteFeed() {
-    if (!deleteTarget) return;
-    const id = parseInt(deleteTarget);
-    const wasActive = activeFeedId === deleteTarget;
-    const remaining = feeds.filter((f) => f.id !== deleteTarget);
+  async function deleteFeed(feedId: string) {
+    const id = parseInt(feedId);
+    const wasActive = activeFeedId === feedId;
+    const remaining = feeds.filter((f) => f.id !== feedId);
 
     // Optimistic removal.
     setFeeds(remaining);
-    setDeleteTarget(null);
+    setConfirmDeleteId(null);
 
     if (id) {
       authedFetch("/api/feeds", {
@@ -418,50 +453,125 @@ function CuratorShell({
           })()}
 
           <div className="cur-sidebar-label">
-            Your Topics · {feeds.filter((f) => !f.isHome).length.toString().padStart(2, "0")}
+            <span>Your Topics · {feeds.filter((f) => !f.isHome).length.toString().padStart(2, "0")}</span>
+            {feeds.filter((f) => !f.isHome).length > 0 && (
+              <button
+                type="button"
+                className={`cur-topics-edit${editingTopics ? " is-editing" : ""}`}
+                onClick={() => {
+                  setRenamingId(null);
+                  setConfirmDeleteId(null);
+                  setEditingTopics((v) => !v);
+                }}
+              >
+                {editingTopics ? "Done" : "Edit"}
+              </button>
+            )}
           </div>
 
           <div className="cur-feed-list">
             {feeds.filter((f) => !f.isHome).map((feed) => {
               const isActive = activeFeedId === feed.id;
               const isComplete = feedIsComplete(feed);
+              const isRenaming = renamingId === feed.id;
+              const isConfirming = confirmDeleteId === feed.id;
               return (
-                <Link
+                <div
                   key={feed.id}
-                  href={`/curator/${feed.id}`}
-                  prefetch={false}
-                  className={`cur-feed-item${isActive ? " active" : ""}${!isComplete ? " drafting" : ""}`}
-                  onClick={handleFeedClick}
+                  className={`cur-feed-row${isConfirming ? " confirming" : ""}`}
                 >
-                  <span className="swatch" style={{ background: feed.color }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <EditableFeedName
-                      feedId={feed.id}
-                      name={feed.name}
-                      variant="sidebar"
-                      className="fi-name"
-                      onRenamed={(name) => renameFeed(feed.id, name)}
-                    />
-                    <div className="fi-sub">
-                      {!isComplete
-                        ? "drafting · resume chat"
-                        : isActive
-                        ? `${activePostCount} posts · viewing`
-                        : `created ${new Date(feed.createdAt).toLocaleDateString()}`}
-                    </div>
-                  </div>
-                  <button
-                    className="cur-feed-delete"
+                  {editingTopics && (
+                    <button
+                      type="button"
+                      className="cur-feed-confirm-del"
+                      tabIndex={isConfirming ? 0 : -1}
+                      aria-hidden={!isConfirming}
+                      onClick={() => void deleteFeed(feed.id)}
+                    >
+                      Delete
+                    </button>
+                  )}
+                  <Link
+                    href={`/curator/${feed.id}`}
+                    prefetch={false}
+                    className={`cur-feed-item${isActive ? " active" : ""}${!isComplete ? " drafting" : ""}${editingTopics ? " is-editing" : ""}`}
                     onClick={(e) => {
+                      if (!editingTopics) { handleFeedClick(); return; }
+                      // In edit mode the row edits, not navigates; a tap also
+                      // closes an open delete confirm.
                       e.preventDefault();
-                      e.stopPropagation();
-                      setDeleteTarget(feed.id);
+                      if (isConfirming) setConfirmDeleteId(null);
                     }}
-                    title="Delete feed"
                   >
-                    ×
-                  </button>
-                </Link>
+                    {editingTopics && (
+                      <button
+                        type="button"
+                        className="cur-feed-edit-del"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setRenamingId(null);
+                          setConfirmDeleteId(isConfirming ? null : feed.id);
+                        }}
+                        aria-label={`Delete ${feed.name}`}
+                        title="Delete feed"
+                      >
+                        <span aria-hidden>−</span>
+                      </button>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {isRenaming ? (
+                        <input
+                          autoFocus
+                          type="text"
+                          className="cur-feed-name-input cur-feed-name-input-sidebar fi-name"
+                          value={renameDraft}
+                          maxLength={80}
+                          aria-label="Feed name"
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void commitRename(feed);
+                            } else if (e.key === "Escape") {
+                              e.preventDefault();
+                              setRenamingId(null);
+                            }
+                          }}
+                          onBlur={() => void commitRename(feed)}
+                        />
+                      ) : (
+                        <div className="fi-name">{feed.name}</div>
+                      )}
+                      <div className="fi-sub">
+                        {!isComplete
+                          ? "drafting · resume chat"
+                          : isActive
+                          ? `${activePostCount} posts · viewing`
+                          : `created ${new Date(feed.createdAt).toLocaleDateString()}`}
+                      </div>
+                    </div>
+                    {editingTopics && !isRenaming && !isConfirming && (
+                      <button
+                        type="button"
+                        className="cur-feed-edit-rename"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          startRename(feed);
+                        }}
+                        aria-label={`Rename ${feed.name}`}
+                        title="Rename feed"
+                      >
+                        <span aria-hidden>✎</span>
+                      </button>
+                    )}
+                  </Link>
+                </div>
               );
             })}
 
@@ -515,61 +625,6 @@ function CuratorShell({
           aria-orientation="vertical"
           aria-label="Resize sidebar"
         />
-
-        {/* DELETE CONFIRMATION */}
-        <AlertDialog
-          open={!!deleteTarget}
-          onOpenChange={(open) => {
-            if (!open) setDeleteTarget(null);
-          }}
-        >
-          <AlertDialogContent className="profile-dialog">
-            <AlertDialogHeader>
-              <AlertDialogTitle
-                style={{ fontFamily: "var(--rf-display)", fontSize: 22, fontWeight: 400, color: "var(--cream)" }}
-              >
-                Delete this feed?
-              </AlertDialogTitle>
-              <AlertDialogDescription
-                style={{ color: "var(--parchment-dim)", fontFamily: "var(--rf-body)", fontSize: 14 }}
-              >
-                This will permanently remove &ldquo;
-                {feeds.find((f) => f.id === deleteTarget)?.name}
-                &rdquo; and its preferences. This can&apos;t be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel
-                style={{
-                  background: "transparent",
-                  border: "1px solid var(--hair-strong)",
-                  color: "var(--parchment)",
-                  fontFamily: "var(--rf-mono)",
-                  fontSize: 10,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                  borderRadius: 999,
-                }}
-              >
-                Cancel
-              </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={confirmDeleteFeed}
-                style={{
-                  background: "var(--rose)",
-                  color: "var(--void)",
-                  fontFamily: "var(--rf-mono)",
-                  fontSize: 10,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                  borderRadius: 999,
-                }}
-              >
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
 
         {/* BLUESKY CONNECT MODAL */}
         <Dialog open={showBskyConnect} onOpenChange={(open) => { if (!open) { setShowBskyConnect(false); setBskyHandle(""); } }}>
@@ -704,20 +759,10 @@ function CuratorShell({
               ) : (
                 <h2>Curate a feed</h2>
               )}
-              {pipelineStage !== "idle" ? (
-                <PipelineLoader
-                  stage={pipelineStage}
-                  candidates={pipelineCandidates}
-                  hits={pipelineHits}
-                  images={pipelineImages}
-                  model={pipelineModel}
-                  thinkingEnabled={pipelineThinkingEnabled}
-                  seenFiltered={pipelineSeenFiltered}
-                  topK={25}
-                />
-              ) : (
-                activePostCount > 0 && <span className="live-badge">{activePostCount} post{activePostCount === 1 ? "" : "s"}</span>
-              )}
+              {/* The pipeline loader now lives in the feed column itself
+                  (CuratorWorkbench + the branch overlay), not pinned to the
+                  topbar — so the topbar only carries the live post count. */}
+              {activePostCount > 0 && <span className="live-badge">{activePostCount} post{activePostCount === 1 ? "" : "s"}</span>}
             </div>
             <div className="cur-topbar-right">
               {profile.blueskyHandle ? (

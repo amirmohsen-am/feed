@@ -6,194 +6,104 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 # Architecture
 
-Ripple Feed is a Bluesky custom-feed curator. The user chats with a Claude agent about what they want to read; the resulting feed config is stored in Postgres. When the user views a feed, we query pgvector (HNSW) on `bsky-db` for matching posts.
+Ripple Feed is a Bluesky custom-feed curator. The user chats with a Claude agent about what they want to read; the feed config is stored in Postgres. Viewing a feed runs a pgvector (HNSW) KNN on `bsky-db`.
 
-This is a **monorepo** with two services that deploy independently:
+**Monorepo, two independently-deployed services**, each self-contained with its own `package.json`/`package-lock.json` (no shared workspace packages):
 
 ```
-feed/
-├── apps/
-│   ├── web/                  ← Next.js app (curator + landing + API). On Cloud Run as feed-web.
-│   └── jetstream-indexer/    ← Node worker. Consumes Bluesky Jetstream, embeds posts via Vertex
-│                               Gemini, writes embeddings into pgvector on bsky-db. On Cloud Run as
-│                               jetstream-indexer.
+apps/
+├── web/                ← Next.js 16 (App Router, Node 22) — curator + landing + API. Cloud Run: feed-web.
+└── jetstream-indexer/  ← Node 22 + tsx worker — consumes Bluesky Jetstream, embeds posts, writes
+                          pgvector on bsky-db. Cloud Run: jetstream-indexer.
 ```
-
-Each app is self-contained with its own `package.json` and `package-lock.json`. There are no workspace packages — they share no code.
-
-## Stack at a glance
 
 | Concern | Choice |
 |---|---|
-| Web framework | Next.js 16 (App Router) on Node 22 — `npm run dev` from `apps/web/` |
-| Worker runtime | Node 22 + tsx — `npm start` from `apps/jetstream-indexer/` |
-| Package manager | npm (each app has its own `package-lock.json`) |
-| Database | Cloud SQL Postgres 15 in `timelines-492720`. Two instances: `feed-db` (web app) and `bsky-db` (indexer). |
-| Auth | Anonymous session cookie set by `apps/web/src/middleware.ts` — no sign-in. Server resolves it in `apps/web/src/lib/auth.ts` (`requireAuth`) via `session.ts`, creating/looking up the user row by session id. Bluesky OAuth (`src/lib/bsky-oauth.ts`) layers on for authenticated Bluesky actions. |
+| Auth | Anonymous session cookie (`apps/web/src/middleware.ts`); server resolves it in `lib/auth.ts` (`requireAuth`) via `session.ts`. Bluesky OAuth (`lib/bsky-oauth.ts`) layers on for authenticated Bluesky actions. |
 | Chat LLM | Anthropic Claude (`claude-sonnet-4-6`) via `@anthropic-ai/sdk` — `/api/chat`, `/api/import-memory` |
-| Post search | pgvector (HNSW, halfvec) on `bsky-db` — KNN SQL in `apps/web/src/lib/vector-search.ts`. Query embedding still via Vertex Gemini. |
-| Hosting | Both services on Cloud Run in `timelines-492720` |
+| Post search | pgvector (HNSW, halfvec) on `bsky-db` — `apps/web/src/lib/vector-search.ts`. Query embedding via Vertex Gemini. |
+| Hosting | Both on Cloud Run in `timelines-492720` |
 
 ## Databases
 
-**Two Cloud SQL instances**, one database each:
+Two Cloud SQL Postgres 15 instances in `timelines-492720`, one database each. Split so the write-heavy firehose can't contend with the curator UI. Connection strings carry the instance via env: web → `CLOUDSQL_CONNECTION_NAME` (feed-db); indexer + web's bsky pool → `BSKY_CLOUDSQL_CONNECTION_NAME` (bsky-db).
 
-- **Instance `feed-db`** (db-f1-micro) — hosts the web app's `feed_curator` database. Secret: `database-url`.
-  - `users` — anonymous session id → internal Postgres UUID; linked Bluesky DID/handle once the user completes Bluesky OAuth
-  - `feeds` — per-user feed configs (`name`, `mechanical_filters`, `semantic_config`, `description`)
-  - `chat_messages` — per-feed chat transcripts
-  - `subscribers` — landing-page mailing list
-- **Instance `bsky-db`** (db-custom-1-3840, dedicated CPU) — hosts the indexer's `bsky_posts` database. Secret: `bsky-database-url`. Schema migrated on indexer boot from `apps/jetstream-indexer/sql/*.sql`.
-  - `bsky.posts` — full post body, embed metadata, reply refs, facets, plus the searchable `embedding halfvec(768)` pgvector column (HNSW index) and the legacy cached `embedding_vec bytea` (packed float32, kept alongside until pgvector is fully validated in prod)
-  - `bsky.post_engagement` — counters (`like_count`, `repost_count`, `reply_count`, `quote_count`). Read live via the KNN join. (The `last_pushed_to_vertex_at` column is a dead leftover from the Vertex reconciler.)
-  - `bsky.authors` — handle, display name, description, avatar/banner CIDs
-  - `bsky.handles_history` — append-only on handle changes (Jetstream identity events)
-  - `bsky.consumer_state` — per-consumer Jetstream cursor in microseconds
-
-The split: write-heavy bsky firehose got its own dedicated-CPU instance so it can't contend with the curator UI's queries. Connection strings carry instance via env vars: web reads `CLOUDSQL_CONNECTION_NAME` for feed-db; indexer and web's bsky pool both read `BSKY_CLOUDSQL_CONNECTION_NAME` for bsky-db.
+- **`feed-db`** (db-f1-micro) — web app's `feed_curator` db. Secret: `database-url`.
+  - `users` — session id → internal UUID; linked Bluesky DID/handle after OAuth
+  - `feeds` — per-user feed configs · `chat_messages` — per-feed transcripts · `subscribers` — landing mailing list
+- **`bsky-db`** (db-custom-1-3840, dedicated CPU) — indexer's `bsky_posts` db. Secret: `bsky-database-url`. Schema migrated on indexer boot from `apps/jetstream-indexer/sql/*.sql`.
+  - `bsky.posts` — full post body, embed metadata, reply refs, facets; searchable `embedding halfvec(768)` (HNSW) + legacy cached `embedding_vec bytea` (packed float32, kept until pgvector fully validated in prod)
+  - `bsky.post_engagement` — `like/repost/reply/quote_count`, read live via the KNN join (`last_pushed_to_vertex_at` is a dead Vertex leftover)
+  - `bsky.authors` · `bsky.handles_history` (append-only on handle change) · `bsky.consumer_state` (per-consumer Jetstream cursor, microseconds)
 
 # Vector search
 
-**Backfilling / rebuilding the index: reuse the embeddings we already have — do NOT re-embed.** Every post's vector is cached in `bsky.posts.embedding_vec` (packed float32, 768d) and archived as parquet in `gs://happy-feed-data-timelines/`. Any backfill, reindex, or migration (e.g. populating a pgvector column) must reinterpret those cached bytes, not call Gemini again — re-embedding is a needless cost and the data is already there. See `apps/web/scripts/backfill-halfvec.ts`.
+**Read side** (`apps/web/src/lib/vector-search.ts`): embeds each subquery with Gemini (`gemini-embedding-001`, 768d, `RETRIEVAL_QUERY`), then one pgvector KNN per subquery in a single SQL statement (`embedding <=> $1::halfvec` + filters + engagement/author join + field selection, no separate hydrate). `searchPosts` unions per-subquery rows by URI (max `vector_score`) and applies the AppView NSFW label gate.
+- **Invariant:** the HNSW index is **partial** (`WHERE ingested_at_us >= INDEX_INGEST_CUTOFF_US`); every KNN must carry that same literal floor or it degrades to an exact scan over all rows. `hnsw.ef_search = 250` is set at the DB level.
 
-Search runs on **pgvector on `bsky-db`** — there is no Vertex Vector Search index anymore (migrated in PR #20; the Vertex index + endpoint GCP resources were deleted 2026-06-04). Vertex AI is still used, but **only for Gemini embeddings** (query + document). Both services hit the same `bsky.posts.embedding` halfvec column:
+**Write side:** the jetstream-indexer worker (see below).
 
-- **Read side** (`apps/web/src/lib/vector-search.ts`): embeds each subquery with Gemini (`gemini-embedding-001`, 768d, `RETRIEVAL_QUERY`), then runs one pgvector KNN per subquery in a single SQL statement — KNN (`embedding <=> $1::halfvec`) + filter predicates + engagement/author join + field selection, no separate hydrate step. `searchPosts` unions the per-subquery rows by URI (max `vector_score`) and applies the AppView NSFW label gate. The HNSW index is **partial** (`WHERE ingested_at_us >= INDEX_INGEST_CUTOFF_US`); every KNN must carry that same literal floor or it degrades to an exact scan over all rows. `hnsw.ef_search = 250` is set at the database level.
-- **Write side** (`apps/jetstream-indexer/`): three parallel Jetstream consumers + a prune loop in one process:
-  - `postConsumer` — `app.bsky.feed.post` creates + deletes. Composes embedding input as `text + image alt + external title/description`, embeds via Gemini `RETRIEVAL_DOCUMENT`, upserts `bsky.posts` (full record + `embedding halfvec` + cached `embedding_vec` float32 bytea). Reply / quote create events also bump `reply_count`/`quote_count` of the parent/target.
-  - `engagementConsumer` — `app.bsky.feed.like` + `app.bsky.feed.repost` creates. Monotonic counters in `bsky.post_engagement`; delete events ignored (drift ~1–5%). Read live by the KNN join — no separate push step.
-  - `profileConsumer` — `app.bsky.actor.profile` + Jetstream `identity` events. Updates `bsky.authors` and appends `bsky.handles_history`.
-  - `prune` — retention prune anchored on `ingested_at_us`.
+**Backfill/reindex invariant — never re-embed.** Every vector is cached in `bsky.posts.embedding_vec` (packed float32, 768d) and archived as parquet in `gs://happy-feed-data-timelines/`. Any backfill/migration must reinterpret those cached bytes, not call Gemini again. See `apps/web/scripts/backfill-halfvec.ts`.
 
-All loops share one Cloud Run instance. Per-consumer cursors live in `bsky.consumer_state`; restart-safe. All consumers also write parquet to `gs://happy-feed-data-timelines/jetstream/{posts,likes,reposts,profiles,identity}/dt=YYYY-MM-DD/` as the internal replay log.
-
-Both processes run as the default compute SA `777152549518-compute@developer.gserviceaccount.com`, which has `roles/aiplatform.user` on `timelines-492720` (needed for Gemini embeddings).
-
-## Vertex / pgvector env vars
-
-| Var | Default | Notes |
-|---|---|---|
-| `VERTEX_PROJECT` | `timelines-492720` | Gemini embeddings project |
-| `VERTEX_LOCATION` | `us-central1` | Gemini embeddings region |
-| `GCS_BUCKET` | `happy-feed-data-timelines` | (worker only — parquet + cursor) |
-
-These are **public resource IDs**, not secrets — plain env vars, not Secret Manager. The old `VERTEX_INDEX_ID` / `VERTEX_INDEX_ENDPOINT_*` / `VERTEX_DEPLOYED_INDEX_ID` vars are gone with the Vertex index. The pgvector connection is the `bsky-database-url` secret (same as read-side hydration).
-
-## Local dev
-
-Auth via your local ADC: `gcloud auth application-default login`. Smoke test for the reader:
-
+Local reader smoke test (auth via `gcloud auth application-default login`):
 ```bash
-cd apps/web
-npx tsx -e "import { searchPosts } from './src/lib/vector-search'; (async () => console.log(await searchPosts({ subqueries: ['climate'], totalBudget: 3 })))()"
+cd apps/web && npx tsx -e "import { searchPosts } from './src/lib/vector-search'; (async () => console.log(await searchPosts({ subqueries: ['climate'], totalBudget: 3 })))()"
 ```
+~3 hits in 1–2s. **If it 403s, set `GOOGLE_CLOUD_QUOTA_PROJECT=timelines-492720`.**
 
-Should return ~3 hits in 1–2 seconds. If it 403s, set `GOOGLE_CLOUD_QUOTA_PROJECT=timelines-492720`.
+Vertex is used **only for Gemini embeddings** (project `timelines-492720`, region `us-central1`). These are public resource IDs, plain env vars (not secrets): `VERTEX_PROJECT`, `VERTEX_LOCATION`, `GCS_BUCKET` (worker only).
 
-Worker locally:
+### feed-db: default to prod, opt in to local
 
-```bash
-cd apps/jetstream-indexer
-npm start    # writes to gs://happy-feed-data-timelines and pgvector on the prod bsky-db
-```
+The web app connects to the **prod** `feed-db` by default (via the Cloud SQL connector + the `database-url` secret). This is the default for all local runs — `npm run dev` against prod is correct for UI work and for reading real data. **Only opt in to the local Postgres when you are making changes to the database schema/data** (migrations, destructive writes, anything you don't want hitting prod).
+
+The switch is a single env var, `LOCAL_DATABASE_URL` (resolved in `apps/web/src/lib/db/connection.ts`):
+
+- **Unset (default)** → prod `feed-db`. Run `npm run dev`.
+- **Set** to a local DSN → bypasses Cloud SQL and the secret, connects directly to local Postgres. Bootstrap once with `LOCAL_DATABASE_URL=… npx tsx scripts/setup-local-db.ts` (see `apps/web/LOCAL_DB.md`), then run with the var set.
+
+Do not commit `LOCAL_DATABASE_URL` into any `.env*` file — keep prod the default and pass it inline only for the local-DB session that needs it.
 
 # Jetstream indexer
 
-`apps/jetstream-indexer/src/worker.ts` orchestrates three Jetstream consumers + a prune loop in a single Node process:
+`apps/jetstream-indexer/src/worker.ts` runs three Jetstream consumers + a prune loop in one Node process; per-consumer cursors in `bsky.consumer_state` make it restart-safe. All consumers also write parquet to `gs://happy-feed-data-timelines/jetstream/{posts,likes,reposts,profiles,identity}/dt=YYYY-MM-DD/` as the replay log.
 
-1. `postConsumer` — subscribes to `app.bsky.feed.post`. Extracts everything (text, reply refs, facets, embed details, langs, hashtags, mentions, self-labels). Embeds via Gemini using `composeEmbedInput` (text + image alts + external link card). Upserts `bsky.posts` (full record + `embedding halfvec` + cached `embedding_vec` float32 bytea) and writes the parquet posts archive. Reply/quote post creates bump counters on parent/target.
-2. `engagementConsumer` — subscribes to `app.bsky.feed.like` + `app.bsky.feed.repost` (creates only). Monotonic increments into `bsky.post_engagement`. Delete events ignored. Counters are read live by the read-side KNN join — there is no reconciler/push step.
-3. `profileConsumer` — subscribes to `app.bsky.actor.profile` + Jetstream `identity` events. Upserts `bsky.authors`, appends `bsky.handles_history` on handle changes.
-4. `prune` — retention prune anchored on `ingested_at_us` (client `created_at` has garbage at both extremes).
+1. `postConsumer` — `app.bsky.feed.post` creates + deletes. Composes embedding input (`text + image alts + external title/description`), embeds via Gemini `RETRIEVAL_DOCUMENT`, upserts `bsky.posts` (full record + `embedding halfvec` + cached `embedding_vec`). Reply/quote creates bump parent/target counters.
+2. `engagementConsumer` — `app.bsky.feed.like` + `repost` creates only. Monotonic counters in `bsky.post_engagement`; deletes ignored (drift ~1–5%). No reconciler/push — read live by the KNN join.
+3. `profileConsumer` — `app.bsky.actor.profile` + Jetstream `identity` events. Upserts `bsky.authors`, appends `bsky.handles_history`.
+4. `prune` — retention prune anchored on `ingested_at_us` (client `created_at` is garbage at both extremes).
 
-Schema migrations run on boot from `apps/jetstream-indexer/sql/*.sql` against the `bsky` database. The pgvector HNSW index is built once out-of-band (`CREATE INDEX CONCURRENTLY`, see `sql/0003_pgvector.sql`), not by the migrator.
+The pgvector HNSW index is built once out-of-band (`CREATE INDEX CONCURRENTLY`, `sql/0003_pgvector.sql`), not by the boot migrator. Both services run as the compute SA `777152549518-compute@developer.gserviceaccount.com` (has `roles/aiplatform.user`).
 
-Cloud Run config: `--no-cpu-throttling`, `--min-instances=1 --max-instances=1 --concurrency=1`, `--cpu=2`, `--memory=2Gi`. Concurrency=1 prevents cursor races. Per-consumer cursors live in `bsky.consumer_state`.
-
-Deploy:
-
-```bash
-cd apps/jetstream-indexer
-gcloud builds submit --config=cloudbuild.yaml --project=timelines-492720 .
-gcloud run deploy jetstream-indexer \
-  --image=us-central1-docker.pkg.dev/timelines-492720/jetstream-indexer/worker:latest \
-  --region=us-central1 --project=timelines-492720 \
-  --no-cpu-throttling --min-instances=1 --max-instances=1 --concurrency=1 \
-  --cpu=2 --memory=2Gi \
-  --service-account=777152549518-compute@developer.gserviceaccount.com
-```
-
-To wipe + rewind for a fresh backfill (last 4 days):
-
-```bash
-cd apps/jetstream-indexer
-npx tsx scripts/wipe-and-rewind.ts 4    # TRUNCATEs bsky.* and rewinds cursors
-# Restart the Cloud Run service; consumers replay from the rewound cursors
-# subject to Jetstream's retention (community reports ~hours, operator-dependent).
-```
-
-(Env vars are baked into the image's defaults via `src/config.ts`; override at deploy time with `--update-env-vars` if needed.)
-
-Logs:
-
-```bash
-gcloud logging read 'resource.labels.service_name="jetstream-indexer"' --project=timelines-492720 --limit=20
-```
-
-The Cloud Monitoring dashboard JSON is at `apps/jetstream-indexer/monitoring/dashboard.json` (import via `gcloud monitoring dashboards create --config-from-file=...`).
-
-## What this repo does NOT do anymore
-
-- **No OpenAI.** Embeddings come from Vertex Gemini; the chat is pure Claude.
-- **No Vertex Vector Search.** Search migrated to pgvector (HNSW, halfvec) on `bsky-db` in PR #20; the Vertex index + endpoint were deleted 2026-06-04. Vertex AI is still used, but only for Gemini embeddings. There is no `MatchServiceClient`/`findNeighbors`/upsert-to-index path, and no `vertexReconciler` loop.
-- **No happy-feed external repo.** The worker source moved into `apps/jetstream-indexer/` (was `/Users/amir/code/happy-feed`).
-- **No synthetic onboarding card bank.** Removed along with `OnboardingFlow`/`TapCards`/`TasteReveal`/`ReversePrompting` and the `onboarding_cards` table. Onboarding is now plain chat with the Claude agent.
+- **Run locally:** `cd apps/jetstream-indexer && npm start` — ⚠️ writes to the **prod** bsky-db + GCS bucket.
+- **Cloud Run invariant:** `--no-cpu-throttling --min-instances=1 --max-instances=1 --concurrency=1 --cpu=2 --memory=2Gi`. Concurrency=1 prevents cursor races.
+- **Deploy:** `gcloud builds submit --config=cloudbuild.yaml` then `gcloud run deploy` with the flags above (env baked via `src/config.ts`).
+- **Fresh backfill:** `npx tsx scripts/wipe-and-rewind.ts <days>` — ⚠️ **TRUNCATEs `bsky.*`** and rewinds cursors; then restart the service. Replay is bounded by Jetstream retention (~hours).
+- **Logs:** `gcloud logging read 'resource.labels.service_name="jetstream-indexer"' --project=timelines-492720`. Dashboard: `apps/jetstream-indexer/monitoring/dashboard.json`.
 
 # Publishing to Bluesky
 
-Feeds can be published as Bluesky custom feed generators (restored in commit `e07c96c`). `PublishFeedModal` → `POST /api/publish-feed` writes an `app.bsky.feed.generator` record to the user's repo (OAuth session via `lib/bsky-oauth.ts`, falling back to app password) pointing at this service's `did:web`, and stores the resulting rkey in `feeds.published_rkey`. Bluesky then resolves the feed through the xrpc endpoints served here: `/.well-known/did.json`, `/xrpc/app.bsky.feed.describeFeedGenerator`, and `/xrpc/app.bsky.feed.getFeedSkeleton` (which serves post URIs from the cached skeleton).
+`PublishFeedModal` → `POST /api/publish-feed` writes an `app.bsky.feed.generator` record to the user's repo (OAuth, app-password fallback) pointing at this service's `did:web`, storing the rkey in `feeds.published_rkey`. Bluesky resolves the feed via the xrpc endpoints served here: `/.well-known/did.json`, `/xrpc/app.bsky.feed.describeFeedGenerator`, `/xrpc/app.bsky.feed.getFeedSkeleton` (serves URIs from the cached skeleton).
 
 # Conventions
 
-- Running `npm install` (or `npm ci`) in either app is pre-approved — just do it when needed, no need to ask first.
-- **Landing page copy & design rules**: never use italics anywhere (emphasis is color only; `em` elements are styled `font-style: normal`), and never use dashes ("-", "—") in user-facing copy. Rephrase with commas or new sentences instead.
-- All API routes under `apps/web/src/app/api/*` use `requireAuth(req)` from `apps/web/src/lib/auth.ts` — except the intentionally public `/api/introspect/*`, `/api/subscribe`, `/api/feedgen/info`, and the xrpc / `did.json` feed-generator endpoints.
-- The curator UI loads sidebar feeds from Postgres (`/api/feeds`), filtered to feeds with non-empty topics/keywords. Postgres is the source of truth — there is no client-side cache (no localStorage, no Firestore).
-- Feed switching in the curator is non-blocking: clicking a feed clears the panels synchronously and fires chat + posts fetches in parallel. There is no auto-polling — the user clicks **Refresh** to re-query.
+- **Fresh worktrees have no `node_modules`.** Don't check for it or skip steps because deps are missing — always run `npm install` first as part of any verify step (near-noop when current; pre-approved, never ask). Bundle it in:
+  - Web typecheck: `cd apps/web && npm install && npx tsc --noEmit` · lint: `... && npm run lint`
+  - Indexer typecheck: `cd apps/jetstream-indexer && npm install && npm run typecheck`
+- **Landing copy & design:** never use italics (emphasis is color only; `em` is styled `font-style: normal`), and never use dashes ("-", "—") in user-facing copy — rephrase with commas or new sentences.
+- API routes under `apps/web/src/app/api/*` use `requireAuth(req)` — except the intentionally public `/api/introspect/*`, `/api/subscribe`, `/api/feedgen/info`, and the xrpc / `did.json` endpoints.
+- Curator sidebar loads feeds from Postgres (`/api/feeds`, filtered to non-empty topics/keywords). Postgres is the only source of truth — no client-side cache. Feed switching is non-blocking; no auto-polling (user clicks **Refresh**).
 
 # Secrets
 
-Three real secrets live in **Google Secret Manager** in `timelines-492720`:
-
-| Secret | What |
-|---|---|
-| `database-url` | Cloud SQL connection string for the `feed` database (web app) |
-| `bsky-database-url` | Cloud SQL connection string for the `bsky` database (indexer + read-side hydration) |
-| `anthropic-api-key` | Anthropic Claude API key |
-
-**The code fetches them at runtime** — see `apps/web/src/lib/secrets.ts`. There are no `--set-secrets` mounts on Cloud Run and no plaintext copies in `.env.local`. The pattern:
-
-```ts
-// pg.ts (lazy pool init)
-const pool = await getPool();   // fetches DATABASE_URL from SM on first call
-// chat/route.ts (lazy Anthropic client)
-const c = await client();       // fetches ANTHROPIC_API_KEY from SM on first call
-```
-
-`getSecret(name)` checks `process.env` first (UPPER_SNAKE_CASE of the secret name) and falls back to Secret Manager. Override locally with an env var if needed.
-
-**Auth**: locally, `gcloud auth application-default login` once. On Cloud Run, the runtime SA `777152549518-compute@developer.gserviceaccount.com` has `roles/secretmanager.secretAccessor` on each secret.
-
-**Rotate**: `echo -n "<new>" | gcloud secrets versions add <name> --project=timelines-492720 --data-file=-`. The cache is per-process — restart Cloud Run revisions to pick up new versions.
+Three real secrets in **Google Secret Manager** (`timelines-492720`): `database-url`, `bsky-database-url`, `anthropic-api-key`. **Fetched at runtime** (`apps/web/src/lib/secrets.ts`) — no `--set-secrets` mounts, no `.env.local` copies. `getSecret(name)` checks `process.env` (UPPER_SNAKE_CASE) first, then Secret Manager. Locally: `gcloud auth application-default login`. Cloud Run: the compute SA has `secretmanager.secretAccessor`. Rotate: `echo -n "<new>" | gcloud secrets versions add <name> --project=timelines-492720 --data-file=-` then restart revisions (cache is per-process).
 
 # External resources
 
 | What | Where |
 |---|---|
-| Cloud SQL `feed-db` (web app) | `gcloud sql instances describe feed-db --project=timelines-492720` |
-| Cloud SQL `bsky-db` (indexer) | `gcloud sql instances describe bsky-db --project=timelines-492720` |
-| Firebase project | `timelines-492720` (display name "timelines"). Used only for Firebase Analytics now (`apps/web/src/components/Analytics.tsx`) — no longer the auth provider. |
+| Cloud SQL | `gcloud sql instances describe {feed-db,bsky-db} --project=timelines-492720` |
 | Secret Manager | `gcloud secrets list --project=timelines-492720` |
-| Vertex Gemini embeddings | project `timelines-492720`, region `us-central1`, model `gemini-embedding-001` (768d). No Vector Search index — search is pgvector on `bsky-db`. |
-| GCS data bucket | `gs://happy-feed-data-timelines` (parquet posts/embeddings + Jetstream cursor) |
+| GCS data bucket | `gs://happy-feed-data-timelines` (parquet + Jetstream cursor) |
 | Artifact Registry (worker) | `us-central1-docker.pkg.dev/timelines-492720/jetstream-indexer/worker` |
+| Firebase | `timelines-492720` — Analytics only now (`apps/web/src/components/Analytics.tsx`), no longer auth |
