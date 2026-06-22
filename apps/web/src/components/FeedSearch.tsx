@@ -124,7 +124,6 @@ export default function FeedSearch({ feeds, activeFeedId, onNewFeed }: FeedSearc
                   onClick={() => selectItem(i)}
                   data-active={isActive || undefined}
                 >
-                  <span className="cmdk-swatch" style={{ background: feed.color }} />
                   <div className="cmdk-item-text">
                     <span className="cmdk-item-name">{feed.name}</span>
                     {feed.subqueries.length > 0 && (

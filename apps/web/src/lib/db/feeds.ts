@@ -111,8 +111,17 @@ export async function ensureHomeFeed(userId: string): Promise<DbFeed> {
     [userId]
   );
   if (existing.rows[0]) return rowToFeed(existing.rows[0]);
+  // Atomic get-or-create: a new visitor's parallel first-requests all find no
+  // home feed above and race to insert one. ON CONFLICT against the partial
+  // unique index (feeds_user_home_unique, WHERE is_home = true) collapses the
+  // losers into a no-op update that still RETURNS the winning row, instead of a
+  // 500 on the unique violation. The predicate must be restated to infer the
+  // partial index.
   const res = await query(
-    `INSERT INTO feeds (user_id, name, is_home) VALUES ($1, 'Home', true) RETURNING *`,
+    `INSERT INTO feeds (user_id, name, is_home) VALUES ($1, 'Home', true)
+     ON CONFLICT (user_id) WHERE is_home = true
+     DO UPDATE SET is_home = true
+     RETURNING *`,
     [userId]
   );
   return rowToFeed(res.rows[0]);

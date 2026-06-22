@@ -87,7 +87,21 @@
   color: var(--ink-3);
   padding: 18px 20px 10px;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
+.cur-topics-edit{
+  font-family: var(--rf-mono); font-size: 10px;
+  letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;
+  color: var(--aurora-deep);
+  background: none; border: none; cursor: pointer;
+  padding: 3px 7px; border-radius: 6px;
+  -webkit-tap-highlight-color: transparent;
+}
+.cur-topics-edit:hover{ background: rgba(85,88,184,0.1); }
+.cur-topics-edit.is-editing{ color: #fff; background: var(--aurora-deep); }
 
 .cur-feed-list{
   flex: 1;
@@ -130,10 +144,6 @@
 .cur-feed-item.drafting .fi-sub{
   color: var(--ember);
   opacity: 0.95;
-}
-.cur-feed-item .swatch{
-  width: 9px; height: 9px;
-  border-radius: 50%; flex-shrink: 0;
 }
 .cur-feed-item .fi-name{
   font-family: var(--rf-display);
@@ -194,19 +204,56 @@
   color: var(--ink-4); margin-top: 2px;
 }
 
-.cur-feed-delete{
-  background: transparent;
-  border: none;
-  color: var(--ink-4);
-  font-size: 16px;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.2s, color 0.2s;
-  padding: 0 4px;
-  line-height: 1;
+/* iOS-style delete confirm: tapping a row's "−" slides a red Delete button in
+   from the right edge (no modal). Tap Delete to confirm, tap "−" again or the
+   row to cancel. The button overlays the right of the row (the rename pencil is
+   hidden while confirming), so the topic name never clips. */
+.cur-feed-row{
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
 }
-.cur-feed-item:hover .cur-feed-delete{ opacity: 0.7; }
-.cur-feed-delete:hover{ opacity: 1 !important; color: var(--rose); }
+.cur-feed-confirm-del{
+  position: absolute;
+  top: 0; right: 0; height: 100%; width: 84px; z-index: 2;
+  border: none; cursor: pointer;
+  background: var(--rose); color: #fff;
+  font-family: var(--rf-mono); font-size: 10px;
+  letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  transform: translateX(100%);
+  transition: transform 0.26s cubic-bezier(0.3, 0.8, 0.3, 1);
+  pointer-events: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.cur-feed-row.confirming .cur-feed-confirm-del{ transform: translateX(0); pointer-events: auto; }
+.cur-feed-confirm-del:hover{ filter: brightness(0.94); }
+@media (prefers-reduced-motion: reduce){
+  .cur-feed-confirm-del{ transition: none; }
+}
+
+/* Edit-mode controls (Variant A). Hidden until the topics list is in edit mode;
+   no delete affordance sits on a resting row. */
+.cur-feed-edit-del{
+  width: 20px; height: 20px; flex-shrink: 0;
+  border: none; border-radius: 50%; cursor: pointer;
+  background: var(--rose); color: #fff;
+  font-size: 16px; font-weight: 700; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-left: -2px;
+  -webkit-tap-highlight-color: transparent;
+}
+.cur-feed-edit-del:hover{ filter: brightness(0.92); }
+.cur-feed-edit-rename{
+  flex-shrink: 0;
+  border: none; background: none; cursor: pointer;
+  color: var(--ink-4); font-size: 13px; line-height: 1;
+  padding: 6px; border-radius: 6px;
+  -webkit-tap-highlight-color: transparent;
+}
+.cur-feed-edit-rename:hover{ color: var(--aurora-deep); background: rgba(85,88,184,0.08); }
+/* In edit mode the row no longer navigates — show the default cursor. */
+.cur-feed-item.is-editing{ cursor: default; }
 
 /* ── Verify identity box ────────────────────── */
 .cur-verify-box{
@@ -1860,6 +1907,48 @@
    the text settles to "Curated in Xs". The whole line is the tap target for
    the per-stage breakdown — no button chrome. Same design on desktop and
    mobile. */
+/* Boot screen — shown full-viewport while the anonymous session/user is
+   provisioned, before the curator shell mounts. Renders outside .curator-shell
+   so the light-theme tokens aren't in scope: paper/ink values are inlined. */
+.cur-boot{
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: #f0f7f3;
+  z-index: 9999;
+}
+.cur-boot-mark{
+  font-family: 'Instrument Serif', serif;
+  font-size: 40px;
+  letter-spacing: -0.02em;
+  color: #0d0b1e;
+  animation: cur-boot-breathe 1.8s ease-in-out infinite;
+}
+.cur-boot-dots{ display: inline-flex; gap: 6px; }
+.cur-boot-dots span{
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--aurora-deep, #5558b8);
+  opacity: 0.35;
+  animation: cur-boot-pulse 1.2s ease-in-out infinite;
+}
+.cur-boot-dots span:nth-child(2){ animation-delay: 0.18s; }
+.cur-boot-dots span:nth-child(3){ animation-delay: 0.36s; }
+@keyframes cur-boot-breathe{ 0%, 100%{ opacity: 0.55; } 50%{ opacity: 1; } }
+@keyframes cur-boot-pulse{ 0%, 100%{ opacity: 0.25; transform: translateY(0); } 50%{ opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce){
+  .cur-boot-mark, .cur-boot-dots span{ animation: none; }
+}
+
+/* Pipeline loader placed inside the feed column (and branch overlay) rather
+   than pinned to the topbar. Scrolls with the feed content. */
+.cur-feed-pl{ padding: 2px 0 14px; }
+/* In the branch overlay, match the 20px horizontal padding of its other rows. */
+.cur-mock-branch-overlay .cur-feed-pl{ padding: 12px 20px 14px; }
+
 .cur-pl{
   font-family: var(--rf-mono);
   font-size: 11px;
@@ -1941,6 +2030,7 @@
   transform: translateX(-50%);
   z-index: 1100;
   min-width: 240px;
+  max-width: calc(100vw - 32px);
   padding: 10px 14px 8px;
   font-size: 10px;
   line-height: 1.6;
@@ -1971,9 +2061,8 @@
 .cur-pl-d{
   color: var(--ink-4);
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .cur-post-debug-flag{
@@ -2896,11 +2985,6 @@
 .cmdk-item:hover{ background: rgba(136,144,216,0.08); }
 .cmdk-item[data-active]{ border-left: 2px solid var(--aurora-deep); }
 
-.cmdk-swatch{
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
 .cmdk-item-text{
   flex: 1;
   min-width: 0;
@@ -3241,7 +3325,6 @@
   .cur-post-stat{ font-size: 13px; gap: 6px; padding-top: 10px; }
   .cur-post-stat svg{ width: 18px; height: 18px; }
   .cur-post-engage-btn, .cur-post-like-btn{ padding: 4px 2px; }
-  .cur-post-open{ display: none; }
   .cur-post-card-body,
   .cur-post-embed-desc,
   .cur-post-embed-title{

@@ -7,7 +7,6 @@ import type { PipelineStage } from "@/components/PipelineLoader";
 export interface SavedFeed {
   id: string;
   name: string;
-  color: string;
   subqueries: string[];
   createdAt: string;
   isHome: boolean;

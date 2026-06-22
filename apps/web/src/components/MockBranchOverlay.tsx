@@ -2,6 +2,7 @@
 
 import { useState, useEffect, type RefObject } from "react";
 import BranchTopicsHeader from "@/components/BranchTopicsHeader";
+import FeedPipelineLoader from "@/components/FeedPipelineLoader";
 import type { BranchOption } from "@/lib/branch";
 import { authedFetch } from "@/lib/authed-fetch";
 import { useCurator } from "@/app/curator/curatorContext";
@@ -49,8 +50,8 @@ export default function MockBranchOverlay({
 
   useEffect(() => {
     if (!branchFeedId) return;
-    // Start at "searching" immediately so the PipelineLoader appears in the
-    // topbar right away — prevents the parent feed's post count badge from
+    // Start at "searching" immediately so the pipeline loader appears in the
+    // overlay right away — prevents the parent feed's post count badge from
     // flashing during the gap before the first SSE event arrives.
     setPipelineStage("searching");
     setActivePostCount(0);
@@ -133,6 +134,10 @@ export default function MockBranchOverlay({
       ) : (
         <BranchTopicsHeader options={options} />
       )}
+
+      {/* Same pipeline loader as the main feed — driven by the shared pipeline
+          state this overlay sets while streaming the branch preview. */}
+      <FeedPipelineLoader />
 
       {branchPosts && (
         <div className="cur-mock-branch-posts">

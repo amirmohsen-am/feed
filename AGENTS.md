@@ -90,6 +90,17 @@ npx tsx -e "import { searchPosts } from './src/lib/vector-search'; (async () => 
 
 Should return ~3 hits in 1–2 seconds. If it 403s, set `GOOGLE_CLOUD_QUOTA_PROJECT=timelines-492720`.
 
+### feed-db: default to prod, opt in to local
+
+The web app connects to the **prod** `feed-db` by default (via the Cloud SQL connector + the `database-url` secret). This is the default for all local runs — `npm run dev` against prod is correct for UI work and for reading real data. **Only opt in to the local Postgres when you are making changes to the database schema/data** (migrations, destructive writes, anything you don't want hitting prod).
+
+The switch is a single env var, `LOCAL_DATABASE_URL` (resolved in `apps/web/src/lib/db/connection.ts`):
+
+- **Unset (default)** → prod `feed-db`. Run `npm run dev`.
+- **Set** to a local DSN → bypasses Cloud SQL and the secret, connects directly to local Postgres. Bootstrap once with `LOCAL_DATABASE_URL=… npx tsx scripts/setup-local-db.ts` (see `apps/web/LOCAL_DB.md`), then run with the var set.
+
+Do not commit `LOCAL_DATABASE_URL` into any `.env*` file — keep prod the default and pass it inline only for the local-DB session that needs it.
+
 Worker locally:
 
 ```bash
