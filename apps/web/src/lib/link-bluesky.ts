@@ -2,37 +2,46 @@ import { query } from "./pg";
 
 /**
  * Resolve or create the amadi user for a browser session cookie.
+ *
+ * This is a get-or-create keyed on the session id. On a brand-new visitor the
+ * browser fires several `/api/*` calls in parallel, all carrying the same fresh
+ * `sid` that has no user row yet (the cookie is minted on the middleware
+ * *response*, so it can't be provisioned during that first server render). Every
+ * step here must therefore be concurrency-safe: the writes are atomic upserts,
+ * never a check-then-insert that two requests could both pass.
  */
 export async function ensureSessionUser(sessionId: string): Promise<string> {
-  const existing = await query(
+  // Fast path (the overwhelmingly common case): the session is already mapped.
+  const mapped = await query(
     `SELECT user_id FROM user_sessions WHERE session_id = $1`,
     [sessionId]
   );
-  if (existing.rows[0]) {
-    return existing.rows[0].user_id as string;
+  if (mapped.rows[0]) {
+    return mapped.rows[0].user_id as string;
   }
 
+  // Resolve the user id, preferring a legacy row keyed by users.session_id
+  // (pre-dates user_sessions), otherwise atomically get-or-create one.
   const legacy = await query(
     `SELECT id FROM users WHERE session_id = $1`,
     [sessionId]
   );
-  if (legacy.rows[0]) {
-    const userId = legacy.rows[0].id as string;
-    await query(
-      `INSERT INTO user_sessions (session_id, user_id) VALUES ($1, $2)
-       ON CONFLICT (session_id) DO NOTHING`,
-      [sessionId, userId]
-    );
-    return userId;
-  }
+  const userId = (legacy.rows[0]?.id ??
+    // Single atomic statement: concurrent first-requests for the same brand-new
+    // sid all resolve to one row in one round-trip. The loser's INSERT collides
+    // on users_session_id_key, and DO UPDATE (a no-op write) still returns the
+    // winning row via RETURNING — so there is no 500 and no second SELECT.
+    (
+      await query(
+        `INSERT INTO users (session_id, name, email)
+         VALUES ($1, 'Anonymous', '')
+         ON CONFLICT (session_id) DO UPDATE SET session_id = EXCLUDED.session_id
+         RETURNING id`,
+        [sessionId]
+      )
+    ).rows[0].id) as string;
 
-  const created = await query(
-    `INSERT INTO users (session_id, name, email)
-     VALUES ($1, 'Anonymous', '')
-     RETURNING id`,
-    [sessionId]
-  );
-  const userId = created.rows[0].id as string;
+  // Map the session → user. Idempotent so parallel requests don't collide.
   await query(
     `INSERT INTO user_sessions (session_id, user_id) VALUES ($1, $2)
      ON CONFLICT (session_id) DO NOTHING`,

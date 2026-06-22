@@ -7,6 +7,7 @@ import SwipeableCard, { type SwipeVerdict } from "@/components/SwipeableCard";
 import SwipeFollowupCard from "@/components/SwipeFollowupCard";
 import BranchTopicsHeader from "@/components/BranchTopicsHeader";
 import MockBranchOverlay from "@/components/MockBranchOverlay";
+import FeedPipelineLoader from "@/components/FeedPipelineLoader";
 import "../swipe-card.css";
 
 // Passed across client-side navigations so the destination branch feed can
@@ -1813,11 +1814,12 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
             {branchHeaderOptions && (
               <BranchTopicsHeader options={branchHeaderOptions} />
             )}
+            <FeedPipelineLoader />
             {posts.length === 0 ? (
               <div className="cur-empty">
                 {postsLoading ? (
-                  // The PipelineLoader in the header already shows live progress;
-                  // leave the empty area quiet.
+                  // The pipeline loader above shows live progress; leave the
+                  // empty area quiet.
                   null
                 ) : (
                   <>
