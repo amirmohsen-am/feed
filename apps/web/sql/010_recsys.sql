@@ -15,6 +15,14 @@ ALTER TABLE feeds
   ADD COLUMN IF NOT EXISTS recency_halflife_h  real    NOT NULL DEFAULT 24,
   ADD COLUMN IF NOT EXISTS seen_filter_enabled boolean NOT NULL DEFAULT false;
 
+-- The candidate budget default was bumped 150 -> 200 (see lib/defaults.ts
+-- DEFAULT_CANDIDATE_BUDGET) to give the reranker a wider net and leave headroom
+-- once serve-time seen filtering removes posts from the snapshot. The column
+-- (000_base.sql) still defaulted to 150, so the bump never reached new feeds.
+-- New feeds only; existing rows keep their stored value (an explicit user
+-- choice of 150 is preserved).
+ALTER TABLE feeds ALTER COLUMN candidate_budget SET DEFAULT 200;
+
 -- 2. Per-user, per-feed "seen" set. Scoped per feed so a post seen in one feed
 --    does not suppress it in another. "served = seen" on the published path;
 --    real on-screen impressions on the owner/preview path. Pruned to the post

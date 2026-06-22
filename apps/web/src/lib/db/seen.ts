@@ -12,16 +12,59 @@
 
 import { query } from "./connection";
 
-/** The set of post URIs this user has already seen in this feed. */
+/**
+ * The set of post URIs this user has already seen in this feed. Pass `candidate`
+ * URIs (the snapshot we're about to filter) to bound the read to those rows —
+ * the query then returns at most `candidate.length` rows instead of the user's
+ * whole retention-window history.
+ */
 export async function getSeenUris(
   userId: string,
-  feedId: number
+  feedId: number,
+  candidate?: string[]
 ): Promise<Set<string>> {
-  const res = await query(
-    `SELECT post_uri FROM seen_posts WHERE user_id = $1 AND feed_id = $2`,
-    [userId, feedId]
-  );
+  if (candidate && candidate.length === 0) return new Set();
+  const res = candidate
+    ? await query(
+        `SELECT post_uri FROM seen_posts
+         WHERE user_id = $1 AND feed_id = $2 AND post_uri = ANY($3::text[])`,
+        [userId, feedId, candidate]
+      )
+    : await query(
+        `SELECT post_uri FROM seen_posts WHERE user_id = $1 AND feed_id = $2`,
+        [userId, feedId]
+      );
   return new Set(res.rows.map((r) => r.post_uri as string));
+}
+
+/**
+ * Serve-time seen filter shared by the curator preview and the published
+ * skeleton: read the viewer's seen set (bounded to this snapshot's URIs) and
+ * drop already-seen posts. Fail-soft — a read error serves the snapshot
+ * unfiltered rather than breaking the feed. Records nothing; the caller decides
+ * whether to recordSeen the posts it actually serves.
+ */
+export async function filterUnseen<T extends { uri: string }>(
+  userId: string,
+  feedId: number,
+  posts: T[]
+): Promise<{ visible: T[]; seenFiltered: number }> {
+  try {
+    const seen = await getSeenUris(
+      userId,
+      feedId,
+      posts.map((p) => p.uri)
+    );
+    if (seen.size === 0) return { visible: posts, seenFiltered: 0 };
+    const visible = posts.filter((p) => !seen.has(p.uri));
+    return { visible, seenFiltered: posts.length - visible.length };
+  } catch (e) {
+    console.warn(
+      "[seen] read failed, serving unfiltered:",
+      e instanceof Error ? e.message : String(e)
+    );
+    return { visible: posts, seenFiltered: 0 };
+  }
 }
 
 /**

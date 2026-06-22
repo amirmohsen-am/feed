@@ -115,7 +115,7 @@ export default function SwipeFollowupCard({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="or say it in your own words\u2026"
+          placeholder="or say it in your own words…"
           rows={1}
         />
         <SendButton disabled={!text.trim()} />

@@ -70,6 +70,12 @@ export const DEFAULT_RECENCY_HALFLIFE_H = 24;
 
 export const MIN_RANKING_WEIGHT = 0;
 export const MAX_RANKING_WEIGHT = 1;
+// The blend nudges, it does not override the reranker: relevance keeps at least
+// this share of the final score. engagement_weight + recency_weight is capped
+// at (1 - MIN_RELEVANCE_WEIGHT) so w_q can never collapse to 0. Enforced at the
+// write boundary (api/feeds) and defensively in blendedScore for legacy rows.
+export const MIN_RELEVANCE_WEIGHT = 0.1;
+export const MAX_BIAS_WEIGHT_SUM = 1 - MIN_RELEVANCE_WEIGHT;
 // Half-life range for the recency decay knob. 1h → "only the last few hours
 // matter" (breaking news); 30d → "age barely matters" (evergreen). The Tune
 // slider is logarithmic across this range (fine control at the short end).

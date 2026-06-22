@@ -14,6 +14,7 @@ import {
   MAX_CANDIDATE_BUDGET,
   MIN_RANKING_WEIGHT,
   MAX_RANKING_WEIGHT,
+  MAX_BIAS_WEIGHT_SUM,
   MIN_RECENCY_HALFLIFE_H,
   MAX_RECENCY_HALFLIFE_H,
 } from "@/lib/defaults";
@@ -130,6 +131,19 @@ export async function PATCH(req: NextRequest) {
       MIN_RANKING_WEIGHT,
       MAX_RANKING_WEIGHT
     );
+  }
+  // Joint cap: keep a relevance floor so the blend nudges rather than overrides
+  // the reranker. If the effective engagement + recency weights exceed
+  // MAX_BIAS_WEIGHT_SUM, scale both down proportionally (preserving their
+  // ratio). Uses the merged values so a single-weight PATCH still respects the
+  // other stored weight.
+  const effEng = updates.engagement_weight ?? feed.engagement_weight;
+  const effRec = updates.recency_weight ?? feed.recency_weight;
+  const biasSum = effEng + effRec;
+  if (biasSum > MAX_BIAS_WEIGHT_SUM) {
+    const scale = MAX_BIAS_WEIGHT_SUM / biasSum;
+    updates.engagement_weight = effEng * scale;
+    updates.recency_weight = effRec * scale;
   }
   if (recency_halflife_h !== undefined) {
     updates.recency_halflife_h = clampNum(

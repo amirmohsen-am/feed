@@ -1100,11 +1100,12 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               if (typeof ev.seen_filtered === "number") setPipelineSeenFiltered(ev.seen_filtered);
               const nextCount = ev.total_stored || (ev.posts?.length ?? 0);
               const incoming = ev.posts || [];
-              setPosts(prev => {
-                const seen = new Set(prev.map(p => p.uri));
-                const fresh = incoming.filter(p => !seen.has(p.uri));
-                return fresh.length > 0 ? [...prev, ...fresh] : prev;
-              });
+              // The "done" event carries the full recomputed snapshot in its
+              // final reranked+blended order, so replace outright. Appending
+              // (merging by URI) would hide the reordering — and any dropped
+              // posts — on Refresh and after a weight edit, which is the whole
+              // point of the preview.
+              setPosts(incoming);
               setPostCount(nextCount);
               setActivePostCount(nextCount);
               if (ev.mechanical_filters) setMechanicalFilters(ev.mechanical_filters);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { MechanicalFilters, TimeWindow } from "@/lib/types";
 import {
   DEFAULT_MECHANICAL_FILTERS,
@@ -41,6 +41,32 @@ interface FilterPanelProps {
 }
 
 const MAX_SUBQUERIES = 4;
+
+// Trailing-edge debounce that survives re-renders (timer in a ref, not state)
+// and clears any pending call on unmount. One helper for every debounced save.
+function useDebouncedCallback<A extends unknown[]>(
+  fn: (...args: A) => void,
+  delay: number
+): (...args: A) => void {
+  const fnRef = useRef(fn);
+  useEffect(() => {
+    fnRef.current = fn;
+  }, [fn]);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    []
+  );
+  return useCallback(
+    (...args: A) => {
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => fnRef.current(...args), delay);
+    },
+    [delay]
+  );
+}
 
 export default function FilterPanel({
   mechanicalFilters,
@@ -96,37 +122,13 @@ export default function FilterPanel({
   useEffect(() => setRecW(recencyWeight), [recencyWeight]);
   useEffect(() => setHalflife(recencyHalflifeH), [recencyHalflifeH]);
 
-  // Debounced saves
-  const [mechTimeout, setMechTimeout] = useState<NodeJS.Timeout | null>(null);
-  const [subsTimeout, setSubsTimeout] = useState<NodeJS.Timeout | null>(null);
-  const [budgetTimeout, setBudgetTimeout] = useState<NodeJS.Timeout | null>(null);
-  const [engTimeout, setEngTimeout] = useState<NodeJS.Timeout | null>(null);
-  const [recTimeout, setRecTimeout] = useState<NodeJS.Timeout | null>(null);
-  const [halflifeTimeout, setHalflifeTimeout] = useState<NodeJS.Timeout | null>(null);
-
-  const saveMech = useCallback(
-    (updated: MechanicalFilters) => {
-      if (mechTimeout) clearTimeout(mechTimeout);
-      setMechTimeout(setTimeout(() => onMechanicalChange(updated), 600));
-    },
-    [onMechanicalChange, mechTimeout]
-  );
-
-  const saveSubs = useCallback(
-    (updated: string[]) => {
-      if (subsTimeout) clearTimeout(subsTimeout);
-      setSubsTimeout(setTimeout(() => onSubqueriesChange(updated), 600));
-    },
-    [onSubqueriesChange, subsTimeout]
-  );
-
-  const saveBudget = useCallback(
-    (n: number) => {
-      if (budgetTimeout) clearTimeout(budgetTimeout);
-      setBudgetTimeout(setTimeout(() => onCandidateBudgetChange(n), 600));
-    },
-    [onCandidateBudgetChange, budgetTimeout]
-  );
+  // Debounced saves (one shared hook, trailing-edge).
+  const saveMech = useDebouncedCallback(onMechanicalChange, 600);
+  const saveSubs = useDebouncedCallback(onSubqueriesChange, 600);
+  const saveBudget = useDebouncedCallback(onCandidateBudgetChange, 600);
+  const saveEngW = useDebouncedCallback(onEngagementWeightChange, 500);
+  const saveRecW = useDebouncedCallback(onRecencyWeightChange, 500);
+  const saveHalflife = useDebouncedCallback(onRecencyHalflifeChange, 500);
 
   function updateMech(patch: Partial<MechanicalFilters>) {
     const updated = { ...mech, ...patch };
@@ -166,18 +168,15 @@ export default function FilterPanel({
   // Ranking-bias updaters (immediate local state, debounced PATCH).
   function updateEngW(n: number) {
     setEngW(n);
-    if (engTimeout) clearTimeout(engTimeout);
-    setEngTimeout(setTimeout(() => onEngagementWeightChange(n), 500));
+    saveEngW(n);
   }
   function updateRecW(n: number) {
     setRecW(n);
-    if (recTimeout) clearTimeout(recTimeout);
-    setRecTimeout(setTimeout(() => onRecencyWeightChange(n), 500));
+    saveRecW(n);
   }
   function updateHalflife(h: number) {
     setHalflife(h);
-    if (halflifeTimeout) clearTimeout(halflifeTimeout);
-    setHalflifeTimeout(setTimeout(() => onRecencyHalflifeChange(h), 500));
+    saveHalflife(h);
   }
 
   const perQueryK =
