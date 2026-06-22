@@ -2028,7 +2028,10 @@
   top: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1100;
+  /* Below the mobile sticky topbar (z-index 30) so it tucks under it when the
+     body scrolls; still above feed cards/badges (z-index 2–5). On desktop the
+     overflow:auto feed pane clips it regardless. */
+  z-index: 20;
   min-width: 240px;
   max-width: calc(100vw - 32px);
   padding: 10px 14px 8px;
