@@ -182,6 +182,7 @@ function CuratorShell({
   const [pipelineImages, setPipelineImages] = useState<number | undefined>(undefined);
   const [pipelineModel, setPipelineModel] = useState<string | undefined>(undefined);
   const [pipelineThinkingEnabled, setPipelineThinkingEnabled] = useState<boolean | undefined>(undefined);
+  const [pipelineSeenFiltered, setPipelineSeenFiltered] = useState<number | undefined>(undefined);
   const [branchOverlayName, setBranchOverlayName] = useState<string | null>(null);
   // Feed-first on mobile: the chat is a slide-up overlay ("chat" = open).
   // Drafting feeds auto-open it via the tab-reset logic below.
@@ -374,6 +375,8 @@ function CuratorShell({
         setPipelineModel,
         pipelineThinkingEnabled,
         setPipelineThinkingEnabled,
+        pipelineSeenFiltered,
+        setPipelineSeenFiltered,
         branchOverlayName,
         setBranchOverlayName,
       }}
@@ -709,6 +712,7 @@ function CuratorShell({
                   images={pipelineImages}
                   model={pipelineModel}
                   thinkingEnabled={pipelineThinkingEnabled}
+                  seenFiltered={pipelineSeenFiltered}
                   topK={25}
                 />
               ) : (

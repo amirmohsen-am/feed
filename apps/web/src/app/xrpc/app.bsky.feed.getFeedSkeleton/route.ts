@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseFeedGeneratorUri } from "@/lib/feedgen";
-import { getFeedSkeletonPage, getPublishedFeed } from "@/lib/pg";
+import { verifyFeedRequesterDid } from "@/lib/feed-auth";
+import {
+  getFeedSkeletonPage,
+  getPublishedFeed,
+  getUserByBlueskyDid,
+} from "@/lib/pg";
 
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
@@ -17,7 +22,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ feed: [] });
   }
 
-  const page = await getFeedSkeletonPage(feed.id, limit, cursor);
+  // Per-subscriber seen filtering only when the feed opted in. Identifying the
+  // requester (verify the service-auth JWT → DID → Ripple user) is skipped
+  // otherwise, so anonymous/third-party clients keep the existing fast path.
+  let viewer: { userId: string } | undefined;
+  if (feed.seen_filter_enabled) {
+    const did = await verifyFeedRequesterDid(req.headers.get("authorization"));
+    if (did) {
+      const user = await getUserByBlueskyDid(did);
+      if (user) viewer = { userId: user.id };
+    }
+  }
+
+  const page = await getFeedSkeletonPage(feed.id, limit, cursor, viewer);
 
   return NextResponse.json({
     feed: page.uris.map((uri) => ({ post: uri })),

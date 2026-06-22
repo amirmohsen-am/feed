@@ -1,9 +1,12 @@
 import { createHash } from "node:crypto";
 import { searchPosts } from "../vector-search";
 import { rerank } from "../rerank";
+import { DEFAULT_RERANK_PROMPT } from "../defaults";
 import { query } from "./connection";
 import { rowToFeed, type DbFeed } from "./feeds";
 import { mechanicalToSearchFilter } from "./filters";
+import { blendedScore } from "./blend";
+import { getSeenUris, recordSeen } from "./seen";
 
 // --- Posts ---
 // Posts come from the pgvector (HNSW, halfvec) index on `bsky-db`, fed by the
@@ -80,10 +83,12 @@ export interface PreviewStageEvent {
 // DECISIONS.md for the TTL / invalidation rationale.
 const FEED_CACHE_TTL = "24 hours"; // Postgres interval literal.
 
-// Snapshot depth: every compute stores this many reranked posts as the feed's
-// canonical snapshot. The curator preview shows the first 25; the skeleton
-// xrpc paginates the full list (Bluesky app pages 30 at a time).
-export const SNAPSHOT_LIMIT = 50;
+// Snapshot depth: every compute stores this many reranked + blended posts as
+// the feed's canonical snapshot. The curator preview shows the first 25; the
+// skeleton xrpc paginates the full list (Bluesky app pages 30 at a time).
+// Deeper than the old 50 to give serve-time seen filtering headroom — an
+// active reader subtracts seen posts from this pool before it empties.
+export const SNAPSHOT_LIMIT = 100;
 
 /**
  * The Anthropic rerank call failed. Callers must not substitute vector-order
@@ -119,21 +124,103 @@ function computeFeedConfigHash(feed: DbFeed): string {
         rerank_prompt: feed.rerank_prompt,
         rerank_model: feed.rerank_model,
         rerank_thinking_enabled: feed.rerank_thinking_enabled,
+        // Ranking-bias weights shape the snapshot's order, so editing one must
+        // invalidate the cache. seen_filter_enabled is NOT included: seen is a
+        // serve-time, per-viewer concern that never affects the shared snapshot.
+        engagement_weight: feed.engagement_weight,
+        recency_weight: feed.recency_weight,
+        recency_halflife_h: feed.recency_halflife_h,
       })
     )
     .digest("hex");
 }
 
+/**
+ * Public entry point. Builds (or reads) the feed's SHARED snapshot, then
+ * applies per-viewer serve-time concerns on top:
+ *
+ *   - `viewerUserId` + `feed.seen_filter_enabled` → drop posts this viewer has
+ *     already seen (count reported via `opts.onSeenFiltered`), and record the
+ *     posts we now serve as seen so the next refresh shows new ones.
+ *
+ * Seen filtering is deliberately NOT part of buildSnapshot: that function's
+ * output is cached and shared with every published subscriber, so it must stay
+ * viewer-agnostic. The refresh cron calls this without a viewer, keeping the
+ * shared snapshot clean.
+ */
 export async function getFeedPreviewPosts(
   feedId: number,
   limit: number = 25,
   onStage?: (e: PreviewStageEvent) => void,
-  opts?: { forceFresh?: boolean }
+  opts?: {
+    forceFresh?: boolean;
+    viewerUserId?: string;
+    // Reports how many snapshot posts were dropped as already-seen for this
+    // viewer. The stream route folds it into the final "done" event so the
+    // loader can show it without regressing the stage progression.
+    onSeenFiltered?: (n: number) => void;
+  }
 ): Promise<FeedPreviewPost[]> {
-  const t0 = performance.now();
   const feedRes = await query("SELECT * FROM feeds WHERE id = $1", [feedId]);
   if (feedRes.rows.length === 0) return [];
   const feed = rowToFeed(feedRes.rows[0]);
+
+  // Full, unfiltered, shared snapshot (up to SNAPSHOT_LIMIT).
+  const snapshot = await buildSnapshot(feed, onStage, opts);
+
+  // Serve-time seen filter (per viewer). Skipped entirely without a viewer or
+  // when the feed has the toggle off — the cron and anonymous reads land here.
+  const viewerUserId = opts?.viewerUserId;
+  if (!viewerUserId || !feed.seen_filter_enabled || snapshot.length === 0) {
+    return snapshot.slice(0, limit);
+  }
+
+  let visible = snapshot;
+  let seenFiltered = 0;
+  try {
+    const seen = await getSeenUris(viewerUserId, feedId);
+    if (seen.size > 0) {
+      const before = visible.length;
+      visible = visible.filter((p) => !seen.has(p.uri));
+      seenFiltered = before - visible.length;
+    }
+  } catch (e) {
+    // A seen-read failure must never break the feed — serve unfiltered.
+    console.warn(
+      "[seen] read failed, serving unfiltered:",
+      e instanceof Error ? e.message : String(e)
+    );
+  }
+  if (seenFiltered > 0) opts?.onSeenFiltered?.(seenFiltered);
+
+  const served = visible.slice(0, limit);
+  // Record what we're about to serve as seen (served = seen). Best-effort,
+  // fire-and-forget — a write failure just means a post may reappear once.
+  if (served.length > 0) {
+    recordSeen(viewerUserId, feedId, served.map((p) => p.uri)).catch((e) =>
+      console.warn(
+        "[seen] record failed:",
+        e instanceof Error ? e.message : String(e)
+      )
+    );
+  }
+  return served;
+}
+
+/**
+ * Build (or read from cache) the feed's shared snapshot: vector search →
+ * always-on LLM rerank → deterministic bake-time blend → top SNAPSHOT_LIMIT.
+ * Viewer-agnostic and cached in feed_result_cache. Returns the full list (not
+ * sliced to the caller's display limit — the wrapper slices after seen
+ * filtering).
+ */
+async function buildSnapshot(
+  feed: DbFeed,
+  onStage?: (e: PreviewStageEvent) => void,
+  opts?: { forceFresh?: boolean }
+): Promise<FeedPreviewPost[]> {
+  const feedId = feed.id;
+  const t0 = performance.now();
   const tFeed = performance.now();
 
   const configHash = computeFeedConfigHash(feed);
@@ -178,7 +265,7 @@ export async function getFeedPreviewPosts(
             `feed-lookup=${(tFeed - t0).toFixed(0)}ms ` +
             `total=${(performance.now() - t0).toFixed(0)}ms`
         );
-        return posts.slice(0, limit);
+        return posts;
       }
     } catch (e) {
       // A cache read failure must never break the preview — fall through to a
@@ -194,7 +281,6 @@ export async function getFeedPreviewPosts(
   onStage?.({ stage: "searching" });
 
   try {
-    const willRerank = feed.rerank_prompt.trim().length > 0;
     const hits = await searchPosts({
       subqueries: feed.subqueries,
       totalBudget: feed.candidate_budget,
@@ -203,17 +289,19 @@ export async function getFeedPreviewPosts(
     });
     const tSearch = performance.now();
 
-    // Map of post index → {score, reason} from the reranker, if one ran.
+    // Map of post index → {score, reason} from the reranker.
     let rerankByIndex: Map<number, { score: number; reason: string }> | null = null;
     let orderedHits = hits;
     let msRerank = 0;
-    let rerankAttempted = false;
 
-    if (!willRerank) {
-      onStage?.({ stage: "skipped_rerank" });
-    }
-    if (willRerank && hits.length > 0) {
-      rerankAttempted = true;
+    // The reranker is ALWAYS on (single ranking path). Feeds without a curator-
+    // authored editorial prompt fall back to DEFAULT_RERANK_PROMPT. An empty
+    // candidate pool is the only case that skips it.
+    if (hits.length > 0) {
+      const systemPrompt =
+        feed.rerank_prompt.trim().length > 0
+          ? feed.rerank_prompt
+          : DEFAULT_RERANK_PROMPT;
       try {
         // The reranker sees every candidate that survived the vector-search
         // pipeline. Per-feed `candidate_budget` (Advanced → N) is the only
@@ -225,7 +313,7 @@ export async function getFeedPreviewPosts(
           query: feed.subqueries.join(" | "),
           candidates: hits,
           topK: SNAPSHOT_LIMIT,
-          systemPrompt: feed.rerank_prompt,
+          systemPrompt,
           model: feed.rerank_model,
           thinkingEnabled: feed.rerank_thinking_enabled,
           feedId,
@@ -259,21 +347,57 @@ export async function getFeedPreviewPosts(
       }
     }
 
-    const sliced = orderedHits.slice(0, SNAPSHOT_LIMIT);
+    // Deterministic bake-time blend: re-sort the reranked pool by
+    // w_q·(rerank/100) + w_e·engagement + w_r·recency. The reranker chose
+    // membership + relevance; the blend lifts fresh / resonating posts. One
+    // pinned clock across the pool keeps the ordering self-consistent.
+    const nowMs = Date.now();
+    const weights = {
+      engagementWeight: feed.engagement_weight,
+      recencyWeight: feed.recency_weight,
+      recencyHalflifeH: feed.recency_halflife_h,
+    };
+    const blended = orderedHits
+      .map((h) => {
+        const origIdx = hits.indexOf(h);
+        const rerankScore =
+          rerankByIndex && origIdx >= 0
+            ? rerankByIndex.get(origIdx)?.score ?? 0
+            : 0;
+        return {
+          hit: h,
+          score: blendedScore({
+            rerankScore,
+            counts: {
+              like_count: h.like_count ?? 0,
+              repost_count: h.repost_count ?? 0,
+              reply_count: h.reply_count ?? 0,
+              quote_count: h.quote_count ?? 0,
+            },
+            createdAtIso: h.created_at,
+            weights,
+            nowMs,
+          }),
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    const sliced = blended.slice(0, SNAPSHOT_LIMIT).map((b) => b.hit);
     console.log(
       `[timing] getFeedPreviewPosts feed-lookup=${(tFeed - t0).toFixed(0)}ms ` +
         `searchPosts=${(tSearch - tFeed).toFixed(0)}ms ` +
-        (rerankAttempted ? `rerank=${msRerank}ms ` : "") +
+        `rerank=${msRerank}ms ` +
         `total=${(performance.now() - t0).toFixed(0)}ms feedId=${feedId} ` +
         `subqueries=${feed.subqueries.length} budget=${feed.candidate_budget} ` +
         `hits=${hits.length} ` +
         (rerankByIndex ? `kept=${rerankByIndex.size} ` : "") +
+        `blend=[q≈${(1 - weights.engagementWeight - weights.recencyWeight).toFixed(2)},` +
+        `e=${weights.engagementWeight},r=${weights.recencyWeight}/${weights.recencyHalflifeH}h] ` +
         `returned=${sliced.length}`
     );
     const result: FeedPreviewPost[] = sliced.map((h) => {
       // Find this hit's original index in the unranked list to look up its
-      // reranker fields. orderedHits already maps through r.kept, but we
-      // need the original index to read rerankByIndex.
+      // reranker fields.
       const origIdx = hits.indexOf(h);
       const rr = rerankByIndex && origIdx >= 0 ? rerankByIndex.get(origIdx) : undefined;
       return {
@@ -329,7 +453,7 @@ export async function getFeedPreviewPosts(
       );
     }
 
-    return result.slice(0, limit);
+    return result;
   } catch (e) {
     if (e instanceof RerankUnavailableError) throw e;
     console.warn(
@@ -417,7 +541,11 @@ function paginateSnapshot(
 export async function getFeedSkeletonPage(
   feedId: number,
   limit: number,
-  cursor?: string
+  cursor?: string,
+  // Set when the requester was identified (service-auth JWT verified → DID →
+  // Ripple user) AND the feed has seen filtering on. Anonymous / unverified
+  // requests and feeds with the toggle off fall through to plain pagination.
+  viewer?: { userId: string }
 ): Promise<SkeletonPage> {
   const t0 = performance.now();
 
@@ -432,9 +560,45 @@ export async function getFeedSkeletonPage(
   }
   console.log(
     `[skeleton] cache hit feedId=${feedId} posts=${cached.posts.length} ` +
+      (viewer ? `viewer=${viewer.userId.slice(0, 8)} ` : "") +
       `total=${(performance.now() - t0).toFixed(0)}ms`
   );
-  return paginateSnapshot(cached, limit, cursor);
+
+  if (!viewer) return paginateSnapshot(cached, limit, cursor);
+
+  // Per-viewer serve-time seen filtering over the SHARED snapshot. Seen posts
+  // are removed, not offset-skipped, so the natural model is "serve the top
+  // `limit` unseen, then record them seen." On the next page the just-served
+  // posts are gone from the filtered list, so we always page from the top —
+  // the incoming cursor's offset is irrelevant here. recordSeen is awaited so
+  // a fast follow-up page can't re-serve the same posts (loop guard).
+  let posts = cached.posts;
+  try {
+    const seen = await getSeenUris(viewer.userId, feedId);
+    if (seen.size > 0) posts = posts.filter((p) => !seen.has(p.uri));
+  } catch (e) {
+    console.warn(
+      `[skeleton] seen read failed feedId=${feedId}, serving unfiltered:`,
+      e instanceof Error ? e.message : String(e)
+    );
+  }
+  const page = posts.slice(0, limit);
+  const uris = page.map((p) => p.uri);
+  if (uris.length > 0) {
+    try {
+      await recordSeen(viewer.userId, feedId, uris);
+    } catch (e) {
+      console.warn(
+        `[skeleton] seen record failed feedId=${feedId}:`,
+        e instanceof Error ? e.message : String(e)
+      );
+    }
+  }
+  // A cursor signals "more unseen remain." Offset isn't meaningful (the pool
+  // shrinks as we record served), so we encode a stable continuation marker;
+  // the next request re-filters from the top.
+  const cursor2 = posts.length > limit ? `${cached.version}::seen` : undefined;
+  return { uris, cursor: cursor2 };
 }
 
 /**

@@ -57,6 +57,8 @@ export interface CuratorContextValue {
   setPipelineModel: (s: string | undefined) => void;
   pipelineThinkingEnabled: boolean | undefined;
   setPipelineThinkingEnabled: (b: boolean | undefined) => void;
+  pipelineSeenFiltered: number | undefined;
+  setPipelineSeenFiltered: (n: number | undefined) => void;
   /** When set, overrides the feed name shown in the topbar (e.g. branch overlay). */
   branchOverlayName: string | null;
   setBranchOverlayName: (name: string | null) => void;

@@ -3,6 +3,9 @@ import {
   withMechanicalDefaults,
   DEFAULT_CANDIDATE_BUDGET,
   DEFAULT_RERANK_MODEL,
+  DEFAULT_ENGAGEMENT_WEIGHT,
+  DEFAULT_RECENCY_WEIGHT,
+  DEFAULT_RECENCY_HALFLIFE_H,
 } from "../defaults";
 import { query } from "./connection";
 
@@ -23,6 +26,14 @@ export interface DbFeed {
   rerank_model: string;
   // When true, pass extended-thinking config to the rerank model.
   rerank_thinking_enabled: boolean;
+  // --- Ranking bias (deterministic, bake-time blend after rerank). See
+  // lib/db/blend.ts. All three are folded into the feed config hash. ---
+  engagement_weight: number;
+  recency_weight: number;
+  recency_halflife_h: number;
+  // Per-user serve-time "seen" filtering. Off by default. Applied after the
+  // shared snapshot is built (never baked into the cache).
+  seen_filter_enabled: boolean;
   published_rkey: string | null;
   is_active: boolean;
   color: string | null;
@@ -45,6 +56,10 @@ interface DbFeedRow {
   rerank_prompt: string | null;
   rerank_model: string | null;
   rerank_thinking_enabled: boolean | null;
+  engagement_weight: number | null;
+  recency_weight: number | null;
+  recency_halflife_h: number | null;
+  seen_filter_enabled: boolean | null;
   published_rkey: string | null;
   is_active: boolean;
   color: string | null;
@@ -83,6 +98,19 @@ export function rowToFeed(row: DbFeedRow): DbFeed {
         ? row.rerank_model
         : DEFAULT_RERANK_MODEL,
     rerank_thinking_enabled: row.rerank_thinking_enabled === true,
+    engagement_weight:
+      typeof row.engagement_weight === "number"
+        ? row.engagement_weight
+        : DEFAULT_ENGAGEMENT_WEIGHT,
+    recency_weight:
+      typeof row.recency_weight === "number"
+        ? row.recency_weight
+        : DEFAULT_RECENCY_WEIGHT,
+    recency_halflife_h:
+      typeof row.recency_halflife_h === "number" && row.recency_halflife_h > 0
+        ? row.recency_halflife_h
+        : DEFAULT_RECENCY_HALFLIFE_H,
+    seen_filter_enabled: row.seen_filter_enabled === true,
     published_rkey: row.published_rkey,
     is_active: row.is_active,
     color: row.color,
@@ -239,6 +267,10 @@ export async function updateFeed(
     rerank_prompt?: string;
     rerank_model?: string;
     rerank_thinking_enabled?: boolean;
+    engagement_weight?: number;
+    recency_weight?: number;
+    recency_halflife_h?: number;
+    seen_filter_enabled?: boolean;
     published_rkey?: string;
     is_active?: boolean;
     color?: string;
@@ -253,8 +285,10 @@ export async function updateFeed(
        mechanical_filters = $2, subqueries = $3, candidate_budget = $4,
        rerank_prompt = $5, rerank_model = $6, rerank_thinking_enabled = $7,
        published_rkey = $8, is_active = $9, color = $10,
+       engagement_weight = $11, recency_weight = $12, recency_halflife_h = $13,
+       seen_filter_enabled = $14,
        updated_at = now()
-     WHERE id = $11 RETURNING *`,
+     WHERE id = $15 RETURNING *`,
     [
       updates.name ?? feed.name,
       JSON.stringify(updates.mechanical_filters ?? feed.mechanical_filters),
@@ -266,6 +300,10 @@ export async function updateFeed(
       updates.published_rkey ?? feed.published_rkey,
       updates.is_active ?? feed.is_active,
       updates.color ?? feed.color,
+      updates.engagement_weight ?? feed.engagement_weight,
+      updates.recency_weight ?? feed.recency_weight,
+      updates.recency_halflife_h ?? feed.recency_halflife_h,
+      updates.seen_filter_enabled ?? feed.seen_filter_enabled,
       id,
     ]
   );

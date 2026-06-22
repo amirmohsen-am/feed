@@ -12,7 +12,17 @@ import type { MechanicalFilters } from "@/lib/types";
 import {
   MIN_CANDIDATE_BUDGET,
   MAX_CANDIDATE_BUDGET,
+  MIN_RANKING_WEIGHT,
+  MAX_RANKING_WEIGHT,
+  MIN_RECENCY_HALFLIFE_H,
+  MAX_RECENCY_HALFLIFE_H,
 } from "@/lib/defaults";
+
+function clampNum(v: unknown, lo: number, hi: number): number | undefined {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.max(lo, Math.min(hi, n));
+}
 
 export async function GET(req: NextRequest) {
   const t0 = performance.now();
@@ -52,6 +62,10 @@ export async function PATCH(req: NextRequest) {
     rerank_prompt,
     rerank_model,
     rerank_thinking_enabled,
+    engagement_weight,
+    recency_weight,
+    recency_halflife_h,
+    seen_filter_enabled,
   } = body as {
     id?: number;
     name?: string;
@@ -61,6 +75,10 @@ export async function PATCH(req: NextRequest) {
     rerank_prompt?: string;
     rerank_model?: string;
     rerank_thinking_enabled?: boolean;
+    engagement_weight?: number;
+    recency_weight?: number;
+    recency_halflife_h?: number;
+    seen_filter_enabled?: boolean;
   };
 
   if (!id)
@@ -99,6 +117,30 @@ export async function PATCH(req: NextRequest) {
     subqueries: cleanSubs,
     candidate_budget: budget,
   };
+  if (engagement_weight !== undefined) {
+    updates.engagement_weight = clampNum(
+      engagement_weight,
+      MIN_RANKING_WEIGHT,
+      MAX_RANKING_WEIGHT
+    );
+  }
+  if (recency_weight !== undefined) {
+    updates.recency_weight = clampNum(
+      recency_weight,
+      MIN_RANKING_WEIGHT,
+      MAX_RANKING_WEIGHT
+    );
+  }
+  if (recency_halflife_h !== undefined) {
+    updates.recency_halflife_h = clampNum(
+      recency_halflife_h,
+      MIN_RECENCY_HALFLIFE_H,
+      MAX_RECENCY_HALFLIFE_H
+    );
+  }
+  if (typeof seen_filter_enabled === "boolean") {
+    updates.seen_filter_enabled = seen_filter_enabled;
+  }
   if (typeof name === "string") {
     const trimmed = name.trim();
     if (!trimmed) {
