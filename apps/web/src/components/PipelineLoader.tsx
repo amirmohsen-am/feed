@@ -39,7 +39,10 @@ interface StageTimings {
 
 function fmtSec(ms: number | undefined): string {
   if (typeof ms !== "number" || !Number.isFinite(ms)) return "";
-  return (ms / 1000).toFixed(1) + "s";
+  // Durations are always ≥ 0; clamp so a tiny negative delta (e.g. a cached
+  // run where `now` ticks a hair past the stored end timestamp) doesn't render
+  // as "-0.0s".
+  return (Math.max(0, ms) / 1000).toFixed(1) + "s";
 }
 
 const STAGE_LABEL: Record<Exclude<PipelineStage, "idle" | "done">, string> = {
