@@ -1,7 +1,7 @@
 import { query } from "./pg";
 
 /**
- * Resolve or create the Willow user for a browser session cookie.
+ * Resolve or create the amadi user for a browser session cookie.
  */
 export async function ensureSessionUser(sessionId: string): Promise<string> {
   const existing = await query(
@@ -47,7 +47,7 @@ async function getUserByBlueskyDid(did: string): Promise<{ id: string } | null> 
 }
 
 /**
- * Link a Bluesky DID to the Willow account for this browser session.
+ * Link a Bluesky DID to the amadi account for this browser session.
  *
  * If the DID already belongs to another user (e.g. logged in on a second
  * device), attach this session to that canonical user and migrate any feeds

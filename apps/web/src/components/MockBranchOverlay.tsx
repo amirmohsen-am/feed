@@ -107,11 +107,12 @@ export default function MockBranchOverlay({
   function handleBack() {
     const el = panelRef.current;
     if (el) {
+      // Panel is position:fixed — translateY(100vh) always exits below the viewport.
       el.style.transition = `transform ${BRANCH_OVERLAY_CLOSE_MS}ms cubic-bezier(0.4,0,1,1)`;
       el.style.transform = "translateY(100vh)";
     }
     setTimeout(() => {
-      if (el) { el.style.transition = ""; el.style.transform = ""; }
+      if (el) { el.style.transition = ""; el.style.transform = ""; el.style.display = "none"; }
       onBack();
     }, BRANCH_OVERLAY_CLOSE_MS);
   }

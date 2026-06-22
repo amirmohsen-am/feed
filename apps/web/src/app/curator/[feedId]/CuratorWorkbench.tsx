@@ -384,6 +384,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   } | null>(null);
   // Ref to the rising panel so onRightProgress can drive it imperatively.
   const risingPanelRef = useRef<HTMLDivElement>(null);
+  // Feed pane rect captured at first rightward drag; used to position the
+  // fixed panel over exactly the feed column.
+  const branchPanelRectRef = useRef<{ left: number; right: number; top: number } | null>(null);
   // Set to true when a right swipe commits so the drag callback stops
   // fighting the CSS spring-to-open animation.
   const branchCommittedRef = useRef(false);
@@ -408,6 +411,16 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     branchCommittedRef.current = true;
     const el = risingPanelRef.current;
     if (el) {
+      // Ensure the rect is applied (drag may not have started if topic fetch was slow).
+      if (!branchPanelRectRef.current && feedPaneRef.current) {
+        const r = feedPaneRef.current.getBoundingClientRect();
+        branchPanelRectRef.current = { left: r.left, right: window.innerWidth - r.right, top: 0 };
+        el.style.left = `${r.left}px`;
+        el.style.right = `${window.innerWidth - r.right}px`;
+        el.style.top = "var(--cur-header-h)";
+        el.style.bottom = "0";
+      }
+      el.style.display = "block";
       el.style.transition = "transform 0.45s cubic-bezier(0.34, 1.4, 0.64, 1)";
       el.style.transform = "translateY(0)";
       setTimeout(() => { if (el) el.style.transition = ""; }, 450);
@@ -1172,6 +1185,24 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     if (branchCommittedRef.current) return;
     const el = risingPanelRef.current;
     if (!el) return;
+    if (t <= 0) {
+      el.style.display = "none";
+      branchPanelRectRef.current = null;
+      return;
+    }
+    // On first rightward motion, lock in the feed column's horizontal extent.
+    // Use var(--cur-header-h) for top — always below the topbar regardless of
+    // how far the document has scrolled (getBoundingClientRect().top goes
+    // negative on mobile when the document scrolls, which breaks the animation).
+    if (!branchPanelRectRef.current && feedPaneRef.current) {
+      const r = feedPaneRef.current.getBoundingClientRect();
+      branchPanelRectRef.current = { left: r.left, right: window.innerWidth - r.right, top: 0 };
+      el.style.left = `${r.left}px`;
+      el.style.right = `${window.innerWidth - r.right}px`;
+      el.style.top = "var(--cur-header-h)";
+      el.style.bottom = "0";
+    }
+    el.style.display = "block";
     const eased = 1 - Math.pow(1 - t, 2);
     el.style.transform = `translateY(${(1 - eased) * 100}vh)`;
   }, []);
@@ -2219,6 +2250,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 panelRef={risingPanelRef}
                 onBack={() => {
                   branchCommittedRef.current = false;
+                  branchPanelRectRef.current = null;
+                  const el = risingPanelRef.current;
+                  if (el) { el.style.left = ""; el.style.right = ""; el.style.top = ""; el.style.bottom = ""; }
                   setPendingBranch(null);
                   setBranchOverlayName(null);
                   setPipelineStage("idle");
