@@ -402,8 +402,16 @@
 
 .proto-team-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 40px;
+}
+
+@media (max-width: 1040px) {
+  .proto-team-grid {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: 720px;
+    margin: 0 auto;
+  }
 }
 
 @media (max-width: 860px) {
