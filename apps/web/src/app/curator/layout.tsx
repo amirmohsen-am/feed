@@ -759,10 +759,10 @@ function CuratorShell({
               ) : (
                 <h2>Curate a feed</h2>
               )}
-              {/* The pipeline loader now lives in the feed column itself
-                  (CuratorWorkbench + the branch overlay), not pinned to the
-                  topbar — so the topbar only carries the live post count. */}
-              {activePostCount > 0 && <span className="live-badge">{activePostCount} post{activePostCount === 1 ? "" : "s"}</span>}
+              {/* The pipeline loader lives in the feed column itself
+                  (CuratorWorkbench + the branch overlay), not the topbar. The
+                  post count shows in the sidebar and feed column, so the topbar
+                  carries just the feed name. */}
             </div>
             <div className="cur-topbar-right">
               {profile.blueskyHandle ? (

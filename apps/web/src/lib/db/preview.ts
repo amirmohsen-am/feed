@@ -85,10 +85,11 @@ const FEED_CACHE_TTL = "24 hours"; // Postgres interval literal.
 
 // Snapshot depth: every compute stores this many reranked + blended posts as
 // the feed's canonical snapshot. The curator preview shows the first 25; the
-// skeleton xrpc paginates the full list (Bluesky app pages 30 at a time).
-// Deeper than the old 50 to give serve-time seen filtering headroom — an
-// active reader subtracts seen posts from this pool before it empties.
-export const SNAPSHOT_LIMIT = 100;
+// skeleton xrpc paginates the full list (Bluesky app pages 30 at a time). Also
+// the `N` the reranker is told to return, so it directly bounds rerank output
+// (and latency). 50 keeps modest serve-time seen-filtering headroom while
+// roughly halving the kept-item count the model has to emit vs 100.
+export const SNAPSHOT_LIMIT = 50;
 
 /**
  * The Anthropic rerank call failed. Callers must not substitute vector-order
