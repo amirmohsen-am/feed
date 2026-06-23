@@ -8,9 +8,9 @@ import FlySection from "@/components/landing/FlySection";
 import GlassSection from "@/components/landing/GlassSection";
 // static imports → content-hashed /_next/static/media URLs, so icon
 // updates can never be served stale from a cache keyed on the old URL
-import feedCurationIcon from "../../public/images/pillars/feed-curation.png";
-import userIdentificationIcon from "../../public/images/pillars/user-identification.png";
-import contentValidationIcon from "../../public/images/pillars/content-validation.png";
+import feedCurationIcon from "../../public/images/pillars/feed-curation-v2.png";
+import userIdentificationIcon from "../../public/images/pillars/user-identification-v2.png";
+import contentValidationIcon from "../../public/images/pillars/content-validation-v2.png";
 
 /*
  * Landing page — the interactive prototype, promoted.
@@ -245,6 +245,29 @@ const TEAM = [
   },
 ];
 
+const RESEARCH = [
+  {
+    title: "When Products Become Collective Traps",
+    summary: "Network effects can create market lock-in, leading users to regularly engage with social media platforms that they wish did not exist.",
+    link: "https://www.nber.org/system/files/working_papers/w31771/w31771.pdf",
+  },
+  {
+    title: "Personhood credentials",
+    summary: "A detailed survey of the problem of person identification in an age of indistinguishable AI-generated content.",
+    link: "https://arxiv.org/abs/2408.07892",
+  },
+  {
+    title: "Large Language Models Pass the Turing Test",
+    summary: "In text-only intereactions, the Turing Test is dead. Intuition alone is insufficient to identify humans in social spaces.",
+    link: "https://arxiv.org/abs/2503.23674",
+  },
+  {
+    title: "Short-Form Videos Degrade Our Capacity to Retain Intentions",
+    summary: "The type of content and the way feeds are constructed matter in creating experiences that reinforce human intention rather than degrade it.",
+    link: "https://arxiv.org/pdf/2302.03714",
+  },
+];
+
 const PILLARS = [
   {
     icon: feedCurationIcon.src,
@@ -266,40 +289,11 @@ const PILLARS = [
 export default function Landing() {
   const [flyDone, setFlyDone] = useState(false);
   const [glassDone, setGlassDone] = useState(false);
-  const [skipped, setSkipped] = useState(false);
   const flyWrapRef = useRef<HTMLDivElement>(null);
   const glassWrapRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
   useScrollReveal();
 
-  // scroll gate: locked to the current act until it's completed (or skipped)
-  useEffect(() => {
-    if (skipped || (flyDone && glassDone)) return;
-    const onScroll = () => {
-      const max =
-        (flyDone ? glassWrapRef.current : flyWrapRef.current)?.offsetTop ?? 0;
-      if (window.scrollY > max) window.scrollTo(0, max);
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [flyDone, glassDone, skipped]);
-
-  const skip = () => {
-    setSkipped(true);
-    requestAnimationFrame(() =>
-      document
-        .getElementById("mission")
-        ?.scrollIntoView({ behavior: "smooth" })
-    );
-  };
-
-  const keepGoing = () => {
-    flyWrapRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  // one choreography for the main pitch: headline chars, then pillars,
-  // then the CTA row. Replays every time the section scrolls into view.
   useEffect(() => {
     const el = mainRef.current;
     if (!el) return;
@@ -313,14 +307,17 @@ export default function Landing() {
     return () => observer.disconnect();
   }, []);
 
-  const gateOpen = skipped || (flyDone && glassDone);
-
   return (
     <div className="proto lv">
       <header className="proto-nav">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/images/logo_periwinkle.svg" alt="amadi" className="proto-brand-logo" />
         <span className="proto-alpha">alpha</span>
+        <nav className="lv-nav-links">
+          <a href="#mission">Mission</a>
+          <a href="#research">Research</a>
+          <a href="#team">Team</a>
+        </nav>
       </header>
 
       {/* MAIN PITCH — headline, pillars, waitlist + demo */}
@@ -394,34 +391,17 @@ export default function Landing() {
             </Link>
           </div>
         </div>
-        {/* mobile-only: pinned to the hero's top-right (can't position the
-            in-row button there — the cta-row's reveal transform would
-            become its containing block) */}
         <Link href="/curator" className="lv-demo-btn lv-demo-top">
           Try it out &rarr;
         </Link>
-        <button className="lv-scroll-cue" onClick={keepGoing}>
-          <span>keep going</span>
-          <span className="arrow">&darr;</span>
-        </button>
       </section>
 
       <div className="act-wrap" ref={flyWrapRef}>
         <FlySection onCaught={() => setFlyDone(true)} />
-        {!gateOpen && (
-          <button className="act-skip" onClick={skip}>
-            skip &darr;
-          </button>
-        )}
       </div>
 
       <div className="act-wrap" ref={glassWrapRef}>
         <GlassSection onInteract={() => setGlassDone(true)} />
-        {!gateOpen && (
-          <button className="act-skip" onClick={skip}>
-            skip &darr;
-          </button>
-        )}
       </div>
 
       {/* MISSION */}
@@ -434,7 +414,7 @@ export default function Landing() {
           </div>
           <div className="proto-mission-body">
             <p className="p-reveal">
-              Modern social feeds are built to maximize a single metric:{" "}
+              Modern feeds are built to maximize a single metric:{" "}
               <em>engagement</em>. This is not a novel insight. However, as
               algorithms have gotten better, the problem has become more acute.
               At the same time, new technologies have made fake users, content
@@ -458,6 +438,36 @@ export default function Landing() {
               information stream. Together these can make our digital
               experiences radically healthier.
             </p>
+          </div>
+        </div>
+      </section>
+
+      {/* RESEARCH */}
+      <section className="proto-research" id="research">
+        <div className="proto-wrap">
+          <div className="proto-head p-reveal">
+            <span className="hairline" />
+            <span className="label">Research</span>
+            <span className="hairline" />
+          </div>
+          <p className="proto-research-intro p-reveal">
+            Below is a small subset of research we find particularly interesting
+            and important in building the next generation of online social experiences.
+          </p>
+          <div className="proto-research-grid">
+            {RESEARCH.map((paper, i) => (
+              <a
+                key={paper.title}
+                href={paper.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="proto-research-card p-reveal"
+                style={{ transitionDelay: `${i * 40}ms` }}
+              >
+                <p className="proto-research-title">{paper.title}</p>
+                <p className="proto-research-summary">{paper.summary}</p>
+              </a>
+            ))}
           </div>
         </div>
       </section>
