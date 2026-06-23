@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getSecret } from "@/lib/secrets";
-import { query } from "@/lib/pg";
+import { query, pruneSeen } from "@/lib/pg";
 
 /**
  * Dispatcher for the published-feed snapshot refresh. Called by the Cloud
@@ -36,6 +36,18 @@ export async function POST(req: NextRequest) {
   const secret = await getSecret("internal-refresh-secret");
   if (!tokenMatches(req.headers.get("authorization"), secret)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  // Prune expired seen rows once per run (best-effort). Anchored to the bsky
+  // post-retention window — a URI we can no longer serve never needs a seen row.
+  try {
+    const pruned = await pruneSeen();
+    if (pruned > 0) console.log(`[feed-refresh] pruned ${pruned} expired seen rows`);
+  } catch (e) {
+    console.warn(
+      "[feed-refresh] seen prune failed:",
+      e instanceof Error ? e.message : String(e)
+    );
   }
 
   const stale = await query(

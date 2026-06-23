@@ -21,6 +21,7 @@ export * from "./db/connection";
 export * from "./db/users";
 export * from "./db/feeds";
 export * from "./db/preview";
+export * from "./db/seen";
 export * from "./db/chat";
 export * from "./db/feedback";
 export * from "./db/subscribers";

@@ -26,6 +26,9 @@ export interface PipelineLoaderProps {
   // ranking row just shows the elapsed timer.
   written?: number;
   topK?: number;
+  // How many snapshot posts were dropped as already-seen for this viewer
+  // (serve-time seen filtering). Shown in the "searching" breakdown row.
+  seenFiltered?: number;
 }
 
 interface StageTimings {
@@ -63,7 +66,7 @@ const STAGE_LABEL: Record<Exclude<PipelineStage, "idle" | "done">, string> = {
  * caller only needs to push the current `stage`.
  */
 export default function PipelineLoader(props: PipelineLoaderProps) {
-  const { stage, candidates, hits, images, model, thinkingEnabled, written, topK } = props;
+  const { stage, candidates, hits, images, model, thinkingEnabled, written, topK, seenFiltered } = props;
   const [now, setNow] = useState(() => performance.now());
   // Tapping the line opens the breakdown; it live-updates mid-run.
   // Collapsed again on every fresh run.
@@ -179,7 +182,15 @@ export default function PipelineLoader(props: PipelineLoaderProps) {
       key: "searching",
       live: stage === "searching",
       time: stageTime(T.searching_started_ms, T.searching_ended_ms, stage === "searching"),
-      detail: T.searching_started_ms !== undefined ? "embed · ANN · hydrate" : pendingLabel,
+      detail:
+        T.searching_started_ms !== undefined
+          ? [
+              "embed · ANN · hydrate",
+              seenFiltered && seenFiltered > 0 ? `${seenFiltered} seen hidden` : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          : pendingLabel,
     },
     {
       key: "thinking",

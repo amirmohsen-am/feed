@@ -23,7 +23,13 @@ import SendButton from "@/components/SendButton";
 import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
 import { authedFetch } from "@/lib/authed-fetch";
 import type { MechanicalFilters } from "@/lib/types";
-import { DEFAULT_CANDIDATE_BUDGET, DEFAULT_RERANK_MODEL } from "@/lib/defaults";
+import {
+  DEFAULT_CANDIDATE_BUDGET,
+  DEFAULT_RERANK_MODEL,
+  DEFAULT_ENGAGEMENT_WEIGHT,
+  DEFAULT_RECENCY_WEIGHT,
+  DEFAULT_RECENCY_HALFLIFE_H,
+} from "@/lib/defaults";
 import { MAX_BRANCH_TOPICS, type BranchOption } from "@/lib/branch";
 import { useResizable } from "../useResizable";
 import { useCurator, feedIsComplete } from "../curatorContext";
@@ -266,6 +272,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     setPipelineImages,
     setPipelineModel,
     setPipelineThinkingEnabled,
+    setPipelineSeenFiltered,
     setBranchOverlayName,
   } = useCurator();
 
@@ -870,6 +877,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const [rerankPrompt, setRerankPrompt] = useState<string>("");
   const [rerankModel, setRerankModel] = useState<string>(DEFAULT_RERANK_MODEL);
   const [rerankThinkingEnabled, setRerankThinkingEnabled] = useState<boolean>(false);
+  const [engagementWeight, setEngagementWeight] = useState<number>(DEFAULT_ENGAGEMENT_WEIGHT);
+  const [recencyWeight, setRecencyWeight] = useState<number>(DEFAULT_RECENCY_WEIGHT);
+  const [recencyHalflifeH, setRecencyHalflifeH] = useState<number>(DEFAULT_RECENCY_HALFLIFE_H);
+  const [seenFilterEnabled, setSeenFilterEnabled] = useState<boolean>(false);
 
   // Branch flow. sourcePost is set when this feed was branched off a post (it
   // renders an embedded card atop the chat). The auto-fired branch-init turn
@@ -895,12 +906,19 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     mechanical_filters?: MechanicalFilters;
     candidate_budget?: number;
     rerank_prompt?: string;
+    engagement_weight?: number;
+    recency_weight?: number;
+    recency_halflife_h?: number;
   }): string {
     return JSON.stringify({
       s: f.subqueries ?? [],
       m: f.mechanical_filters ?? null,
       b: f.candidate_budget ?? null,
       r: f.rerank_prompt ?? "",
+      // Ranking-bias weights reorder the snapshot, so a change must re-query.
+      ew: f.engagement_weight ?? null,
+      rw: f.recency_weight ?? null,
+      rh: f.recency_halflife_h ?? null,
     });
   }
 
@@ -921,17 +939,28 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     candidate_budget?: number;
     rerank_model?: string;
     rerank_thinking_enabled?: boolean;
+    engagement_weight?: number;
+    recency_weight?: number;
+    recency_halflife_h?: number;
+    seen_filter_enabled?: boolean;
   }) {
     if (patch.mechanical_filters) setMechanicalFilters(patch.mechanical_filters);
     if (patch.subqueries) setSubqueries(patch.subqueries);
     if (patch.candidate_budget !== undefined) setCandidateBudget(patch.candidate_budget);
     if (patch.rerank_model) setRerankModel(patch.rerank_model);
     if (patch.rerank_thinking_enabled !== undefined) setRerankThinkingEnabled(patch.rerank_thinking_enabled);
+    if (patch.engagement_weight !== undefined) setEngagementWeight(patch.engagement_weight);
+    if (patch.recency_weight !== undefined) setRecencyWeight(patch.recency_weight);
+    if (patch.recency_halflife_h !== undefined) setRecencyHalflifeH(patch.recency_halflife_h);
+    if (patch.seen_filter_enabled !== undefined) setSeenFilterEnabled(patch.seen_filter_enabled);
     feedSignatureRef.current = feedSignature({
       subqueries: patch.subqueries ?? subqueries,
       mechanical_filters: patch.mechanical_filters ?? mechanicalFilters ?? undefined,
       candidate_budget: patch.candidate_budget ?? candidateBudget,
       rerank_prompt: rerankPrompt,
+      engagement_weight: patch.engagement_weight ?? engagementWeight,
+      recency_weight: patch.recency_weight ?? recencyWeight,
+      recency_halflife_h: patch.recency_halflife_h ?? recencyHalflifeH,
     });
     try {
       await authedFetch("/api/feeds", {
@@ -948,6 +977,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const saveRerankModel = (model: string) => patchFeed({ rerank_model: model });
   const saveRerankThinkingEnabled = (v: boolean) =>
     patchFeed({ rerank_thinking_enabled: v });
+  const saveEngagementWeight = (n: number) => patchFeed({ engagement_weight: n });
+  const saveRecencyWeight = (n: number) => patchFeed({ recency_weight: n });
+  const saveRecencyHalflife = (n: number) => patchFeed({ recency_halflife_h: n });
+  const saveSeenFilterEnabled = (v: boolean) => patchFeed({ seen_filter_enabled: v });
 
 
   const loadChat = useCallback(async (id: number): Promise<{
@@ -973,6 +1006,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         if (typeof f.rerank_thinking_enabled === "boolean") {
           setRerankThinkingEnabled(f.rerank_thinking_enabled);
         }
+        if (typeof f.engagement_weight === "number") setEngagementWeight(f.engagement_weight);
+        if (typeof f.recency_weight === "number") setRecencyWeight(f.recency_weight);
+        if (typeof f.recency_halflife_h === "number") setRecencyHalflifeH(f.recency_halflife_h);
+        if (typeof f.seen_filter_enabled === "boolean") setSeenFilterEnabled(f.seen_filter_enabled);
         feedSignatureRef.current = feedSignature(f);
       }
       setMessages(msgs);
@@ -992,6 +1029,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     setPipelineImages(undefined);
     setPipelineModel(undefined);
     setPipelineThinkingEnabled(undefined);
+    setPipelineSeenFiltered(undefined);
     try {
       // force=true (Refresh button) bypasses the 1h backend result cache and
       // recomputes; all other loads are cache-eligible.
@@ -1028,6 +1066,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               posts?: Post[];
               cached?: boolean;
               total_stored?: number;
+              seen_filtered?: number;
               mechanical_filters?: MechanicalFilters;
               subqueries?: string[];
               candidate_budget?: number;
@@ -1059,13 +1098,15 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               // Cache hits ran no pipeline — hide the loader entirely rather
               // than leaving the "done" summary with empty "queued" steps.
               setPipelineStage(ev.cached ? "idle" : "done");
+              if (typeof ev.seen_filtered === "number") setPipelineSeenFiltered(ev.seen_filtered);
               const nextCount = ev.total_stored || (ev.posts?.length ?? 0);
               const incoming = ev.posts || [];
-              setPosts(prev => {
-                const seen = new Set(prev.map(p => p.uri));
-                const fresh = incoming.filter(p => !seen.has(p.uri));
-                return fresh.length > 0 ? [...prev, ...fresh] : prev;
-              });
+              // The "done" event carries the full recomputed snapshot in its
+              // final reranked+blended order, so replace outright. Appending
+              // (merging by URI) would hide the reordering — and any dropped
+              // posts — on Refresh and after a weight edit, which is the whole
+              // point of the preview.
+              setPosts(incoming);
               setPostCount(nextCount);
               setActivePostCount(nextCount);
               if (ev.mechanical_filters) setMechanicalFilters(ev.mechanical_filters);
@@ -2510,11 +2551,19 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           rerankPrompt={rerankPrompt}
           rerankModel={rerankModel}
           rerankThinkingEnabled={rerankThinkingEnabled}
+          engagementWeight={engagementWeight}
+          recencyWeight={recencyWeight}
+          recencyHalflifeH={recencyHalflifeH}
+          seenFilterEnabled={seenFilterEnabled}
           onMechanicalChange={saveMechanicalFilters}
           onSubqueriesChange={saveSubqueries}
           onCandidateBudgetChange={saveCandidateBudget}
           onRerankModelChange={saveRerankModel}
           onRerankThinkingChange={saveRerankThinkingEnabled}
+          onEngagementWeightChange={saveEngagementWeight}
+          onRecencyWeightChange={saveRecencyWeight}
+          onRecencyHalflifeChange={saveRecencyHalflife}
+          onSeenFilterChange={saveSeenFilterEnabled}
           postCount={postCount}
           rightPane={rightPane}
           onRightPaneChange={setRightPane}

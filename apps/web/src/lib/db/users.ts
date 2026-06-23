@@ -64,3 +64,16 @@ export async function getUserById(
   const res = await query("SELECT * FROM users WHERE id = $1", [userId]);
   return res.rows[0] ?? null;
 }
+
+/**
+ * Resolve a Bluesky DID to the Ripple user who linked it (via OAuth). Used by
+ * the published feed skeleton to map a verified requester DID to internal seen
+ * state. Returns null for DIDs that aren't Ripple users — those readers get the
+ * unfiltered shared snapshot.
+ */
+export async function getUserByBlueskyDid(
+  did: string
+): Promise<DbUser | null> {
+  const res = await query("SELECT * FROM users WHERE bluesky_did = $1", [did]);
+  return res.rows[0] ?? null;
+}

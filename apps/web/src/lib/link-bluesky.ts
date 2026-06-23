@@ -1,4 +1,5 @@
 import { query } from "./pg";
+import { getUserByBlueskyDid } from "./db/users";
 
 /**
  * Resolve or create the amadi user for a browser session cookie.
@@ -48,11 +49,6 @@ export async function ensureSessionUser(sessionId: string): Promise<string> {
     [sessionId, userId]
   );
   return userId;
-}
-
-async function getUserByBlueskyDid(did: string): Promise<{ id: string } | null> {
-  const res = await query(`SELECT id FROM users WHERE bluesky_did = $1`, [did]);
-  return res.rows[0] ?? null;
 }
 
 /**

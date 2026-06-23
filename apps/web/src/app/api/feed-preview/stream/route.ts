@@ -66,14 +66,24 @@ export async function GET(req: NextRequest) {
         send({ event: "stage", ...e });
       };
 
+      // Folded into the final "done" event (not a stage event) so it can't
+      // regress the loader's stage progression — the count is only known after
+      // the snapshot is built.
+      let seenFiltered = 0;
+
       try {
         const posts = await getFeedPreviewPosts(feedId, 25, onStage, {
           forceFresh,
+          viewerUserId: auth.userId,
+          onSeenFiltered: (n) => {
+            seenFiltered = n;
+          },
         });
         send({
           event: "done",
           cached: servedFromCache,
           total_stored: posts.length,
+          seen_filtered: seenFiltered,
           mechanical_filters: feed.mechanical_filters,
           subqueries: feed.subqueries,
           candidate_budget: feed.candidate_budget,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { MechanicalFilters, TimeWindow } from "@/lib/types";
 import {
   DEFAULT_MECHANICAL_FILTERS,
@@ -10,6 +10,8 @@ import {
   MIN_CANDIDATE_BUDGET,
   MAX_CANDIDATE_BUDGET,
   RERANK_MODEL_OPTIONS,
+  MIN_RECENCY_HALFLIFE_H,
+  MAX_RECENCY_HALFLIFE_H,
 } from "@/lib/defaults";
 
 interface FilterPanelProps {
@@ -19,11 +21,19 @@ interface FilterPanelProps {
   rerankPrompt: string;
   rerankModel: string;
   rerankThinkingEnabled: boolean;
+  engagementWeight: number;
+  recencyWeight: number;
+  recencyHalflifeH: number;
+  seenFilterEnabled: boolean;
   onMechanicalChange: (filters: MechanicalFilters) => void;
   onSubqueriesChange: (subs: string[]) => void;
   onCandidateBudgetChange: (n: number) => void;
   onRerankModelChange: (model: string) => void;
   onRerankThinkingChange: (enabled: boolean) => void;
+  onEngagementWeightChange: (n: number) => void;
+  onRecencyWeightChange: (n: number) => void;
+  onRecencyHalflifeChange: (n: number) => void;
+  onSeenFilterChange: (enabled: boolean) => void;
   postCount: number;
   rightPane?: "chat" | "tune";
   onRightPaneChange?: (pane: "chat" | "tune") => void;
@@ -32,6 +42,32 @@ interface FilterPanelProps {
 
 const MAX_SUBQUERIES = 4;
 
+// Trailing-edge debounce that survives re-renders (timer in a ref, not state)
+// and clears any pending call on unmount. One helper for every debounced save.
+function useDebouncedCallback<A extends unknown[]>(
+  fn: (...args: A) => void,
+  delay: number
+): (...args: A) => void {
+  const fnRef = useRef(fn);
+  useEffect(() => {
+    fnRef.current = fn;
+  }, [fn]);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    []
+  );
+  return useCallback(
+    (...args: A) => {
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => fnRef.current(...args), delay);
+    },
+    [delay]
+  );
+}
+
 export default function FilterPanel({
   mechanicalFilters,
   subqueries,
@@ -39,11 +75,19 @@ export default function FilterPanel({
   rerankPrompt,
   rerankModel,
   rerankThinkingEnabled,
+  engagementWeight,
+  recencyWeight,
+  recencyHalflifeH,
+  seenFilterEnabled,
   onMechanicalChange,
   onSubqueriesChange,
   onCandidateBudgetChange,
   onRerankModelChange,
   onRerankThinkingChange,
+  onEngagementWeightChange,
+  onRecencyWeightChange,
+  onRecencyHalflifeChange,
+  onSeenFilterChange,
   postCount,
   rightPane,
   onRightPaneChange,
@@ -57,6 +101,11 @@ export default function FilterPanel({
   const [budget, setBudget] = useState<number>(candidateBudget || DEFAULT_CANDIDATE_BUDGET);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
+  // Ranking-bias local state (mirrors props; debounced saves on change).
+  const [engW, setEngW] = useState<number>(engagementWeight);
+  const [recW, setRecW] = useState<number>(recencyWeight);
+  const [halflife, setHalflife] = useState<number>(recencyHalflifeH);
+
   useEffect(() => {
     setMech({ ...DEFAULT_MECHANICAL_FILTERS, ...mechanicalFilters });
   }, [mechanicalFilters]);
@@ -69,34 +118,17 @@ export default function FilterPanel({
     setBudget(candidateBudget || DEFAULT_CANDIDATE_BUDGET);
   }, [candidateBudget]);
 
-  // Debounced saves
-  const [mechTimeout, setMechTimeout] = useState<NodeJS.Timeout | null>(null);
-  const [subsTimeout, setSubsTimeout] = useState<NodeJS.Timeout | null>(null);
-  const [budgetTimeout, setBudgetTimeout] = useState<NodeJS.Timeout | null>(null);
+  useEffect(() => setEngW(engagementWeight), [engagementWeight]);
+  useEffect(() => setRecW(recencyWeight), [recencyWeight]);
+  useEffect(() => setHalflife(recencyHalflifeH), [recencyHalflifeH]);
 
-  const saveMech = useCallback(
-    (updated: MechanicalFilters) => {
-      if (mechTimeout) clearTimeout(mechTimeout);
-      setMechTimeout(setTimeout(() => onMechanicalChange(updated), 600));
-    },
-    [onMechanicalChange, mechTimeout]
-  );
-
-  const saveSubs = useCallback(
-    (updated: string[]) => {
-      if (subsTimeout) clearTimeout(subsTimeout);
-      setSubsTimeout(setTimeout(() => onSubqueriesChange(updated), 600));
-    },
-    [onSubqueriesChange, subsTimeout]
-  );
-
-  const saveBudget = useCallback(
-    (n: number) => {
-      if (budgetTimeout) clearTimeout(budgetTimeout);
-      setBudgetTimeout(setTimeout(() => onCandidateBudgetChange(n), 600));
-    },
-    [onCandidateBudgetChange, budgetTimeout]
-  );
+  // Debounced saves (one shared hook, trailing-edge).
+  const saveMech = useDebouncedCallback(onMechanicalChange, 600);
+  const saveSubs = useDebouncedCallback(onSubqueriesChange, 600);
+  const saveBudget = useDebouncedCallback(onCandidateBudgetChange, 600);
+  const saveEngW = useDebouncedCallback(onEngagementWeightChange, 500);
+  const saveRecW = useDebouncedCallback(onRecencyWeightChange, 500);
+  const saveHalflife = useDebouncedCallback(onRecencyHalflifeChange, 500);
 
   function updateMech(patch: Partial<MechanicalFilters>) {
     const updated = { ...mech, ...patch };
@@ -133,8 +165,25 @@ export default function FilterPanel({
     saveBudget(clamped);
   }
 
+  // Ranking-bias updaters (immediate local state, debounced PATCH).
+  function updateEngW(n: number) {
+    setEngW(n);
+    saveEngW(n);
+  }
+  function updateRecW(n: number) {
+    setRecW(n);
+    saveRecW(n);
+  }
+  function updateHalflife(h: number) {
+    setHalflife(h);
+    saveHalflife(h);
+  }
+
   const perQueryK =
     subs.length > 0 ? Math.floor(budget / subs.length) : budget;
+
+  // Relevance weight is the remainder — the blend is w_q + w_e + w_r = 1.
+  const relevanceWeight = Math.max(0, 1 - engW - recW);
 
   return (
     <div className="ctrl-tower" style={style}>
@@ -312,13 +361,11 @@ export default function FilterPanel({
             />
           </div>
 
-          {/* RERANKER — agent-generated, per-feed */}
+          {/* RERANKER — always on; agent-generated editorial prompt, per-feed */}
           <div className="ctrl-section">
             <label className="ctrl-label">
               Reranker
-              <span className="ctrl-label-value">
-                {rerankPrompt.trim() ? "on" : "off"}
-              </span>
+              <span className="ctrl-label-value">on</span>
             </label>
             {rerankPrompt.trim() ? (
               <>
@@ -329,7 +376,7 @@ export default function FilterPanel({
               </>
             ) : (
               <p className="ctrl-hint">
-                Posts come back in raw vector-similarity order. Tell the agent in chat what to favor / drop and it&apos;ll write an editorial filter.
+                Using a default editorial ranker. Tell the agent in chat what to favor / drop and it&apos;ll write a custom one for this feed.
               </p>
             )}
             <div className="ctrl-mini-field">
@@ -337,7 +384,6 @@ export default function FilterPanel({
               <select
                 value={rerankModel || DEFAULT_RERANK_MODEL}
                 onChange={(e) => onRerankModelChange(e.target.value)}
-                disabled={!rerankPrompt.trim()}
               >
                 {RERANK_MODEL_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -349,6 +395,82 @@ export default function FilterPanel({
               checked={rerankThinkingEnabled}
               onChange={onRerankThinkingChange}
             />
+          </div>
+
+          {/* RANKING BIAS — deterministic blend applied after the reranker */}
+          <div className="ctrl-section">
+            <label className="ctrl-label">Ranking bias</label>
+            <p className="ctrl-hint" style={{ marginTop: 0, marginBottom: 10 }}>
+              After the reranker picks the best posts, nudge the order toward
+              popular and fresh ones. Relevance keeps the rest.
+            </p>
+
+            <label className="ctrl-label">
+              Engagement
+              <span className="ctrl-label-value">{Math.round(engW * 100)}%</span>
+            </label>
+            <input
+              type="range"
+              className="ctrl-slider"
+              min={0}
+              max={1}
+              step={0.05}
+              value={engW}
+              onChange={(e) => updateEngW(parseFloat(e.target.value))}
+            />
+
+            <label className="ctrl-label" style={{ marginTop: 12 }}>
+              Recency
+              <span className="ctrl-label-value">{Math.round(recW * 100)}%</span>
+            </label>
+            <input
+              type="range"
+              className="ctrl-slider"
+              min={0}
+              max={1}
+              step={0.05}
+              value={recW}
+              onChange={(e) => updateRecW(parseFloat(e.target.value))}
+            />
+
+            <label className="ctrl-label" style={{ marginTop: 12 }}>
+              Recency half-life
+              <span className="ctrl-label-value">{fmtHalflife(halflife)}</span>
+            </label>
+            <input
+              type="range"
+              className="ctrl-slider"
+              min={0}
+              max={1}
+              step={0.01}
+              value={halflifeToPos(halflife)}
+              onChange={(e) => updateHalflife(posToHalflife(parseFloat(e.target.value)))}
+            />
+            <div className="ctrl-slider-labels">
+              <span>{fmtHalflife(MIN_RECENCY_HALFLIFE_H)}</span>
+              <span>{fmtHalflife(MAX_RECENCY_HALFLIFE_H)}</span>
+            </div>
+            <p className="ctrl-hint">
+              How long until a post counts for half as much. Short for breaking
+              news, long for evergreen. Relevance weight: {Math.round(relevanceWeight * 100)}%.
+            </p>
+          </div>
+
+          {/* SEEN FILTERING — per-viewer, serve-time */}
+          <div className="ctrl-section">
+            <label className="ctrl-label">
+              Seen filtering
+              <span className="ctrl-label-value">{seenFilterEnabled ? "on" : "off"}</span>
+            </label>
+            <Toggle
+              label="Hide posts you've already seen"
+              checked={seenFilterEnabled}
+              onChange={onSeenFilterChange}
+            />
+            <p className="ctrl-hint">
+              Drops posts already shown to you, so refreshing surfaces new ones.
+              Applied per viewer when the feed is read.
+            </p>
           </div>
 
           {/* ADVANCED — collapsible */}
@@ -408,7 +530,12 @@ export default function FilterPanel({
               </div>
 
               <div className="ctrl-section">
-                <label className="ctrl-label">Engagement</label>
+                <label className="ctrl-label">Minimum engagement</label>
+                <p className="ctrl-hint" style={{ marginTop: 0, marginBottom: 8 }}>
+                  Hard floor: posts under these counts are dropped before
+                  ranking. (Different from the Engagement bias above, which
+                  reorders rather than drops.)
+                </p>
                 <div className="ctrl-mini-field">
                   <span>Min likes</span>
                   <input
@@ -516,6 +643,26 @@ function isoToDateInput(iso: string): string {
 function dateInputToIso(date: string, bound: "start" | "end"): string {
   if (!date) return "";
   return bound === "start" ? `${date}T00:00:00Z` : `${date}T23:59:59Z`;
+}
+
+// Recency half-life slider is logarithmic across [MIN, MAX] hours so there's
+// fine control at the short (breaking-news) end. Slider position is 0..1.
+const HL_LN_MIN = Math.log(MIN_RECENCY_HALFLIFE_H);
+const HL_LN_MAX = Math.log(MAX_RECENCY_HALFLIFE_H);
+
+function halflifeToPos(h: number): number {
+  const clamped = Math.max(MIN_RECENCY_HALFLIFE_H, Math.min(MAX_RECENCY_HALFLIFE_H, h));
+  return (Math.log(clamped) - HL_LN_MIN) / (HL_LN_MAX - HL_LN_MIN);
+}
+
+function posToHalflife(pos: number): number {
+  return Math.round(Math.exp(HL_LN_MIN + (HL_LN_MAX - HL_LN_MIN) * pos));
+}
+
+function fmtHalflife(h: number): string {
+  if (h < 48) return `${Math.round(h)}h`;
+  const days = h / 24;
+  return `${days % 1 === 0 ? days : days.toFixed(1)}d`;
 }
 
 // --- Sub-components ---
