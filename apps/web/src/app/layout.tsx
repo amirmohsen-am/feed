@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
 import { cn } from "@/lib/utils";
 import ServerErrorToast from "@/components/ServerErrorToast";
 import Analytics from "@/components/Analytics";
+
+// Standalone GA4 property (gtag.js), separate from the Firebase-SDK GA4 in
+// <Analytics />, which reports to a different measurement id (G-72NL4ZF268).
+const GA_MEASUREMENT_ID = "G-V28TWVBNE7";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 const geistMono = Geist_Mono({subsets:['latin'],variable:'--font-geist-mono'});
@@ -35,6 +40,18 @@ export default function RootLayout({
         <Analytics />
         <ServerErrorToast />
         {children}
+        <Script
+          src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+          strategy="afterInteractive"
+        />
+        <Script id="gtag-init" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', '${GA_MEASUREMENT_ID}');
+          `}
+        </Script>
       </body>
     </html>
   );
