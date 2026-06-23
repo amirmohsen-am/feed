@@ -243,6 +243,14 @@ const TEAM = [
     bsky: "https://bsky.app/profile/amirmasti.bsky.social",
     linkedin: "https://www.linkedin.com/in/ahanchi/",
   },
+  {
+    name: "Toby Leeder",
+    role: "Product Intern",
+    photo: "/images/toby.jpg",
+    bio: "UC Berkeley student studying applied mathematics and computer science. Struggles with social media overuse (you don't want to see my iPhone screen time metrics). Excited to be a part of the solution!",
+    bsky: "https://bsky.app/profile/tobyleeder.bsky.social",
+    linkedin: "https://www.linkedin.com/in/toby-leeder/",
+  },
 ];
 
 const PILLARS = [
