@@ -17,6 +17,7 @@ export default function FeedPipelineLoader() {
     pipelineImages,
     pipelineModel,
     pipelineThinkingEnabled,
+    pipelineSeenFiltered,
   } = useCurator();
 
   if (pipelineStage === "idle") return null;
@@ -30,6 +31,7 @@ export default function FeedPipelineLoader() {
         images={pipelineImages}
         model={pipelineModel}
         thinkingEnabled={pipelineThinkingEnabled}
+        seenFiltered={pipelineSeenFiltered}
         topK={25}
       />
     </div>

@@ -12,6 +12,7 @@ import type { MechanicalFilters } from "@/lib/types";
 import {
   MIN_CANDIDATE_BUDGET,
   MAX_CANDIDATE_BUDGET,
+  normalizeRankingBias,
 } from "@/lib/defaults";
 
 export async function GET(req: NextRequest) {
@@ -52,6 +53,10 @@ export async function PATCH(req: NextRequest) {
     rerank_prompt,
     rerank_model,
     rerank_thinking_enabled,
+    engagement_weight,
+    recency_weight,
+    recency_halflife_h,
+    seen_filter_enabled,
   } = body as {
     id?: number;
     name?: string;
@@ -61,6 +66,10 @@ export async function PATCH(req: NextRequest) {
     rerank_prompt?: string;
     rerank_model?: string;
     rerank_thinking_enabled?: boolean;
+    engagement_weight?: number;
+    recency_weight?: number;
+    recency_halflife_h?: number;
+    seen_filter_enabled?: boolean;
   };
 
   if (!id)
@@ -99,6 +108,20 @@ export async function PATCH(req: NextRequest) {
     subqueries: cleanSubs,
     candidate_budget: budget,
   };
+  // Clamp + joint relevance-floor cap, shared with the curator agent path.
+  const bias = normalizeRankingBias(
+    { engagement_weight, recency_weight, recency_halflife_h },
+    feed
+  );
+  if (bias.engagement_weight !== undefined)
+    updates.engagement_weight = bias.engagement_weight;
+  if (bias.recency_weight !== undefined)
+    updates.recency_weight = bias.recency_weight;
+  if (bias.recency_halflife_h !== undefined)
+    updates.recency_halflife_h = bias.recency_halflife_h;
+  if (typeof seen_filter_enabled === "boolean") {
+    updates.seen_filter_enabled = seen_filter_enabled;
+  }
   if (typeof name === "string") {
     const trimmed = name.trim();
     if (!trimmed) {

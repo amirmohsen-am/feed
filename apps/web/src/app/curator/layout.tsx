@@ -198,6 +198,7 @@ function CuratorShell({
   const [pipelineImages, setPipelineImages] = useState<number | undefined>(undefined);
   const [pipelineModel, setPipelineModel] = useState<string | undefined>(undefined);
   const [pipelineThinkingEnabled, setPipelineThinkingEnabled] = useState<boolean | undefined>(undefined);
+  const [pipelineSeenFiltered, setPipelineSeenFiltered] = useState<number | undefined>(undefined);
   const [branchOverlayName, setBranchOverlayName] = useState<string | null>(null);
   // Feed-first on mobile: the chat is a slide-up overlay ("chat" = open).
   // Drafting feeds auto-open it via the tab-reset logic below.
@@ -550,6 +551,8 @@ function CuratorShell({
         setPipelineModel,
         pipelineThinkingEnabled,
         setPipelineThinkingEnabled,
+        pipelineSeenFiltered,
+        setPipelineSeenFiltered,
         branchOverlayName,
         setBranchOverlayName,
       }}
@@ -794,10 +797,10 @@ function CuratorShell({
               ) : (
                 <h2>Curate a feed</h2>
               )}
-              {/* The pipeline loader now lives in the feed column itself
-                  (CuratorWorkbench + the branch overlay), not pinned to the
-                  topbar — so the topbar only carries the live post count. */}
-              {activePostCount > 0 && <span className="live-badge">{activePostCount} post{activePostCount === 1 ? "" : "s"}</span>}
+              {/* The pipeline loader lives in the feed column itself
+                  (CuratorWorkbench + the branch overlay), not the topbar. The
+                  post count shows in the sidebar and feed column, so the topbar
+                  carries just the feed name. */}
             </div>
             <div className="cur-topbar-right">
               {profile.blueskyHandle ? (

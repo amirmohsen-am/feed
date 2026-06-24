@@ -23,16 +23,24 @@ import { DEFAULT_RERANK_MODEL, MAX_RERANK_IMAGES } from "./defaults";
 // `opts.model`; the per-feed setting is read in pg.ts.
 export const RERANK_MODEL = DEFAULT_RERANK_MODEL;
 
-// Reasons are only requested for the first RERANK_REASONS_LIMIT items: the
-// curator UI shows 25 posts, and reasons dominate output tokens — emitting
-// them for a deep (topK=100) snapshot would triple rerank latency.
-export const RERANK_REASONS_LIMIT = 25;
+// Reasons are only requested for the first RERANK_REASONS_LIMIT items, because
+// reasons dominate output tokens (a kept item with a reason is ~40 tokens vs
+// ~15 without) and rerank latency is output-bound. 0 = never ask for reasons,
+// dropping the `reason` field from the contract entirely for the fastest output.
+export const RERANK_REASONS_LIMIT = 0;
 
-const RERANK_OUTPUT_CONTRACT = `
+const RERANK_OUTPUT_CONTRACT =
+  RERANK_REASONS_LIMIT > 0
+    ? `
 
 Return JSON only — a single array of up to N items, sorted best-first.
 Each item: {"i": <int candidate index>, "score": <int 0-100>, "reason": "<one short sentence>"}.
 For items ranked beyond the first ${RERANK_REASONS_LIMIT}, set "reason" to "".
+Do NOT include items you would not surface. Do NOT include any prose outside the array.`
+    : `
+
+Return JSON only — a single array of up to N items, sorted best-first.
+Each item: {"i": <int candidate index>, "score": <int 0-100>}.
 Do NOT include items you would not surface. Do NOT include any prose outside the array.`;
 
 let _client: Anthropic | null = null;

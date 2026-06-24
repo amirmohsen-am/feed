@@ -20,8 +20,8 @@ export default function SwipeFollowupCard({
   onDismiss,
 }: {
   post: PostSummary;
-  /** undefined = not yet fetched, null = loading, array = done */
-  topics: BranchOption[] | null | undefined;
+  /** undefined = not yet fetched/loading, array = done */
+  topics: BranchOption[] | undefined;
   onChipSend: (reason: string) => void;
   onTextSend: (reason: string) => void;
   onDismiss: () => void;
@@ -92,9 +92,7 @@ export default function SwipeFollowupCard({
       <p className="cur-swipe-followup-label">what you&rsquo;ll see less of</p>
 
       <div className="cur-swipe-followup-topics">
-        {topics === null ? (
-          <span className="cur-dots-inline"><span /><span /><span /></span>
-        ) : topics != null ? topics.map((t, i) => (
+        {topics?.map((t, i) => (
           <button
             key={i}
             type="button"
@@ -103,7 +101,7 @@ export default function SwipeFollowupCard({
           >
             {t.label}
           </button>
-        )) : null}
+        ))}
       </div>
 
       <form
@@ -115,7 +113,7 @@ export default function SwipeFollowupCard({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="or say it in your own words\u2026"
+          placeholder="or say it in your own words…"
           rows={1}
         />
         <SendButton disabled={!text.trim()} />

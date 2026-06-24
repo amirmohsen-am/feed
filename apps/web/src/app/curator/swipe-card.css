@@ -101,6 +101,16 @@
   color: #b35a48;
 }
 
+/* Followup wrapper: default hidden state managed via CSS so React re-renders
+   (e.g. when followup topics load) can't reset the imperatively-driven height
+   and opacity mid-drag. Inline styles override this during drag; clearing them
+   falls back here. */
+.cur-swipe-followup-wrap {
+  height: 0;
+  overflow: hidden;
+  opacity: 0;
+}
+
 /* A flung card translates well past the viewport edge — clip horizontally so
    it never creates a horizontal scrollbar (especially on mobile, where the
    document itself is the scroller). overflow-x: clip leaves vertical scroll
