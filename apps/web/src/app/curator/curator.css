@@ -1516,10 +1516,31 @@
   pointer-events: none;
   transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.42s ease;
 }
+/* Returning from a branch (Back): the exact reverse of the pin. The other posts
+   come back in from where they exited (off-screen left, scaled down) and settle,
+   while the pinned card expands in place. */
+.cur-branch-returning .cur-post-item-other{
+  animation: cur-post-return 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+@keyframes cur-post-return{
+  from{ opacity: 0; transform: translateX(-150%) scale(0.85); }
+  to{ opacity: 1; transform: translateX(0) scale(1); }
+}
 @media (prefers-reduced-motion: reduce){
   .cur-post-item-other,
   .cur-branch-dragging .cur-post-item-other,
   .cur-branching .cur-post-item-other{ transition: none; }
+  .cur-branch-returning .cur-post-item-other{ animation: none; }
+}
+
+/* Everything below the header is wrapped in .cur-post-foldable so the fold can
+   collapse it as one unit (to a single body line) while the card keeps its own
+   padding — the collapsed text never sits on the bottom border. Mirrors the
+   card's own flex-column gap so normal (unfolded) cards look unchanged. */
+.cur-post-foldable{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 /* The inline branch view that drops in beneath the folded source card. It
@@ -1535,9 +1556,11 @@
   to{ opacity: 1; transform: translateX(0); }
 }
 
-/* "↳ branched from this post" flag inside the card — collapsed until the card
-   folds, then it eases open at the top of the compact card. */
+/* "↳ branched from this post" flag inside the card — display:none by default so
+   it adds no flex gap to a normal card; the fold sets display:block and eases it
+   open at the top of the compact card. */
 .cur-post-branch-flag{
+  display: none;
   max-height: 0;
   opacity: 0;
   overflow: hidden;

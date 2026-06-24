@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 
 export type SwipeVerdict = "approve" | "reject";
@@ -10,6 +10,7 @@ const COLLAPSE_DISTANCE = 260;     // left collapse range
 const BRANCH_COLLAPSE_DISTANCE = 210; // right fold range (prototype COLLAPSE_DIST)
 const BRANCH_COMMIT = 0.5;         // fraction of the fold at which a release branches
 const TX_MAX = 132;                // rubber-band asymptote for the rightward ride
+const FOLD_LINE = 22;              // collapsed height of the foldable region (~one body line)
 
 const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
 const cl01 = (v: number) => Math.max(0, Math.min(1, v));
@@ -62,51 +63,46 @@ export default function SwipeableCard({
   const followupRef = useRef<HTMLDivElement>(null);
   const followupNaturalH = useRef(0);
 
-  const branchTintRef = useRef<HTMLDivElement>(null);
   const branchActionRef = useRef<HTMLDivElement>(null);
 
   // ── Branch fold targets (measured lazily on first rightward drag) ──
   const branchCommittedRef = useRef(false);
   const foldMeasured = useRef(false);
-  const cardElRef = useRef<HTMLElement | null>(null);
+  const foldableElRef = useRef<HTMLElement | null>(null);
   const avatarElRef = useRef<HTMLElement | null>(null);
   const flagElRef = useRef<HTMLElement | null>(null);
-  const naturalCardH = useRef(0);
-  const compactCardH = useRef(0);
+  const naturalFoldableH = useRef(0);
 
   const measureFold = useCallback(() => {
     const wrap = wrapperRef.current;
     if (!wrap) return;
-    const card = wrap.querySelector<HTMLElement>(".cur-post-card");
-    if (!card) return;
-    cardElRef.current = card;
+    const foldable = wrap.querySelector<HTMLElement>(".cur-post-foldable");
+    if (!foldable) return;
+    foldableElRef.current = foldable;
     avatarElRef.current = wrap.querySelector<HTMLElement>(".cur-post-avatar");
     flagElRef.current = wrap.querySelector<HTMLElement>(".cur-post-branch-flag");
-    const head = wrap.querySelector<HTMLElement>(".cur-post-card-head");
-    const prevMax = card.style.maxHeight;
-    card.style.maxHeight = "none";
-    naturalCardH.current = card.offsetHeight;
-    card.style.maxHeight = prevMax;
-    const headH = head?.offsetHeight ?? 48;
-    compactCardH.current = headH + 84; // flag + header + one body line + compact paddings
+    const prevMax = foldable.style.maxHeight;
+    foldable.style.maxHeight = "none";
+    naturalFoldableH.current = foldable.offsetHeight;
+    foldable.style.maxHeight = prevMax;
     foldMeasured.current = true;
   }, []);
 
   const applyFold = useCallback((t: number) => {
-    const card = cardElRef.current;
-    if (!card) return;
+    const foldable = foldableElRef.current;
+    if (!foldable) return;
     const avatar = avatarElRef.current;
     const flag = flagElRef.current;
     const av = cl01((t - 0.15) / 0.7);
     const flagP = cl01((t - 0.5) / 0.5);
-    card.style.overflow = "hidden";
-    card.style.maxHeight = `${lerp(naturalCardH.current, compactCardH.current, t)}px`;
-    card.style.paddingTop = card.style.paddingBottom = `${lerp(16, 11, t)}px`;
+    foldable.style.overflow = "hidden";
+    foldable.style.maxHeight = `${lerp(naturalFoldableH.current, FOLD_LINE, t)}px`;
     if (avatar) {
       avatar.style.width = avatar.style.height = `${lerp(40, 30, av)}px`;
       avatar.style.fontSize = `${lerp(16, 12, av)}px`;
     }
     if (flag) {
+      flag.style.display = "block";
       flag.style.maxHeight = `${lerp(0, 20, flagP)}px`;
       flag.style.opacity = String(flagP);
     }
@@ -114,21 +110,49 @@ export default function SwipeableCard({
 
   const setFoldTransition = useCallback((on: boolean) => {
     const trans = on
-      ? "max-height 0.42s cubic-bezier(0.34,0,0.2,1), padding 0.42s, width 0.32s, height 0.32s, font-size 0.32s, opacity 0.32s"
+      ? "max-height 0.44s cubic-bezier(0.34,0,0.2,1), width 0.32s, height 0.32s, font-size 0.32s, opacity 0.32s"
       : "none";
-    [cardElRef.current, avatarElRef.current, flagElRef.current].forEach((el) => {
+    [foldableElRef.current, avatarElRef.current, flagElRef.current].forEach((el) => {
       if (el) el.style.transition = trans;
     });
   }, []);
 
-  const resetFold = useCallback((animated: boolean) => {
-    setFoldTransition(animated);
-    const card = cardElRef.current;
+  // Expand the card back to full (used on Back). Animates the foldable open,
+  // then clears the inline styles so it returns to natural flow.
+  const expandFold = useCallback(() => {
+    setFoldTransition(true);
+    const foldable = foldableElRef.current;
     const avatar = avatarElRef.current;
     const flag = flagElRef.current;
-    if (card) { card.style.maxHeight = ""; card.style.overflow = ""; card.style.paddingTop = card.style.paddingBottom = ""; }
+    if (foldable && naturalFoldableH.current) {
+      foldable.style.maxHeight = `${naturalFoldableH.current}px`;
+      window.setTimeout(() => {
+        if (foldable) { foldable.style.maxHeight = ""; foldable.style.overflow = ""; foldable.style.transition = ""; }
+      }, 460);
+    } else if (foldable) {
+      foldable.style.maxHeight = ""; foldable.style.overflow = "";
+    }
     if (avatar) { avatar.style.width = avatar.style.height = ""; avatar.style.fontSize = ""; }
-    if (flag) { flag.style.maxHeight = "0"; flag.style.opacity = "0"; }
+    if (flag) {
+      flag.style.maxHeight = "0"; flag.style.opacity = "0";
+      window.setTimeout(() => { if (flag) flag.style.display = ""; }, 460);
+    }
+    const action = branchActionRef.current;
+    if (action) { action.style.opacity = "0"; action.classList.remove("ready"); }
+  }, [setFoldTransition]);
+
+  const resetFold = useCallback((animated: boolean) => {
+    setFoldTransition(animated);
+    const foldable = foldableElRef.current;
+    const avatar = avatarElRef.current;
+    const flag = flagElRef.current;
+    if (foldable) { foldable.style.maxHeight = ""; foldable.style.overflow = ""; }
+    if (avatar) { avatar.style.width = avatar.style.height = ""; avatar.style.fontSize = ""; }
+    if (flag) {
+      flag.style.maxHeight = "0"; flag.style.opacity = "0";
+      if (animated) window.setTimeout(() => { if (flag) flag.style.display = ""; }, 460);
+      else flag.style.display = "";
+    }
     const action = branchActionRef.current;
     if (action) { action.style.opacity = "0"; action.classList.remove("ready"); }
   }, [setFoldTransition]);
@@ -196,9 +220,21 @@ export default function SwipeableCard({
     onSwipe("reject");
   }, [xv, onSwipe, swallowNextClick]);
 
+  // On Back the parent flips `disabled` false again — expand the card open and
+  // re-arm the gesture so the post is fully interactive once more.
+  useEffect(() => {
+    if (!disabled && branchCommittedRef.current) {
+      branchCommittedRef.current = false;
+      decidedRef.current = false;
+      firstRightFired.current = false;
+      firstLeftFired.current = false;
+      expandFold();
+      setLocked(false);
+    }
+  }, [disabled, expandFold]);
+
   function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
     if (disabled || decidedRef.current) return;
-    // Ignore clicks on interactive children (links/buttons) — let them through.
     draggingRef.current = true;
     engagedRef.current = false;
     startXRef.current = e.clientX;
@@ -224,7 +260,6 @@ export default function SwipeableCard({
       if (wrapperRef.current) { wrapperRef.current.style.position = "relative"; wrapperRef.current.style.zIndex = "10"; }
     }
 
-    // velocity (px/ms)
     const dt = e.timeStamp - lastTRef.current;
     if (dt > 0) velRef.current = (e.clientX - lastXRef.current) / dt;
     lastXRef.current = e.clientX;
@@ -246,15 +281,11 @@ export default function SwipeableCard({
         action.style.transform = `translateY(-50%) translateX(${lerp(-12, 0, reveal)}px)`;
         action.classList.toggle("ready", t >= BRANCH_COMMIT);
       }
-      const tint = branchTintRef.current;
-      if (tint) tint.style.opacity = String(Math.min(1, dx / SWIPE_THRESHOLD));
       setLeftCollapse(0);
     } else {
       if (!firstLeftFired.current) { firstLeftFired.current = true; onFirstLeftDrag?.(); }
       xv.set(dx);
       onRightProgress?.(0);
-      const tint = branchTintRef.current;
-      if (tint) tint.style.opacity = "0";
       if (foldMeasured.current) resetFold(false);
       setLeftCollapse(dx);
     }
@@ -280,8 +311,6 @@ export default function SwipeableCard({
     // Cancel — un-fold and settle back to rest.
     if (foldMeasured.current) resetFold(true);
     animate(xv, 0, { type: "spring", stiffness: 340, damping: 32 });
-    const tint = branchTintRef.current;
-    if (tint) tint.style.opacity = "0";
     if (wrapperRef.current) { wrapperRef.current.style.position = ""; wrapperRef.current.style.zIndex = ""; }
     unlockTimer.current = setTimeout(() => setLocked(false), 350);
   }
@@ -309,8 +338,6 @@ export default function SwipeableCard({
           onPointerUp={disabled ? undefined : endDrag}
           onPointerCancel={disabled ? undefined : endDrag}
         >
-          {/* Branch tint: aurora wash that builds as you drag right */}
-          <div ref={branchTintRef} className="cur-swipe-branch-tint" style={{ opacity: 0 }} aria-hidden />
           <div className="cur-swipe-content" style={{ pointerEvents: locked ? "none" : undefined }}>
             {children}
           </div>

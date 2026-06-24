@@ -389,6 +389,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // Drives the live recede of the other posts while a rightward drag is active.
   const [branchDragging, setBranchDragging] = useState(false);
   const branchDraggingRef = useRef(false);
+  // Briefly true after Back so the re-mounted posts animate back in from the left.
+  const [branchReturning, setBranchReturning] = useState(false);
+  // The source post during the return window — kept marked as source so it
+  // expands in place rather than sliding in with the others.
+  const [returningSourceUri, setReturningSourceUri] = useState<string | null>(null);
   // The feed list inner element — the recede progress var is written here.
   const feedInnerRef = useRef<HTMLDivElement | null>(null);
   // Posts streamed into the branch overlay. Lifted here (reported up from
@@ -435,6 +440,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // Restores the feed after a branch: clears the fold, brings the receded posts
   // back, and resets the shared pipeline/title state the branch view set.
   function resetBranch() {
+    const sourceUri = committedBranchUri; // capture before clearing
     branchCommittedRef.current = false;
     branchDraggingRef.current = false;
     setBranchDragging(false);
@@ -446,6 +452,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     setPipelineStage("idle");
     setActivePostCount(postCount);
     feedInnerRef.current?.style.removeProperty("--branch-progress");
+    // Reverse of the pin: posts slide back in from the left, source expands.
+    setReturningSourceUri(sourceUri);
+    setBranchReturning(true);
+    setTimeout(() => { setBranchReturning(false); setReturningSourceUri(null); }, 520);
   }
 
   function fetchSwipeRightTopics(post: Post) {
@@ -1833,8 +1843,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     })();
     return (
       <article className="cur-post-card">
-        {/* Collapsed until a right-drag folds the card (fold model). */}
-        <div className="cur-post-branch-flag" aria-hidden>↳ branched from this post</div>
         {post.is_reply && (
           <div className="cur-post-reply-banner">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1902,6 +1910,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           </div>
         </header>
 
+        {/* Everything below the header collapses as one unit when the card
+            folds, so the card keeps its own padding (no text on the border). */}
+        <div className="cur-post-foldable">
         <div className="cur-post-card-body">{renderPostText(post.text)}</div>
 
         {post.external_uri && (
@@ -2035,6 +2046,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         )}
 
         {renderEngageFooter(post, bskyUrl)}
+        </div>
         {branchZone(post.uri)}
       </article>
     );
@@ -2077,7 +2089,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         <div className="cur-feed-posts" ref={feedPaneRef} style={{ position: "relative" }}>
           <div
             ref={feedInnerRef}
-            className={`cur-feed-posts-inner${feedRefreshing ? " refreshing" : ""}${branchDragging ? " cur-branch-dragging" : ""}${committedBranchUri ? " cur-branching" : ""}`}
+            className={`cur-feed-posts-inner${feedRefreshing ? " refreshing" : ""}${branchDragging ? " cur-branch-dragging" : ""}${committedBranchUri ? " cur-branching" : ""}${branchReturning ? " cur-branch-returning" : ""}`}
           >
             {(() => {
               const thisFeed = feeds.find((f) => f.id === String(feedId));
@@ -2209,7 +2221,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 // The post being branched from is excluded from the recede; on
                 // commit it stays as a folded "branched from" card (pinned),
                 // with the branch view dropping in beneath it.
-                const sourceUri = committedBranchUri ?? pendingBranch?.post?.uri ?? null;
+                const sourceUri = committedBranchUri ?? pendingBranch?.post?.uri ?? returningSourceUri ?? null;
                 const isBranchSource = post.uri === sourceUri;
                 const isCommittedSource = committedBranchUri === post.uri;
                 const bskyUrl = (() => {
@@ -2266,6 +2278,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                     <div className="cur-branch-inline-host">
                       <MockBranchOverlay
                         inline
+                        excludeUri={committedBranchUri ?? undefined}
                         options={pendingBranch?.options ?? null}
                         branchFeedId={pendingBranch?.branchFeedId}
                         feedName={pendingBranch?.branchFeedName}

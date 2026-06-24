@@ -19,6 +19,7 @@ export default function MockBranchOverlay({
   onPostsLoaded,
   onBack,
   inline = false,
+  excludeUri,
 }: {
   options: BranchOption[] | null;
   branchFeedId?: number;
@@ -34,6 +35,9 @@ export default function MockBranchOverlay({
   // Inline mode renders the overlay in normal document flow (the fold model)
   // rather than inside a fixed panel that slides up from the bottom.
   inline?: boolean;
+  // The source post (already pinned/folded above) — excluded from the preview
+  // so it isn't shown twice.
+  excludeUri?: string;
 }) {
   const {
     setPipelineStage,
@@ -166,11 +170,13 @@ export default function MockBranchOverlay({
 
       {branchPosts && (
         <div className="cur-feed-posts-inner">
-          {branchPosts.map((post) => (
-            <div key={post.uri} className="cur-post-item">
-              {renderPost(post)}
-            </div>
-          ))}
+          {branchPosts
+            .filter((post) => post.uri !== excludeUri)
+            .map((post) => (
+              <div key={post.uri} className="cur-post-item">
+                {renderPost(post)}
+              </div>
+            ))}
         </div>
       )}
     </div>
