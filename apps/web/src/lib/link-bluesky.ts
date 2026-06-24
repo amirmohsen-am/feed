@@ -71,6 +71,17 @@ export async function linkBlueskyAccount(params: {
 
   if (existingByDid && existingByDid.id !== oauthUserId) {
     canonicalUserId = existingByDid.id;
+
+    // We only reach here when the DID already belongs to an established account
+    // (the canonical user), so its Home feed is authoritative and this browser
+    // session's anon user holds nothing but a throwaway auto-created Home. Drop
+    // that one before migrating the rest — otherwise moving it onto the
+    // canonical user violates feeds_user_home_unique (one is_home per user) and
+    // the whole OAuth link fails. (First-time connects take the else branch and
+    // keep their Home untouched.)
+    await query(`DELETE FROM feeds WHERE user_id = $1 AND is_home = true`, [
+      oauthUserId,
+    ]);
     await query(`UPDATE feeds SET user_id = $1 WHERE user_id = $2`, [
       canonicalUserId,
       oauthUserId,
