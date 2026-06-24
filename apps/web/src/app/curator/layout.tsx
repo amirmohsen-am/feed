@@ -52,6 +52,18 @@ const ANON_PROFILE: UserProfile = {
 export default function CuratorLayout({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile>(ANON_PROFILE);
   const [bskyOAuthReady, setBskyOAuthReady] = useState(false);
+  // Per-user "hide posts I've already seen" preference (users.seen_filter_enabled,
+  // default on). Server-persisted (unlike the localStorage display settings),
+  // hydrated from /api/user below and pushed back via PATCH on toggle.
+  const [hideSeen, setHideSeenState] = useState(true);
+  const setHideSeen = useCallback((next: boolean) => {
+    setHideSeenState(next);
+    authedFetch("/api/user", {
+      method: "PATCH",
+      body: JSON.stringify({ seen_filter_enabled: next }),
+      suppressErrorToast: true,
+    }).catch(() => { /* best-effort */ });
+  }, []);
   // Gate the app on session provisioning. A brand-new visitor's sid cookie has
   // no user row yet; rendering the shell would fire several /api/* calls in
   // parallel against a not-yet-created user. We block on the first /api/user
@@ -77,6 +89,9 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
             bskyAppPassword: row.bsky_app_password ? "••••" : "",
             onboardedAt: row.created_at || new Date().toISOString(),
           });
+          if (typeof row.seen_filter_enabled === "boolean") {
+            setHideSeenState(row.seen_filter_enabled);
+          }
           setBskyOAuthReady(!!data.oauthReady);
         }
       }
@@ -106,7 +121,7 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
 
   if (!ready) return <CuratorBoot />;
 
-  return <CuratorShell profile={profile} bskyOAuthReady={bskyOAuthReady} refreshProfile={fetchProfile}>{children}</CuratorShell>;
+  return <CuratorShell profile={profile} bskyOAuthReady={bskyOAuthReady} refreshProfile={fetchProfile} hideSeen={hideSeen} setHideSeen={setHideSeen}>{children}</CuratorShell>;
 }
 
 /** Loading boilerplate shown while the anonymous session/user is provisioned. */
@@ -125,11 +140,15 @@ function CuratorShell({
   profile,
   bskyOAuthReady,
   refreshProfile,
+  hideSeen,
+  setHideSeen,
   children,
 }: {
   profile: UserProfile;
   bskyOAuthReady: boolean;
   refreshProfile: () => Promise<void>;
+  hideSeen: boolean;
+  setHideSeen: (b: boolean) => void;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -393,6 +412,8 @@ function CuratorShell({
         setShowDebug,
         hideUnavailable,
         setHideUnavailable,
+        hideSeen,
+        setHideSeen,
         unavailableCount,
         setUnavailableCount,
         openPublish: () => setShowPublish(true),
@@ -862,6 +883,18 @@ function CuratorShell({
                   <Separator />
                   <div className="settings-section">
                     <div className="settings-label">Options</div>
+                    <label className="settings-toggle-row">
+                      <span>
+                        Hide posts I&rsquo;ve seen
+                        <span className="settings-toggle-sub">skip posts already shown to you, so refreshing surfaces new ones</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        className="settings-switch"
+                        checked={hideSeen}
+                        onChange={(e) => setHideSeen(e.target.checked)}
+                      />
+                    </label>
                     <label className="settings-toggle-row">
                       <span>
                         Debug scores

@@ -26,8 +26,9 @@ interface Interaction {
  * empty 200 (OutputSchema is empty) is the lexicon's success response; we
  * fail-soft on everything so a feedback batch never errors the client.
  *
- * Only acted on when the feed has seen filtering enabled — a feed accumulates
- * seen state only while the owner has opted in, matching getFeedSkeletonPage.
+ * Only acted on when the requesting VIEWER has seen filtering enabled
+ * (users.seen_filter_enabled, default on) — a viewer accumulates seen state
+ * only while opted in, matching getFeedSkeleton.
  */
 export async function POST(req: NextRequest) {
   let body: { feed?: string; interactions?: Interaction[] };
@@ -46,16 +47,17 @@ export async function POST(req: NextRequest) {
   const feed = parsed
     ? await getPublishedFeed(parsed.rkey, parsed.publisherDid)
     : null;
-  if (!feed || !feed.seen_filter_enabled) return NextResponse.json({});
+  if (!feed) return NextResponse.json({});
 
-  // Identify the viewer from the service-auth JWT.
+  // Identify the viewer from the service-auth JWT, and only record if they have
+  // seen filtering on (per-user preference).
   const did = await verifyFeedRequesterDid(
     req.headers.get("authorization"),
     SEND_INTERACTIONS_NSID
   );
   if (!did) return NextResponse.json({});
   const user = await getUserByBlueskyDid(did);
-  if (!user) return NextResponse.json({});
+  if (!user?.seen_filter_enabled) return NextResponse.json({});
 
   // Dedup the seen at-uris in this batch.
   const seenUris = Array.from(

@@ -22,15 +22,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ feed: [] });
   }
 
-  // Per-subscriber seen filtering only when the feed opted in. Identifying the
-  // requester (verify the service-auth JWT → DID → Ripple user) is skipped
-  // otherwise, so anonymous/third-party clients keep the existing fast path.
+  // Per-subscriber seen filtering when the requesting VIEWER opted in
+  // (users.seen_filter_enabled, default on). We identify the requester only
+  // when an auth header is present — anonymous/third-party clients send none
+  // and keep the fast path. The DID resolver caches signing keys, so the JWT
+  // verify is cheap on repeat requests.
   let viewer: { userId: string } | undefined;
-  if (feed.seen_filter_enabled) {
+  if (req.headers.get("authorization")) {
     const did = await verifyFeedRequesterDid(req.headers.get("authorization"));
     if (did) {
       const user = await getUserByBlueskyDid(did);
-      if (user) viewer = { userId: user.id };
+      if (user?.seen_filter_enabled) viewer = { userId: user.id };
     }
   }
 

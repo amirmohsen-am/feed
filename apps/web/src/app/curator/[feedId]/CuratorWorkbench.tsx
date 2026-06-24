@@ -264,6 +264,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     viewMode,
     showDebug,
     hideUnavailable,
+    hideSeen,
     setUnavailableCount,
     openPublish,
     registerOpenTune,
@@ -893,12 +894,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const [engagementWeight, setEngagementWeight] = useState<number>(DEFAULT_ENGAGEMENT_WEIGHT);
   const [recencyWeight, setRecencyWeight] = useState<number>(DEFAULT_RECENCY_WEIGHT);
   const [recencyHalflifeH, setRecencyHalflifeH] = useState<number>(DEFAULT_RECENCY_HALFLIFE_H);
-  const [seenFilterEnabled, setSeenFilterEnabled] = useState<boolean>(false);
-
   // Client-side seen tracking: records real on-screen impressions (like the
   // Bluesky app) so the next load filters out posts the curator actually saw.
-  // Active only while the feed has seen filtering on.
-  const seenTracker = useSeenTracker(feedId, seenFilterEnabled);
+  // Gated on the per-user "hide seen" preference (Display settings).
+  const seenTracker = useSeenTracker(feedId, hideSeen);
 
   // Branch flow. sourcePost is set when this feed was branched off a post (it
   // renders an embedded card atop the chat). The auto-fired branch-init turn
@@ -960,7 +959,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     engagement_weight?: number;
     recency_weight?: number;
     recency_halflife_h?: number;
-    seen_filter_enabled?: boolean;
   }) {
     if (patch.mechanical_filters) setMechanicalFilters(patch.mechanical_filters);
     if (patch.subqueries) setSubqueries(patch.subqueries);
@@ -970,7 +968,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     if (patch.engagement_weight !== undefined) setEngagementWeight(patch.engagement_weight);
     if (patch.recency_weight !== undefined) setRecencyWeight(patch.recency_weight);
     if (patch.recency_halflife_h !== undefined) setRecencyHalflifeH(patch.recency_halflife_h);
-    if (patch.seen_filter_enabled !== undefined) setSeenFilterEnabled(patch.seen_filter_enabled);
     feedSignatureRef.current = feedSignature({
       subqueries: patch.subqueries ?? subqueries,
       mechanical_filters: patch.mechanical_filters ?? mechanicalFilters ?? undefined,
@@ -998,7 +995,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const saveEngagementWeight = (n: number) => patchFeed({ engagement_weight: n });
   const saveRecencyWeight = (n: number) => patchFeed({ recency_weight: n });
   const saveRecencyHalflife = (n: number) => patchFeed({ recency_halflife_h: n });
-  const saveSeenFilterEnabled = (v: boolean) => patchFeed({ seen_filter_enabled: v });
 
 
   const loadChat = useCallback(async (id: number): Promise<{
@@ -1027,7 +1023,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         if (typeof f.engagement_weight === "number") setEngagementWeight(f.engagement_weight);
         if (typeof f.recency_weight === "number") setRecencyWeight(f.recency_weight);
         if (typeof f.recency_halflife_h === "number") setRecencyHalflifeH(f.recency_halflife_h);
-        if (typeof f.seen_filter_enabled === "boolean") setSeenFilterEnabled(f.seen_filter_enabled);
         feedSignatureRef.current = feedSignature(f);
       }
       setMessages(msgs);
@@ -2603,7 +2598,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           engagementWeight={engagementWeight}
           recencyWeight={recencyWeight}
           recencyHalflifeH={recencyHalflifeH}
-          seenFilterEnabled={seenFilterEnabled}
           onMechanicalChange={saveMechanicalFilters}
           onSubqueriesChange={saveSubqueries}
           onCandidateBudgetChange={saveCandidateBudget}
@@ -2612,7 +2606,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           onEngagementWeightChange={saveEngagementWeight}
           onRecencyWeightChange={saveRecencyWeight}
           onRecencyHalflifeChange={saveRecencyHalflife}
-          onSeenFilterChange={saveSeenFilterEnabled}
           postCount={postCount}
           rightPane={rightPane}
           onRightPaneChange={setRightPane}

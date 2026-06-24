@@ -37,6 +37,11 @@ export interface CuratorContextValue {
   setShowDebug: (b: boolean) => void;
   hideUnavailable: boolean;
   setHideUnavailable: (b: boolean) => void;
+  // Per-user preference (users.seen_filter_enabled), persisted server-side.
+  // Drives whether the feed hides posts you've already seen + whether the
+  // workbench records on-screen impressions. Default on.
+  hideSeen: boolean;
+  setHideSeen: (b: boolean) => void;
   // Count of posts the Bluesky availability probe flagged as unavailable,
   // mirrored up from the workbench so the settings dialog can show it.
   unavailableCount: number;
