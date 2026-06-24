@@ -23,12 +23,16 @@ export default function MockBranchOverlay({
   feedName,
   panelRef,
   onBack,
+  inline = false,
 }: {
   options: BranchOption[] | null;
   branchFeedId?: number;
   feedName?: string;
-  panelRef: RefObject<HTMLDivElement | null>;
+  panelRef?: RefObject<HTMLDivElement | null>;
   onBack: () => void;
+  // Inline mode renders the overlay in normal document flow (the fold model)
+  // rather than inside a fixed panel that slides up from the bottom.
+  inline?: boolean;
 }) {
   const {
     setPipelineStage,
@@ -116,7 +120,13 @@ export default function MockBranchOverlay({
   }, [branchFeedId]);
 
   function handleBack() {
-    const el = panelRef.current;
+    // Inline (fold model): no fixed panel to slide away — the parent restores
+    // the feed and animates the receded posts back in.
+    if (inline) {
+      onBack();
+      return;
+    }
+    const el = panelRef?.current;
     if (el) {
       // Panel is position:fixed — translateY(100vh) always exits below the viewport.
       el.style.transition = `transform ${BRANCH_OVERLAY_CLOSE_MS}ms cubic-bezier(0.4,0,1,1)`;
@@ -129,7 +139,7 @@ export default function MockBranchOverlay({
   }
 
   return (
-    <div className="cur-mock-branch-overlay">
+    <div className={`cur-mock-branch-overlay${inline ? " cur-mock-branch-inline" : ""}`}>
       <button type="button" className="cur-branch-back" onClick={handleBack} aria-label="Back to feed">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <polyline points="15 18 9 12 15 6" />

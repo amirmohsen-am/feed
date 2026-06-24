@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import SwipeableCard, { type SwipeVerdict } from "@/components/SwipeableCard";
@@ -154,12 +154,6 @@ function renderPostText(text: string): React.ReactNode[] {
 const RIGHT_W_KEY = "curator:rightWidth";
 const RIGHT_MIN = 280;
 const RIGHT_MAX = 960;
-
-// Branch overlay timing — keep in sync with the CSS animation durations in
-// .cur-mock-branch-in (BRANCH_OVERLAY_OPEN_MS) and .cur-mock-branch-out (in
-// MockBranchOverlay.tsx BRANCH_OVERLAY_CLOSE_MS).
-const BRANCH_CARD_EXIT_MS = 140;   // time for the card to clear the frame before overlay appears
-const BRANCH_OVERLAY_OPEN_MS = 380; // matches .cur-mock-branch-in animation duration
 
 function parseMessage(content: string) {
   // Server stores the agent's question text + numbered option lines (rendered
@@ -376,56 +370,45 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     branchFeedId?: number;
     branchFeedName?: string;
   } | null>(null);
-  // Ref to the rising panel so onRightProgress can drive it imperatively.
-  const risingPanelRef = useRef<HTMLDivElement>(null);
-  // Feed pane rect captured at first rightward drag; used to position the
-  // fixed panel over exactly the feed column.
-  const branchPanelRectRef = useRef<{ left: number; right: number; top: number } | null>(null);
+  // Fold model: when a right-swipe commits, this post folds into a compact
+  // "branched from" header and the branch view renders inline beneath it.
+  const [committedBranchUri, setCommittedBranchUri] = useState<string | null>(null);
+  // True once the receded "other" posts have finished sliding out left, so we
+  // can drop them from the list and reclaim their vertical space.
+  const [othersCleared, setOthersCleared] = useState(false);
+  // Drives the live recede of the other posts while a rightward drag is active.
+  const [branchDragging, setBranchDragging] = useState(false);
+  const branchDraggingRef = useRef(false);
+  // The feed list inner element — the recede progress var is written here.
+  const feedInnerRef = useRef<HTMLDivElement | null>(null);
   // Set to true when a right swipe commits so the drag callback stops
-  // fighting the CSS spring-to-open animation.
+  // fighting the commit animation.
   const branchCommittedRef = useRef(false);
-  // Incremented per post URI when returning from the branch overlay — forces
-  // SwipeableCard to re-mount with fresh x=0 state (invisible, overlay covers it).
-  const [branchReturnKeys, setBranchReturnKeys] = useState<Map<string, number>>(() => new Map());
   // In-session lookup so swipe messages can render the reacted post as a card.
   const [swipedPostCache, setSwipedPostCache] = useState<
     Record<string, { displayName: string; handle: string | null; text: string }>
   >({});
 
-  function authorLabel(post: Post): string {
-    return (
-      post.author_display_name?.trim() ||
-      (post.author_handle ? `@${post.author_handle}` : "someone")
-    );
-  }
-
   function handleCardSwipe(post: Post, verdict: SwipeVerdict) {
     if (verdict === "reject") return;
-    // Spring the panel open.
+    // Commit the fold: this post becomes a compact "branched from" header with
+    // the branch view inline beneath it; the other posts recede + slide out left.
     branchCommittedRef.current = true;
-    const el = risingPanelRef.current;
-    if (el) {
-      // Ensure the rect is applied (drag may not have started if topic fetch was slow).
-      if (!branchPanelRectRef.current && feedPaneRef.current) {
-        const r = feedPaneRef.current.getBoundingClientRect();
-        branchPanelRectRef.current = { left: r.left, right: window.innerWidth - r.right, top: 0 };
-        el.style.left = `${r.left}px`;
-        el.style.right = `${window.innerWidth - r.right}px`;
-        el.style.top = "var(--cur-header-h)";
-        el.style.bottom = "0";
-      }
-      el.style.display = "block";
-      el.style.transition = "transform 0.45s cubic-bezier(0.34, 1.4, 0.64, 1)";
-      el.style.transform = "translateY(0)";
-      setTimeout(() => { if (el) el.style.transition = ""; }, 450);
-    }
+    branchDraggingRef.current = false;
+    setBranchDragging(false);
+    feedInnerRef.current?.style.removeProperty("--branch-progress");
+    setCommittedBranchUri(post.uri);
+    setOthersCleared(false);
+    // Drop the other posts once their exit-left transition has played, so no
+    // empty vertical space is left behind, and bring the folded source + branch
+    // view to the top. Keep in sync with .cur-branching in curator.css (the
+    // others' transform/opacity transition duration).
     setTimeout(() => {
-      setBranchReturnKeys((prev) => {
-        const next = new Map(prev);
-        next.set(post.uri, (prev.get(post.uri) ?? 0) + 1);
-        return next;
-      });
-    }, BRANCH_CARD_EXIT_MS + 60);
+      setOthersCleared(true);
+      // Desktop scrolls the pane; mobile scrolls the document.
+      document.querySelector(".cur-feed-posts")?.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }, 480);
     // If topics are ready, create the branch feed now; otherwise defer until they arrive.
     const options = swipeRightTopics.get(post.uri);
     if (Array.isArray(options) && options.length > 0) {
@@ -433,6 +416,21 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     } else {
       setBranchPendingUri(post.uri);
     }
+  }
+
+  // Restores the feed after a branch: clears the fold, brings the receded posts
+  // back, and resets the shared pipeline/title state the branch view set.
+  function resetBranch() {
+    branchCommittedRef.current = false;
+    branchDraggingRef.current = false;
+    setBranchDragging(false);
+    setCommittedBranchUri(null);
+    setOthersCleared(false);
+    setPendingBranch(null);
+    setBranchOverlayName(null);
+    setPipelineStage("idle");
+    setActivePostCount(postCount);
+    feedInnerRef.current?.style.removeProperty("--branch-progress");
   }
 
   function fetchSwipeRightTopics(post: Post) {
@@ -1140,32 +1138,29 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feedId]);
 
-  // Drives the rising panel position from the card's drag progress.
-  // Stable (no deps): reads only from refs so the motion event never captures a stale closure.
+  // Drives the live recede of the other posts from the card's drag progress.
+  // The dragged card is excluded (CSS targets .cur-post-item-other only); the
+  // rest scale down + dim in proportion to t, then slide out left on commit.
+  // Stable (no deps): reads/writes only refs + the DOM, never a stale closure.
   const handleRightProgress = useCallback((t: number) => {
     if (branchCommittedRef.current) return;
-    const el = risingPanelRef.current;
+    const el = feedInnerRef.current;
     if (!el) return;
     if (t <= 0) {
-      el.style.display = "none";
-      branchPanelRectRef.current = null;
+      el.style.removeProperty("--branch-progress");
+      if (branchDraggingRef.current) {
+        // Drag released below the commit threshold — cancel the pending branch.
+        branchDraggingRef.current = false;
+        setBranchDragging(false);
+        setPendingBranch(null);
+      }
       return;
     }
-    // On first rightward motion, lock in the feed column's horizontal extent.
-    // Use var(--cur-header-h) for top — always below the topbar regardless of
-    // how far the document has scrolled (getBoundingClientRect().top goes
-    // negative on mobile when the document scrolls, which breaks the animation).
-    if (!branchPanelRectRef.current && feedPaneRef.current) {
-      const r = feedPaneRef.current.getBoundingClientRect();
-      branchPanelRectRef.current = { left: r.left, right: window.innerWidth - r.right, top: 0 };
-      el.style.left = `${r.left}px`;
-      el.style.right = `${window.innerWidth - r.right}px`;
-      el.style.top = "var(--cur-header-h)";
-      el.style.bottom = "0";
+    if (!branchDraggingRef.current) {
+      branchDraggingRef.current = true;
+      setBranchDragging(true);
     }
-    el.style.display = "block";
-    const eased = 1 - Math.pow(1 - t, 2);
-    el.style.transform = `translateY(${(1 - eased) * 100}vh)`;
+    el.style.setProperty("--branch-progress", String(t));
   }, []);
 
   // TODO: re-enable prefetch once rate limits allow.
@@ -1790,7 +1785,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
         {/* POSTS PANE (middle) */}
         <div className="cur-feed-posts" ref={feedPaneRef} style={{ position: "relative" }}>
-          <div className={`cur-feed-posts-inner${feedRefreshing ? " refreshing" : ""}`}>
+          <div
+            ref={feedInnerRef}
+            className={`cur-feed-posts-inner${feedRefreshing ? " refreshing" : ""}${branchDragging ? " cur-branch-dragging" : ""}${committedBranchUri ? " cur-branching" : ""}`}
+          >
             {(() => {
               const thisFeed = feeds.find((f) => f.id === String(feedId));
               if (thisFeed?.isHome) return null;
@@ -1912,7 +1910,18 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 );
               })
             ) : (
-              posts.filter(post => !swipedUris.has(post.uri)).map((post) => {
+              posts
+                .filter(post => !swipedUris.has(post.uri))
+                // Once the receded posts have slid out left, only the branched
+                // source (now the inline branch view) remains.
+                .filter(post => !othersCleared || post.uri === committedBranchUri)
+                .map((post) => {
+                // The post being branched from is excluded from the recede; on
+                // commit it stays as a folded "branched from" card (pinned),
+                // with the branch view dropping in beneath it.
+                const sourceUri = committedBranchUri ?? pendingBranch?.post?.uri ?? null;
+                const isBranchSource = post.uri === sourceUri;
+                const isCommittedSource = committedBranchUri === post.uri;
                 const bskyUrl = (() => {
                   const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
                   return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
@@ -1935,9 +1944,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                   return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
                 })();
                 return (
-                  <div key={post.uri} className="cur-post-item">
+                  <Fragment key={post.uri}>
+                  <div className={`cur-post-item${isBranchSource ? " cur-post-item-source" : " cur-post-item-other"}`}>
                   <SwipeableCard
-                    key={`${post.uri}-${branchReturnKeys.get(post.uri) ?? 0}`}
+                    key={post.uri}
+                    disabled={isCommittedSource}
                     onSwipe={(v) => handleCardSwipe(post, v)}
                     onFirstLeftDrag={() => fetchFollowupTopics(post)}
                     onFirstRightDrag={() => {
@@ -1959,6 +1970,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                     }
                   >
                   <article className="cur-post-card">
+                    <div className="cur-post-branch-flag" aria-hidden>↳ branched from this post</div>
                     {post.is_reply && (
                       <div className="cur-post-reply-banner">
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -2163,10 +2175,22 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                   </article>
                   </SwipeableCard>
                   </div>
+                  {isCommittedSource && (
+                    <div className="cur-branch-inline-host">
+                      <MockBranchOverlay
+                        inline
+                        options={pendingBranch?.options ?? null}
+                        branchFeedId={pendingBranch?.branchFeedId}
+                        feedName={pendingBranch?.branchFeedName}
+                        onBack={resetBranch}
+                      />
+                    </div>
+                  )}
+                  </Fragment>
                 );
               })
             )}
-            {posts.length > 0 && !postsLoading && (
+            {posts.length > 0 && !postsLoading && !committedBranchUri && (
               <div className="cur-feed-end-prompt">
                 <p className="cur-feed-end-title">You&rsquo;ve reached the end</p>
                 <p className="cur-feed-end-sub">Like what you see? Take your feed to Bluesky.</p>
@@ -2192,35 +2216,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                   </button>
                 </div>
               </div>
-            )}
-          </div>
-          {/* Rising branch panel — position:absolute inside cur-feed-posts so it
-              covers only the feed column, not the sidebar, topbar, or chat pane.
-              translateY(100vh) keeps it below the fold until onRightProgress
-              drives it up. ALWAYS mounted so risingPanelRef is valid from the
-              very first rightward drag pixel. */}
-          <div
-            ref={risingPanelRef}
-            className="cur-branch-rising-panel"
-            aria-hidden={!pendingBranch}
-          >
-            {pendingBranch && (
-              <MockBranchOverlay
-                options={pendingBranch.options}
-                branchFeedId={pendingBranch.branchFeedId}
-                feedName={pendingBranch.branchFeedName}
-                panelRef={risingPanelRef}
-                onBack={() => {
-                  branchCommittedRef.current = false;
-                  branchPanelRectRef.current = null;
-                  const el = risingPanelRef.current;
-                  if (el) { el.style.left = ""; el.style.right = ""; el.style.top = ""; el.style.bottom = ""; }
-                  setPendingBranch(null);
-                  setBranchOverlayName(null);
-                  setPipelineStage("idle");
-                  setActivePostCount(postCount);
-                }}
-              />
             )}
           </div>
         </div>

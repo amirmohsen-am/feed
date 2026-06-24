@@ -137,6 +137,34 @@
   border-color: var(--hair);
   box-shadow: 0 1px 0 rgba(13,11,30,0.04);
 }
+
+/* ── Lineage tree (Variant A) ──────────────────────────────
+   Home is the trunk; topics branch off it. The nesting carries the
+   relationship — no per-row jargon. Each level of children sits inside a
+   .cur-tree-children container whose left border draws the continuous branch
+   line; each row gets a short horizontal twig connecting it to that line. */
+.cur-tree-root{
+  /* Home as the trunk: no longer a separated "chrome" row, just the root. */
+  margin-bottom: 4px;
+  border-radius: 8px;
+  border-bottom: none;
+  padding-bottom: 11px;
+}
+.cur-tree-children{
+  margin-left: 16px;
+  padding-left: 10px;
+  border-left: 1.5px solid var(--hair-strong);
+}
+.cur-tree-node{ position: relative; }
+.cur-tree-twig{
+  position: absolute;
+  left: -10px;
+  top: 23px;
+  width: 10px;
+  height: 1.5px;
+  background: var(--hair-strong);
+  pointer-events: none;
+}
 .cur-feed-item.drafting .fi-name{
   font-style: normal;
   color: var(--ink-2);
@@ -1486,6 +1514,71 @@
   color: var(--ink);
   margin: 0;
   line-height: 1.5;
+}
+
+/* ── Fold model: swipe-to-branch recede → exit-left ──────────
+   On a rightward drag the OTHER posts recede (scale down + drift left + dim),
+   driven by --branch-progress (0→1) set imperatively on .cur-feed-posts-inner.
+   On commit they slide all the way out to the left; the dragged source folds
+   into a compact "branched from" header with the branch view inline beneath
+   it. The dragged card is .cur-post-item-source and is excluded from both. */
+.cur-post-item-other{
+  transition: transform 0.28s cubic-bezier(0.3, 0.8, 0.3, 1), opacity 0.28s ease;
+}
+.cur-branch-dragging .cur-post-item-other{
+  transform-origin: center top;
+  transform: translateX(calc(var(--branch-progress, 0) * -160px))
+             scale(calc(1 - var(--branch-progress, 0) * 0.12));
+  opacity: calc(1 - var(--branch-progress, 0) * 0.7);
+  transition: none; /* follow the finger 1:1 while dragging */
+}
+.cur-branching .cur-post-item-other{
+  transform: translateX(-150%) scale(0.85);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.42s ease;
+}
+@media (prefers-reduced-motion: reduce){
+  .cur-post-item-other,
+  .cur-branch-dragging .cur-post-item-other,
+  .cur-branching .cur-post-item-other{ transition: none; }
+}
+
+/* The inline branch view that drops in beneath the folded source card. It
+   enters from the right (the "recede → page to the right" metaphor). */
+.cur-branch-inline-host{
+  animation: cur-branch-inline-in 0.42s cubic-bezier(0.3, 0.8, 0.3, 1) both;
+  max-width: calc(600px * 0.85);
+  width: 100%;
+  margin: 0 auto;
+}
+@keyframes cur-branch-inline-in{
+  from{ opacity: 0; transform: translateX(46px); }
+  to{ opacity: 1; transform: translateX(0); }
+}
+
+/* "↳ branched from this post" flag inside the card — collapsed until the card
+   folds, then it eases open at the top of the compact card. */
+.cur-post-branch-flag{
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--aurora-deep);
+}
+
+/* Inline mode: render the branch overlay in normal flow, not a fixed panel. */
+.cur-mock-branch-inline{
+  position: static;
+  inset: auto;
+  background: transparent;
+}
+@media (prefers-reduced-motion: reduce){
+  .cur-branch-inline-host{ animation: none; }
 }
 
 /* Back button on branch feeds */

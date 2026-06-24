@@ -35,6 +35,48 @@
   );
 }
 
+/* "release to branch" affordance revealed on the LEFT as the card rides right,
+   sitting behind the card in the space it vacates. Goes solid past the commit
+   threshold (.ready). Opacity + translate driven imperatively from x. */
+.cur-swipe-branch-action {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  z-index: 0;
+  transform: translateY(-50%) translateX(-12px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.cur-swipe-branch-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1.5px solid var(--aurora-deep);
+  color: var(--aurora-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(136, 144, 216, 0.14);
+  transition: background 0.18s, color 0.18s, transform 0.18s;
+}
+.cur-swipe-branch-label {
+  font-family: var(--rf-mono, monospace);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--aurora-deep);
+  white-space: nowrap;
+  font-weight: 600;
+}
+.cur-swipe-branch-action.ready .cur-swipe-branch-icon {
+  background: var(--aurora-deep);
+  color: #fff;
+  transform: scale(1.1);
+}
+
 /* Swipe message rendered in the chat: a verdict tag above a branch-style card
    showing the reacted-to post. */
 .cur-swipe-card {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import "./curator.css";
@@ -372,6 +372,147 @@ function CuratorShell({
   const activeFeed = feeds.find((f) => f.id === activeFeedId);
   const activeHasCriteria = activeFeed ? feedIsComplete(activeFeed) : false;
 
+  // ── Lineage tree (Variant A) ──────────────────────────────
+  // Home is the trunk; topic feeds branch off it. A normally-created topic has
+  // no parent and so hangs directly off Home; a branched feed nests under the
+  // feed it was branched from. The nesting carries the meaning — no per-row
+  // jargon. Depth is unbounded but visually capped by the sidebar width.
+  const homeFeed = feeds.find((f) => f.isHome);
+  const homeId = homeFeed?.id;
+  const topicFeeds = feeds.filter((f) => !f.isHome);
+  // Direct children of `parentId`. A null/undefined parent (or a parent that
+  // points at the deleted-and-nulled state) is treated as a child of Home.
+  const childrenOf = (parentId: string | undefined): SavedFeed[] =>
+    topicFeeds.filter((f) =>
+      f.parentFeedId === parentId ||
+      (parentId === homeId && (f.parentFeedId == null || f.parentFeedId === homeId))
+    );
+
+  // Renders a single topic-feed row (rename/delete/edit affordances intact).
+  function renderFeedRow(feed: SavedFeed) {
+    const isActive = activeFeedId === feed.id;
+    const isComplete = feedIsComplete(feed);
+    const isRenaming = renamingId === feed.id;
+    const isConfirming = confirmDeleteId === feed.id;
+    return (
+      <div className={`cur-feed-row${isConfirming ? " confirming" : ""}`}>
+        {editingTopics && (
+          <button
+            type="button"
+            className="cur-feed-confirm-del"
+            tabIndex={isConfirming ? 0 : -1}
+            aria-hidden={!isConfirming}
+            onClick={() => void deleteFeed(feed.id)}
+          >
+            Delete
+          </button>
+        )}
+        <Link
+          href={`/curator/${feed.id}`}
+          prefetch={false}
+          className={`cur-feed-item${isActive ? " active" : ""}${!isComplete ? " drafting" : ""}${editingTopics ? " is-editing" : ""}`}
+          onClick={(e) => {
+            if (!editingTopics) { handleFeedClick(); return; }
+            e.preventDefault();
+            if (isConfirming) setConfirmDeleteId(null);
+          }}
+        >
+          {editingTopics && (
+            <button
+              type="button"
+              className="cur-feed-edit-del"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setRenamingId(null);
+                setConfirmDeleteId(isConfirming ? null : feed.id);
+              }}
+              aria-label={`Delete ${feed.name}`}
+              title="Delete feed"
+            >
+              <span aria-hidden>−</span>
+            </button>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {isRenaming ? (
+              <input
+                autoFocus
+                type="text"
+                className="cur-feed-name-input cur-feed-name-input-sidebar fi-name"
+                value={renameDraft}
+                maxLength={80}
+                aria-label="Feed name"
+                onChange={(e) => setRenameDraft(e.target.value)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void commitRename(feed);
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    setRenamingId(null);
+                  }
+                }}
+                onBlur={() => void commitRename(feed)}
+              />
+            ) : (
+              <div className="fi-name">{feed.name}</div>
+            )}
+            <div className="fi-sub">
+              {!isComplete
+                ? "drafting · resume chat"
+                : isActive
+                ? `${activePostCount} posts · viewing`
+                : `created ${new Date(feed.createdAt).toLocaleDateString()}`}
+            </div>
+          </div>
+          {editingTopics && !isRenaming && !isConfirming && (
+            <button
+              type="button"
+              className="cur-feed-edit-rename"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                startRename(feed);
+              }}
+              aria-label={`Rename ${feed.name}`}
+              title="Rename feed"
+            >
+              <span aria-hidden>✎</span>
+            </button>
+          )}
+        </Link>
+      </div>
+    );
+  }
+
+  // Recursively renders the children of `parentId` as an indented branch.
+  // `seen` guards against a cyclic parent chain so we never loop forever.
+  function renderBranch(parentId: string | undefined, seen: Set<string>) {
+    const kids = childrenOf(parentId);
+    if (kids.length === 0) return null;
+    return (
+      <div className="cur-tree-children">
+        {kids.map((kid) => {
+          if (seen.has(kid.id)) return null;
+          const nextSeen = new Set(seen).add(kid.id);
+          return (
+            <Fragment key={kid.id}>
+              <div className="cur-tree-node">
+                <span className="cur-tree-twig" aria-hidden />
+                {renderFeedRow(kid)}
+              </div>
+              {renderBranch(kid.id, nextSeen)}
+            </Fragment>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <CuratorProvider
       value={{
@@ -431,27 +572,9 @@ function CuratorShell({
             <Link href="/" className="cur-wordmark">amadi</Link>
           </div>
 
-          {(() => {
-            const homeFeed = feeds.find((f) => f.isHome);
-            const isHomeActive = homeFeed && activeFeedId === homeFeed.id;
-            return homeFeed ? (
-              <Link
-                href={`/curator/${homeFeed.id}`}
-                prefetch={false}
-                className={`cur-feed-item cur-feed-item-home${isHomeActive ? " active" : ""}`}
-                onClick={handleFeedClick}
-              >
-                <span className="cur-feed-home-icon" aria-hidden>⌂</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="fi-name">Home</div>
-                </div>
-              </Link>
-            ) : null;
-          })()}
-
           <div className="cur-sidebar-label">
-            <span>Your Topics · {feeds.filter((f) => !f.isHome).length.toString().padStart(2, "0")}</span>
-            {feeds.filter((f) => !f.isHome).length > 0 && (
+            <span>Your feeds</span>
+            {topicFeeds.length > 0 && (
               <button
                 type="button"
                 className={`cur-topics-edit${editingTopics ? " is-editing" : ""}`}
@@ -466,123 +589,38 @@ function CuratorShell({
             )}
           </div>
 
-          <div className="cur-feed-list">
-            {feeds.filter((f) => !f.isHome).map((feed) => {
-              const isActive = activeFeedId === feed.id;
-              const isComplete = feedIsComplete(feed);
-              const isRenaming = renamingId === feed.id;
-              const isConfirming = confirmDeleteId === feed.id;
+          {/* Lineage tree (Variant A): Home is the trunk, topics branch off it. */}
+          <div className="cur-feed-list cur-tree">
+            {homeFeed && (() => {
+              const isHomeActive = activeFeedId === homeFeed.id;
               return (
-                <div
-                  key={feed.id}
-                  className={`cur-feed-row${isConfirming ? " confirming" : ""}`}
+                <Link
+                  href={`/curator/${homeFeed.id}`}
+                  prefetch={false}
+                  className={`cur-feed-item cur-feed-item-home cur-tree-root${isHomeActive ? " active" : ""}`}
+                  onClick={handleFeedClick}
                 >
-                  {editingTopics && (
-                    <button
-                      type="button"
-                      className="cur-feed-confirm-del"
-                      tabIndex={isConfirming ? 0 : -1}
-                      aria-hidden={!isConfirming}
-                      onClick={() => void deleteFeed(feed.id)}
-                    >
-                      Delete
-                    </button>
-                  )}
-                  <Link
-                    href={`/curator/${feed.id}`}
-                    prefetch={false}
-                    className={`cur-feed-item${isActive ? " active" : ""}${!isComplete ? " drafting" : ""}${editingTopics ? " is-editing" : ""}`}
-                    onClick={(e) => {
-                      if (!editingTopics) { handleFeedClick(); return; }
-                      // In edit mode the row edits, not navigates; a tap also
-                      // closes an open delete confirm.
-                      e.preventDefault();
-                      if (isConfirming) setConfirmDeleteId(null);
-                    }}
-                  >
-                    {editingTopics && (
-                      <button
-                        type="button"
-                        className="cur-feed-edit-del"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setRenamingId(null);
-                          setConfirmDeleteId(isConfirming ? null : feed.id);
-                        }}
-                        aria-label={`Delete ${feed.name}`}
-                        title="Delete feed"
-                      >
-                        <span aria-hidden>−</span>
-                      </button>
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      {isRenaming ? (
-                        <input
-                          autoFocus
-                          type="text"
-                          className="cur-feed-name-input cur-feed-name-input-sidebar fi-name"
-                          value={renameDraft}
-                          maxLength={80}
-                          aria-label="Feed name"
-                          onChange={(e) => setRenameDraft(e.target.value)}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              void commitRename(feed);
-                            } else if (e.key === "Escape") {
-                              e.preventDefault();
-                              setRenamingId(null);
-                            }
-                          }}
-                          onBlur={() => void commitRename(feed)}
-                        />
-                      ) : (
-                        <div className="fi-name">{feed.name}</div>
-                      )}
-                      <div className="fi-sub">
-                        {!isComplete
-                          ? "drafting · resume chat"
-                          : isActive
-                          ? `${activePostCount} posts · viewing`
-                          : `created ${new Date(feed.createdAt).toLocaleDateString()}`}
-                      </div>
-                    </div>
-                    {editingTopics && !isRenaming && !isConfirming && (
-                      <button
-                        type="button"
-                        className="cur-feed-edit-rename"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          startRename(feed);
-                        }}
-                        aria-label={`Rename ${feed.name}`}
-                        title="Rename feed"
-                      >
-                        <span aria-hidden>✎</span>
-                      </button>
-                    )}
-                  </Link>
-                </div>
+                  <span className="cur-feed-home-icon" aria-hidden>⌂</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="fi-name">Home</div>
+                  </div>
+                </Link>
               );
-            })}
+            })()}
 
-            {feeds.filter((f) => !f.isHome).length === 0 && (
+            {renderBranch(homeId, new Set<string>())}
+
+            {topicFeeds.length === 0 && (
               <div
                 style={{
-                  padding: "20px 12px",
+                  padding: "16px 12px",
                   fontFamily: "var(--rf-body)",
                   fontSize: 13,
                   color: "var(--sage)",
                   fontStyle: "normal",
                 }}
               >
-                No feeds yet — create your first one.
+                No topics yet — branch one off Home.
               </div>
             )}
           </div>
