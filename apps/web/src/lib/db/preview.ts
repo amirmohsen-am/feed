@@ -143,10 +143,12 @@ function computeFeedConfigHash(feed: DbFeed): string {
  *   - `viewerUserId` + `feed.seen_filter_enabled` → drop posts this viewer has
  *     already seen (count reported via `opts.onSeenFiltered`).
  *
- * This path does NOT record served posts as seen: the curator preview is a
- * tuning surface the owner refreshes repeatedly, and recording on every serve
- * would progressively empty their own preview. Impressions are recorded only on
- * the published read path (getFeedSkeletonPage).
+ * This path FILTERS by seen but does NOT record: recording is viewport-driven,
+ * matching how the Bluesky client marks posts seen. The curator preview reports
+ * impressions from the browser (IntersectionObserver → POST /api/seen → see
+ * src/app/curator/[feedId]/useSeenTracker.ts); the published feed reports them
+ * via app.bsky.feed.sendInteractions (#interactionSeen). Serve-time recording
+ * would mark every served post seen even if it never reached the screen.
  *
  * Seen filtering is deliberately NOT part of buildSnapshot: that function's
  * output is cached and shared with every published subscriber, so it must stay

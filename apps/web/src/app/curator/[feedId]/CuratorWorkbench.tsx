@@ -22,6 +22,7 @@ import FilterPanel from "@/components/FilterPanel";
 import SendButton from "@/components/SendButton";
 import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
 import { authedFetch } from "@/lib/authed-fetch";
+import { useSeenTracker } from "./useSeenTracker";
 import type { MechanicalFilters } from "@/lib/types";
 import {
   DEFAULT_CANDIDATE_BUDGET,
@@ -894,6 +895,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const [recencyHalflifeH, setRecencyHalflifeH] = useState<number>(DEFAULT_RECENCY_HALFLIFE_H);
   const [seenFilterEnabled, setSeenFilterEnabled] = useState<boolean>(false);
 
+  // Client-side seen tracking: records real on-screen impressions (like the
+  // Bluesky app) so the next load filters out posts the curator actually saw.
+  // Active only while the feed has seen filtering on.
+  const seenTracker = useSeenTracker(feedId, seenFilterEnabled);
+
   // Branch flow. sourcePost is set when this feed was branched off a post (it
   // renders an embedded card atop the chat). The auto-fired branch-init turn
   // (guarded by branchInitFiredRef) makes the agent write the rerank prompt +
@@ -1034,6 +1040,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   }, []);
 
   const loadPosts = useCallback(async (id: number, opts?: { force?: boolean }) => {
+    // Record impressions seen so far BEFORE reloading, so the server-side seen
+    // filter on this fetch excludes posts the curator already viewed (esp. on
+    // Refresh). Then start a fresh dedup generation for the incoming posts.
+    await seenTracker.flushNow();
+    seenTracker.reset();
     setPostsLoading(true);
     setPipelineStage("searching");
     setPipelineCandidates(undefined);
@@ -1150,7 +1161,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       setPostsLoading(false);
       setFeedRefreshing(false);
     }
-  }, [setActivePostCount]);
+  }, [setActivePostCount, seenTracker]);
 
   // On mount (i.e. on feed switch via URL change), hydrate chat + posts.
   // Deferred a tick so the fetch kickoff (which flips loading flags) runs
@@ -1918,7 +1929,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                   return null;
                 }
                 return (
-                  <div key={post.uri} className="cur-post-item cur-post-item-embed">
+                  <div
+                    key={post.uri}
+                    ref={seenTracker.register(post.uri)}
+                    className="cur-post-item cur-post-item-embed"
+                  >
                   <div
                     className="cur-post-embed-wrap"
                     data-bsky-uri={post.uri}
@@ -2006,7 +2021,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                   return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
                 })();
                 return (
-                  <div key={post.uri} className="cur-post-item">
+                  <div
+                    key={post.uri}
+                    ref={seenTracker.register(post.uri)}
+                    className="cur-post-item"
+                  >
                   <SwipeableCard
                     key={`${post.uri}-${branchReturnKeys.get(post.uri) ?? 0}`}
                     onSwipe={(v) => handleCardSwipe(post, v)}
