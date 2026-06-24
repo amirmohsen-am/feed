@@ -71,10 +71,22 @@ export async function linkBlueskyAccount(params: {
 
   if (existingByDid && existingByDid.id !== oauthUserId) {
     canonicalUserId = existingByDid.id;
-    await query(`UPDATE feeds SET user_id = $1 WHERE user_id = $2`, [
-      canonicalUserId,
-      oauthUserId,
-    ]);
+    // Only adopt this visit's feeds when the returning account has none of its
+    // own. If it already has real feeds, we must not dump the anonymous
+    // session's feeds into it — just attach the session and leave those feeds
+    // orphaned on the throwaway anonymous user. The home feed is auto-created
+    // for every user, so it doesn't count as "has feeds" and is never moved
+    // (moving it would also violate feeds_user_home_unique).
+    const canonicalHasFeeds = await query(
+      `SELECT 1 FROM feeds WHERE user_id = $1 AND is_home = false LIMIT 1`,
+      [canonicalUserId]
+    );
+    if (canonicalHasFeeds.rowCount === 0) {
+      await query(
+        `UPDATE feeds SET user_id = $1 WHERE user_id = $2 AND is_home = false`,
+        [canonicalUserId, oauthUserId]
+      );
+    }
     if (handle) {
       await query(
         `UPDATE users SET bluesky_handle = $1, updated_at = now() WHERE id = $2`,
