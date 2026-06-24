@@ -19,22 +19,6 @@
   z-index: 1;
 }
 
-/* Aurora wash that builds up inside the card as you drag right, signalling
-   "this opens a new branch." Opacity driven imperatively from x motion value. */
-.cur-swipe-branch-tint {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  border-radius: inherit;
-  background: radial-gradient(
-    ellipse 80% 100% at 110% 50%,
-    rgba(85, 88, 184, 0.22) 0%,
-    rgba(85, 88, 184, 0.06) 55%,
-    transparent 100%
-  );
-}
-
 /* "release to branch" affordance revealed on the LEFT as the card rides right,
    sitting behind the card in the space it vacates. Goes solid past the commit
    threshold (.ready). Opacity + translate driven imperatively from x. */

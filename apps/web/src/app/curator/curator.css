@@ -1425,24 +1425,6 @@
   animation: cur-back-page-in 0.3s cubic-bezier(0,0,0.2,1) both;
 }
 
-/* Rising branch panel — fixed so its position is always relative to the
-   viewport, never to the scroll container. Sitting outside cur-feed-posts
-   means the panel is unaffected by that container's scroll height or any
-   transform applied during pull-to-refresh. translateY(100vh) keeps it one
-   screen-height below the visible area at all scroll positions. */
-.cur-branch-rising-panel{
-  /* position:fixed; exact coordinates set by JS from the feed pane's
-     getBoundingClientRect() so the panel covers only the feed column.
-     display:none by default; JS sets display:block only during an active swipe. */
-  position: fixed;
-  /* left/right/top/bottom set imperatively — no defaults needed */
-  z-index: 50;
-  will-change: transform;
-  background: var(--paper);
-  overflow-y: auto;
-  display: none;
-}
-
 /* Inner overlay content — fills the fixed panel. */
 .cur-mock-branch-overlay{
   position: absolute;
@@ -1554,22 +1536,6 @@
 @keyframes cur-branch-inline-in{
   from{ opacity: 0; transform: translateX(46px); }
   to{ opacity: 1; transform: translateX(0); }
-}
-
-/* "↳ branched from this post" flag inside the card — display:none by default so
-   it adds no flex gap to a normal card; the fold sets display:block and eases it
-   open at the top of the compact card. */
-.cur-post-branch-flag{
-  display: none;
-  max-height: 0;
-  opacity: 0;
-  overflow: hidden;
-  font-family: var(--rf-mono);
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  font-weight: 600;
-  color: var(--aurora-deep);
 }
 
 /* Inline mode: render the branch overlay in normal flow, not a fixed panel. */

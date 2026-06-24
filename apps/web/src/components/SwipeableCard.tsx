@@ -70,7 +70,6 @@ export default function SwipeableCard({
   const foldMeasured = useRef(false);
   const foldableElRef = useRef<HTMLElement | null>(null);
   const avatarElRef = useRef<HTMLElement | null>(null);
-  const flagElRef = useRef<HTMLElement | null>(null);
   const naturalFoldableH = useRef(0);
 
   const measureFold = useCallback(() => {
@@ -80,7 +79,6 @@ export default function SwipeableCard({
     if (!foldable) return;
     foldableElRef.current = foldable;
     avatarElRef.current = wrap.querySelector<HTMLElement>(".cur-post-avatar");
-    flagElRef.current = wrap.querySelector<HTMLElement>(".cur-post-branch-flag");
     const prevMax = foldable.style.maxHeight;
     foldable.style.maxHeight = "none";
     naturalFoldableH.current = foldable.offsetHeight;
@@ -92,19 +90,12 @@ export default function SwipeableCard({
     const foldable = foldableElRef.current;
     if (!foldable) return;
     const avatar = avatarElRef.current;
-    const flag = flagElRef.current;
     const av = cl01((t - 0.15) / 0.7);
-    const flagP = cl01((t - 0.5) / 0.5);
     foldable.style.overflow = "hidden";
     foldable.style.maxHeight = `${lerp(naturalFoldableH.current, FOLD_LINE, t)}px`;
     if (avatar) {
       avatar.style.width = avatar.style.height = `${lerp(40, 30, av)}px`;
       avatar.style.fontSize = `${lerp(16, 12, av)}px`;
-    }
-    if (flag) {
-      flag.style.display = "block";
-      flag.style.maxHeight = `${lerp(0, 20, flagP)}px`;
-      flag.style.opacity = String(flagP);
     }
   }, []);
 
@@ -112,7 +103,7 @@ export default function SwipeableCard({
     const trans = on
       ? "max-height 0.44s cubic-bezier(0.34,0,0.2,1), width 0.32s, height 0.32s, font-size 0.32s, opacity 0.32s"
       : "none";
-    [foldableElRef.current, avatarElRef.current, flagElRef.current].forEach((el) => {
+    [foldableElRef.current, avatarElRef.current].forEach((el) => {
       if (el) el.style.transition = trans;
     });
   }, []);
@@ -123,7 +114,6 @@ export default function SwipeableCard({
     setFoldTransition(true);
     const foldable = foldableElRef.current;
     const avatar = avatarElRef.current;
-    const flag = flagElRef.current;
     if (foldable && naturalFoldableH.current) {
       foldable.style.maxHeight = `${naturalFoldableH.current}px`;
       window.setTimeout(() => {
@@ -133,10 +123,6 @@ export default function SwipeableCard({
       foldable.style.maxHeight = ""; foldable.style.overflow = "";
     }
     if (avatar) { avatar.style.width = avatar.style.height = ""; avatar.style.fontSize = ""; }
-    if (flag) {
-      flag.style.maxHeight = "0"; flag.style.opacity = "0";
-      window.setTimeout(() => { if (flag) flag.style.display = ""; }, 460);
-    }
     const action = branchActionRef.current;
     if (action) { action.style.opacity = "0"; action.classList.remove("ready"); }
   }, [setFoldTransition]);
@@ -145,14 +131,8 @@ export default function SwipeableCard({
     setFoldTransition(animated);
     const foldable = foldableElRef.current;
     const avatar = avatarElRef.current;
-    const flag = flagElRef.current;
     if (foldable) { foldable.style.maxHeight = ""; foldable.style.overflow = ""; }
     if (avatar) { avatar.style.width = avatar.style.height = ""; avatar.style.fontSize = ""; }
-    if (flag) {
-      flag.style.maxHeight = "0"; flag.style.opacity = "0";
-      if (animated) window.setTimeout(() => { if (flag) flag.style.display = ""; }, 460);
-      else flag.style.display = "";
-    }
     const action = branchActionRef.current;
     if (action) { action.style.opacity = "0"; action.classList.remove("ready"); }
   }, [setFoldTransition]);

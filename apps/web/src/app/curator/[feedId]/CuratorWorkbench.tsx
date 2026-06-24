@@ -2224,27 +2224,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 const sourceUri = committedBranchUri ?? pendingBranch?.post?.uri ?? returningSourceUri ?? null;
                 const isBranchSource = post.uri === sourceUri;
                 const isCommittedSource = committedBranchUri === post.uri;
-                const bskyUrl = (() => {
-                  const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
-                  return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
-                })();
-                const profileUrl = post.author_handle
-                  ? `https://bsky.app/profile/${post.author_handle}`
-                  : `https://bsky.app/profile/${post.author_did}`;
-                const avatar = avatarUrl(post.author_did, post.author_avatar_cid);
-                const displayName =
-                  post.author_display_name?.trim() ||
-                  post.author_handle ||
-                  post.author_did.slice(0, 16) + "…";
-                const handleLabel = post.author_handle
-                  ? `@${post.author_handle}`
-                  : post.author_did.slice(0, 20) + "…";
-                const extHost = externalHost(post.external_uri);
-                const replyParentUrl = (() => {
-                  if (!post.reply_parent_uri) return null;
-                  const m = post.reply_parent_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
-                  return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
-                })();
                 return (
                   <Fragment key={post.uri}>
                   <div className={`cur-post-item${isBranchSource ? " cur-post-item-source" : " cur-post-item-other"}`}>
