@@ -324,6 +324,18 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const ptrSpinnerRef = useRef<HTMLDivElement | null>(null);
   const ptrRefreshingRef = useRef(false);
   const [ptrRefreshing, setPtrRefreshing] = useState(false);
+  // Track the mobile breakpoint reactively so pull-to-refresh wiring attaches
+  // when the viewport crosses into mobile width — including when Chrome
+  // DevTools device mode resizes after mount (a one-shot matchMedia check at
+  // mount would miss it and never wire up the gesture).
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobileViewport(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   // Register the openTune callback so the top-bar tune icon can switch to the
   // tune pane from outside the workbench (especially on mobile).
@@ -1232,7 +1244,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     const pane = feedPaneRef.current;
     const spin = ptrSpinnerRef.current;
     if (!pane || !spin) return;
-    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    if (!isMobileViewport) return;
 
     const THRESHOLD = 58; // post-resistance px needed to trigger
     const MAX = 110;
@@ -1327,7 +1339,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       pane.style.transform = "";
       pane.style.transition = "";
     };
-  }, [feedId, loadPosts]);
+  }, [feedId, loadPosts, isMobileViewport]);
 
   // When the forced reload finishes, spring the pane + spinner back.
   useEffect(() => {
@@ -1855,7 +1867,25 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
             {branchHeaderOptions && (
               <BranchTopicsHeader options={branchHeaderOptions} />
             )}
-            <FeedPipelineLoader />
+            <div className="cur-feed-pl-row">
+              <FeedPipelineLoader />
+              {posts.length > 0 && (
+                <button
+                  type="button"
+                  className={`cur-feed-refresh${postsLoading ? " busy" : ""}`}
+                  onClick={() => loadPosts(feedId, { force: true })}
+                  disabled={postsLoading}
+                  title="Refresh this feed"
+                  aria-label="Refresh this feed"
+                >
+                  <svg className="cur-feed-refresh-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <polyline points="23 4 23 10 17 10" />
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                  </svg>
+                  <span>Refresh</span>
+                </button>
+              )}
+            </div>
             {posts.length === 0 ? (
               <div className="cur-empty">
                 {postsLoading ? (
