@@ -1,33 +1,33 @@
 "use client";
 
-import { useState, useEffect, type RefObject } from "react";
+import { useState, useEffect, type ReactNode, type RefObject } from "react";
 import BranchTopicsHeader from "@/components/BranchTopicsHeader";
 import FeedPipelineLoader from "@/components/FeedPipelineLoader";
 import type { BranchOption } from "@/lib/branch";
 import { authedFetch } from "@/lib/authed-fetch";
 import { useCurator } from "@/app/curator/curatorContext";
+import type { Post } from "@/app/curator/[feedId]/CuratorWorkbench";
 
 const BRANCH_OVERLAY_CLOSE_MS = 240; // keep in sync with .cur-mock-branch-out in curator.css
-
-interface Post {
-  uri: string;
-  author_handle: string | null;
-  author_display_name: string | null;
-  author_did: string;
-  text: string;
-}
 
 export default function MockBranchOverlay({
   options,
   branchFeedId,
   feedName,
   panelRef,
+  renderPost,
+  onPostsLoaded,
   onBack,
 }: {
   options: BranchOption[] | null;
   branchFeedId?: number;
   feedName?: string;
   panelRef: RefObject<HTMLDivElement | null>;
+  // Renders a single post with the same card the main feed uses, so the branch
+  // preview looks identical to a real feed (avatars, embeds, images, engagement).
+  renderPost: (post: Post) => ReactNode;
+  // Reports streamed posts up so the parent can hydrate quotes + AI labels.
+  onPostsLoaded: (posts: Post[]) => void;
   onBack: () => void;
 }) {
   const {
@@ -97,7 +97,11 @@ export default function MockBranchOverlay({
                 // "skipped_rerank" needs no handling — the "done" event follows.
               } else if (ev.event === "done") {
                 setPipelineStage(ev.cached ? "idle" : "done");
-                if (Array.isArray(ev.posts)) setBranchPosts(ev.posts);
+                if (Array.isArray(ev.posts)) {
+                  setBranchPosts(ev.posts);
+                  onPostsLoaded(ev.posts);
+                  setActivePostCount(ev.posts.length);
+                }
               } else if (ev.event === "error") {
                 // Don't leave the loader pinned at "searching" if the pipeline
                 // failed — surface idle so the UI isn't stuck.
@@ -150,16 +154,12 @@ export default function MockBranchOverlay({
       <FeedPipelineLoader />
 
       {branchPosts && (
-        <div className="cur-mock-branch-posts">
-          {branchPosts.map((post) => {
-            const author = post.author_display_name?.trim() || post.author_handle || post.author_did.slice(0, 12) + "…";
-            return (
-              <div key={post.uri} className="cur-mock-branch-post">
-                <p className="cur-mock-branch-author">{author}</p>
-                <p className="cur-mock-branch-text">{post.text}</p>
-              </div>
-            );
-          })}
+        <div className="cur-feed-posts-inner">
+          {branchPosts.map((post) => (
+            <div key={post.uri} className="cur-post-item">
+              {renderPost(post)}
+            </div>
+          ))}
         </div>
       )}
     </div>
