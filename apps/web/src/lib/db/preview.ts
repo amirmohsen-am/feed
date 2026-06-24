@@ -7,6 +7,7 @@ import { rowToFeed, type DbFeed } from "./feeds";
 import { mechanicalToSearchFilter } from "./filters";
 import { blendedScore } from "./blend";
 import { filterUnseen, recordSeen } from "./seen";
+import { getUserById } from "./users";
 
 // --- Posts ---
 // Posts come from the pgvector (HNSW, halfvec) index on `bsky-db`, fed by the
@@ -126,7 +127,7 @@ function computeFeedConfigHash(feed: DbFeed): string {
         rerank_model: feed.rerank_model,
         rerank_thinking_enabled: feed.rerank_thinking_enabled,
         // Ranking-bias weights shape the snapshot's order, so editing one must
-        // invalidate the cache. seen_filter_enabled is NOT included: seen is a
+        // invalidate the cache. Seen filtering is NOT included: it is a
         // serve-time, per-viewer concern that never affects the shared snapshot.
         engagement_weight: feed.engagement_weight,
         recency_weight: feed.recency_weight,
@@ -140,13 +141,17 @@ function computeFeedConfigHash(feed: DbFeed): string {
  * Public entry point. Builds (or reads) the feed's SHARED snapshot, then
  * applies per-viewer serve-time concerns on top:
  *
- *   - `viewerUserId` + `feed.seen_filter_enabled` → drop posts this viewer has
- *     already seen (count reported via `opts.onSeenFiltered`).
+ *   - `viewerUserId` whose user has seen filtering on → drop posts this viewer
+ *     has already seen (count reported via `opts.onSeenFiltered`). Seen
+ *     filtering is a per-USER preference (users.seen_filter_enabled), not a
+ *     per-feed setting.
  *
- * This path does NOT record served posts as seen: the curator preview is a
- * tuning surface the owner refreshes repeatedly, and recording on every serve
- * would progressively empty their own preview. Impressions are recorded only on
- * the published read path (getFeedSkeletonPage).
+ * This path FILTERS by seen but does NOT record: recording is viewport-driven,
+ * matching how the Bluesky client marks posts seen. The curator preview reports
+ * impressions from the browser (IntersectionObserver → POST /api/seen → see
+ * src/app/curator/[feedId]/useSeenTracker.ts); the published feed reports them
+ * via app.bsky.feed.sendInteractions (#interactionSeen). Serve-time recording
+ * would mark every served post seen even if it never reached the screen.
  *
  * Seen filtering is deliberately NOT part of buildSnapshot: that function's
  * output is cached and shared with every published subscriber, so it must stay
@@ -174,9 +179,15 @@ export async function getFeedPreviewPosts(
   const snapshot = await buildSnapshot(feed, onStage, opts);
 
   // Serve-time seen filter (per viewer). Skipped entirely without a viewer or
-  // when the feed has the toggle off — the cron and anonymous reads land here.
+  // when the viewer has the preference off — the cron and anonymous reads land
+  // here. The viewer's preference is read fresh (one PK lookup) since it lives
+  // on the user, not the feed.
   const viewerUserId = opts?.viewerUserId;
-  if (!viewerUserId || !feed.seen_filter_enabled || snapshot.length === 0) {
+  if (!viewerUserId || snapshot.length === 0) {
+    return snapshot.slice(0, limit);
+  }
+  const viewer = await getUserById(viewerUserId);
+  if (!viewer?.seen_filter_enabled) {
     return snapshot.slice(0, limit);
   }
 

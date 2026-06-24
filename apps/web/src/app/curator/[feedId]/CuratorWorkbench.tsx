@@ -22,6 +22,7 @@ import FilterPanel from "@/components/FilterPanel";
 import SendButton from "@/components/SendButton";
 import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
 import { authedFetch } from "@/lib/authed-fetch";
+import { useSeenTracker } from "./useSeenTracker";
 import type { MechanicalFilters } from "@/lib/types";
 import {
   DEFAULT_CANDIDATE_BUDGET,
@@ -263,6 +264,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     viewMode,
     showDebug,
     hideUnavailable,
+    hideSeen,
     setUnavailableCount,
     openPublish,
     registerOpenTune,
@@ -324,6 +326,18 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const ptrSpinnerRef = useRef<HTMLDivElement | null>(null);
   const ptrRefreshingRef = useRef(false);
   const [ptrRefreshing, setPtrRefreshing] = useState(false);
+  // Track the mobile breakpoint reactively so pull-to-refresh wiring attaches
+  // when the viewport crosses into mobile width — including when Chrome
+  // DevTools device mode resizes after mount (a one-shot matchMedia check at
+  // mount would miss it and never wire up the gesture).
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobileViewport(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   // Register the openTune callback so the top-bar tune icon can switch to the
   // tune pane from outside the workbench (especially on mobile).
@@ -889,7 +903,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const [engagementWeight, setEngagementWeight] = useState<number>(DEFAULT_ENGAGEMENT_WEIGHT);
   const [recencyWeight, setRecencyWeight] = useState<number>(DEFAULT_RECENCY_WEIGHT);
   const [recencyHalflifeH, setRecencyHalflifeH] = useState<number>(DEFAULT_RECENCY_HALFLIFE_H);
-  const [seenFilterEnabled, setSeenFilterEnabled] = useState<boolean>(false);
+  // Client-side seen tracking: records real on-screen impressions (like the
+  // Bluesky app) so the next load filters out posts the curator actually saw.
+  // Gated on the per-user "hide seen" preference (Display settings).
+  const seenTracker = useSeenTracker(feedId, hideSeen);
 
   // Branch flow. sourcePost is set when this feed was branched off a post (it
   // renders an embedded card atop the chat). The auto-fired branch-init turn
@@ -951,7 +968,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     engagement_weight?: number;
     recency_weight?: number;
     recency_halflife_h?: number;
-    seen_filter_enabled?: boolean;
   }) {
     if (patch.mechanical_filters) setMechanicalFilters(patch.mechanical_filters);
     if (patch.subqueries) setSubqueries(patch.subqueries);
@@ -961,7 +977,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     if (patch.engagement_weight !== undefined) setEngagementWeight(patch.engagement_weight);
     if (patch.recency_weight !== undefined) setRecencyWeight(patch.recency_weight);
     if (patch.recency_halflife_h !== undefined) setRecencyHalflifeH(patch.recency_halflife_h);
-    if (patch.seen_filter_enabled !== undefined) setSeenFilterEnabled(patch.seen_filter_enabled);
     feedSignatureRef.current = feedSignature({
       subqueries: patch.subqueries ?? subqueries,
       mechanical_filters: patch.mechanical_filters ?? mechanicalFilters ?? undefined,
@@ -989,7 +1004,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const saveEngagementWeight = (n: number) => patchFeed({ engagement_weight: n });
   const saveRecencyWeight = (n: number) => patchFeed({ recency_weight: n });
   const saveRecencyHalflife = (n: number) => patchFeed({ recency_halflife_h: n });
-  const saveSeenFilterEnabled = (v: boolean) => patchFeed({ seen_filter_enabled: v });
 
 
   const loadChat = useCallback(async (id: number): Promise<{
@@ -1018,7 +1032,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         if (typeof f.engagement_weight === "number") setEngagementWeight(f.engagement_weight);
         if (typeof f.recency_weight === "number") setRecencyWeight(f.recency_weight);
         if (typeof f.recency_halflife_h === "number") setRecencyHalflifeH(f.recency_halflife_h);
-        if (typeof f.seen_filter_enabled === "boolean") setSeenFilterEnabled(f.seen_filter_enabled);
         feedSignatureRef.current = feedSignature(f);
       }
       setMessages(msgs);
@@ -1031,6 +1044,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   }, []);
 
   const loadPosts = useCallback(async (id: number, opts?: { force?: boolean }) => {
+    // Record impressions seen so far BEFORE reloading, so the server-side seen
+    // filter on this fetch excludes posts the curator already viewed (esp. on
+    // Refresh). Then start a fresh dedup generation for the incoming posts.
+    await seenTracker.flushNow();
+    seenTracker.reset();
     setPostsLoading(true);
     setPipelineStage("searching");
     setPipelineCandidates(undefined);
@@ -1147,7 +1165,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       setPostsLoading(false);
       setFeedRefreshing(false);
     }
-  }, [setActivePostCount]);
+  }, [setActivePostCount, seenTracker]);
 
   // On mount (i.e. on feed switch via URL change), hydrate chat + posts.
   // Deferred a tick so the fetch kickoff (which flips loading flags) runs
@@ -1241,7 +1259,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     const pane = feedPaneRef.current;
     const spin = ptrSpinnerRef.current;
     if (!pane || !spin) return;
-    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    if (!isMobileViewport) return;
 
     const THRESHOLD = 58; // post-resistance px needed to trigger
     const MAX = 110;
@@ -1336,7 +1354,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       pane.style.transform = "";
       pane.style.transition = "";
     };
-  }, [feedId, loadPosts]);
+  }, [feedId, loadPosts, isMobileViewport]);
 
   // When the forced reload finishes, spring the pane + spinner back.
   useEffect(() => {
@@ -2101,7 +2119,25 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
             {branchHeaderOptions && (
               <BranchTopicsHeader options={branchHeaderOptions} />
             )}
-            <FeedPipelineLoader />
+            <div className="cur-feed-pl-row">
+              <FeedPipelineLoader />
+              {posts.length > 0 && (
+                <button
+                  type="button"
+                  className={`cur-feed-refresh${postsLoading ? " busy" : ""}`}
+                  onClick={() => loadPosts(feedId, { force: true })}
+                  disabled={postsLoading}
+                  title="Refresh this feed"
+                  aria-label="Refresh this feed"
+                >
+                  <svg className="cur-feed-refresh-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <polyline points="23 4 23 10 17 10" />
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                  </svg>
+                  <span>Refresh</span>
+                </button>
+              )}
+            </div>
             {posts.length === 0 ? (
               <div className="cur-empty">
                 {postsLoading ? (
@@ -2134,7 +2170,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                   return null;
                 }
                 return (
-                  <div key={post.uri} className="cur-post-item cur-post-item-embed">
+                  <div
+                    key={post.uri}
+                    ref={seenTracker.register(post.uri)}
+                    className="cur-post-item cur-post-item-embed"
+                  >
                   <div
                     className="cur-post-embed-wrap"
                     data-bsky-uri={post.uri}
@@ -2201,7 +2241,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
             ) : (
               posts.filter(post => !swipedUris.has(post.uri)).map((post) => {
                 return (
-                  <div key={post.uri} className="cur-post-item">
+                  <div
+                    key={post.uri}
+                    ref={seenTracker.register(post.uri)}
+                    className="cur-post-item"
+                  >
                   <SwipeableCard
                     key={`${post.uri}-${branchReturnKeys.get(post.uri) ?? 0}`}
                     onSwipe={(v) => handleCardSwipe(post, v)}
@@ -2580,7 +2624,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           engagementWeight={engagementWeight}
           recencyWeight={recencyWeight}
           recencyHalflifeH={recencyHalflifeH}
-          seenFilterEnabled={seenFilterEnabled}
           onMechanicalChange={saveMechanicalFilters}
           onSubqueriesChange={saveSubqueries}
           onCandidateBudgetChange={saveCandidateBudget}
@@ -2589,7 +2632,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           onEngagementWeightChange={saveEngagementWeight}
           onRecencyWeightChange={saveRecencyWeight}
           onRecencyHalflifeChange={saveRecencyHalflife}
-          onSeenFilterChange={saveSeenFilterEnabled}
           postCount={postCount}
           rightPane={rightPane}
           onRightPaneChange={setRightPane}

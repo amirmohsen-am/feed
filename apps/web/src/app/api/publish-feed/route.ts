@@ -103,6 +103,10 @@ export async function POST(req: NextRequest) {
                 did: serviceDid,
                 displayName,
                 description: description.slice(0, 300),
+                // Opt into the client feed-feedback API so Bluesky sends
+                // #interactionSeen events to our sendInteractions endpoint,
+                // driving per-viewer seen filtering. See xrpc/sendInteractions.
+                acceptsInteractions: true,
                 createdAt: new Date().toISOString(),
               },
             }),
