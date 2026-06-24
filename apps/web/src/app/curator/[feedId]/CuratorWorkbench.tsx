@@ -360,10 +360,13 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // (keep). A swiped card is hidden and its context is pulled straight into the
   // main chat (the same one that opens from "Describe your ideal feed").
   const [swipedUris, setSwipedUris] = useState<Set<string>>(() => new Set());
-  // Keyed by post URI: null = loading, array = done.
+  // Keyed by post URI: array = done (no null/loading state — writing null triggers
+  // a full workbench re-render right at drag-start, causing a visible frame drop).
   const [followupTopics, setFollowupTopics] = useState<
-    Map<string, BranchOption[] | null>
+    Map<string, BranchOption[]>
   >(() => new Map());
+  // Tracks in-flight followup fetches so we don't duplicate requests while waiting.
+  const fetchingFollowupRef = useRef(new Set<string>());
   // Right-swipe branch options (prefetched on first rightward drag).
   const [swipeRightTopics, setSwipeRightTopics] = useState<
     Map<string, BranchOption[] | null>
@@ -547,12 +550,14 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   function fetchFollowupTopics(post: Post) {
     // Kick off once on the first leftward drag for this card.
     if (followupTopics.has(post.uri)) return;
-    setFollowupTopics((prev) => { const next = new Map(prev); next.set(post.uri, null); return next; });
+    if (fetchingFollowupRef.current.has(post.uri)) return;
+    fetchingFollowupRef.current.add(post.uri);
     void authedFetch("/api/branch/options", {
       method: "POST",
       body: JSON.stringify({ feedId, postUri: post.uri }),
     })
       .then(async (res) => {
+        fetchingFollowupRef.current.delete(post.uri);
         const d = await res.json();
         const topics: BranchOption[] = Array.isArray(d.options)
           ? (d.options as BranchOption[]).filter((o) => o.kind === "deeper")
@@ -560,6 +565,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         setFollowupTopics((prev) => { const next = new Map(prev); next.set(post.uri, topics); return next; });
       })
       .catch(() => {
+        fetchingFollowupRef.current.delete(post.uri);
         setFollowupTopics((prev) => { const next = new Map(prev); next.set(post.uri, []); return next; });
       });
   }
