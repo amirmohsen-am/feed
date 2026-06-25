@@ -1,7 +1,30 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useState, useEffect, type KeyboardEvent } from "react";
 import type { BranchOption } from "@/lib/branch";
+
+const LOADING_PHRASES = [
+  "finding similar content",
+  "adventuring into bluesky",
+  "scanning the firehose",
+  "reading between the posts",
+  "mapping your interests",
+];
+
+function LoadingCycler() {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setIdx((i) => (i + 1) % LOADING_PHRASES.length), 2000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="cur-swipe-followup-loading">
+      <span key={idx} className="cur-swipe-followup-loading-text">
+        {LOADING_PHRASES[idx]}
+      </span>
+    </div>
+  );
+}
 
 interface PostSummary {
   uri: string;
@@ -91,19 +114,23 @@ export default function SwipeFollowupCard({
       <p className="cur-swipe-followup-label">what you&rsquo;ll see less of</p>
 
       {/* Reasons fit on one row when they can, wrapping to a second only if needed. */}
-      <div className="cur-swipe-followup-topics">
-        {topics?.map((t, i) => (
-          <button
-            key={i}
-            type="button"
-            className="cur-swipe-followup-chip"
-            title={t.subquery}
-            onClick={() => chipSend(t)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {topics === undefined ? (
+        <LoadingCycler />
+      ) : (
+        <div className="cur-swipe-followup-topics">
+          {topics.map((t, i) => (
+            <button
+              key={i}
+              type="button"
+              className="cur-swipe-followup-chip"
+              title={t.subquery}
+              onClick={() => chipSend(t)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <form
         className="cur-swipe-followup-composer"

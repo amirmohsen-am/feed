@@ -261,3 +261,36 @@
   transition: color 0.15s;
 }
 .mtour-skip:active{ color: #3a4a44; }
+
+/* ── Swipe Demo tooltip ───── */
+
+@media (min-width: 768px){
+  .swipe-demo-tip{ display: none !important; }
+}
+
+.swipe-demo-tip{
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  text-align: center;
+  font-family: var(--rf-mono, monospace);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: rgba(107, 99, 184, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(136, 144, 216, 0.3);
+  border-radius: 10px;
+  margin: 0 20px;
+  padding: 12px 16px;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
+.swipe-demo-tip.visible{
+  opacity: 1;
+  transform: translateY(0);
+}
