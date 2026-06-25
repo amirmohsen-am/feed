@@ -395,21 +395,41 @@ function FeedViewImpl(
     setTimeout(() => { setBranchReturning(false); setReturningSourceUri(null); }, 520);
   }, [committedBranchUri, isRoot, postCount, setActivePostCount]);
 
-  // On commit: the Back button + banner are full height from the start (they only
-  // fade in), so the Back button is at the top and VISIBLE immediately. We do NOT
-  // anchor the scroll — anchoring shoved the Back button above the viewport edge,
-  // and the ease-out lift only brought it back into view at the very end (it
-  // "appeared late"). Instead just ease the Back button to the top: for a top post
-  // it's already there (no-op); for a mid-page post it (and the source) ride up.
-  // Nothing above the source changes height during the lift, so the motion stays
-  // monotonic. The only cost is a small instant shift as the button takes its space.
+  // On commit, ease the source up to the top as the other posts recede — but only
+  // as far as it can actually REST once those posts are unmounted. The source rises
+  // by "scroll", and the receding posts above it keep their layout height until they
+  // drop, so the scroll offset the lift travels through exists *only while they do*.
+  // Lift further than their combined height (e.g. all the way to viewport y=0) and
+  // the shrunken document can't hold that offset: it clamps the instant the posts go
+  // and the source snaps back DOWN by the overshoot. So the lift distance is exactly
+  // the height of the posts being removed ABOVE the source (back-button top → topmost
+  // removed post top) — the source lands precisely where the post-removal layout puts
+  // it (just under the back button), and the clamp cancels the document shrink with
+  // nothing left over. (Measuring the gap between those two elements captures the
+  // posts' heights AND the inter-post spacing, and naturally leaves any header above
+  // the back button in place — the source rides up only past what disappears.)
   useIsoLayoutEffect(() => {
     if (!committedBranchUri) return;
     const el = sourceItemEl();
-    if (!el) return;
+    const inner = feedInnerRef.current;
+    if (!el || !inner) return;
+    const topEl = (inner.querySelector(".cur-branch-back-pinned") as HTMLElement | null) ?? el;
+    const above = (Array.from(inner.querySelectorAll(".cur-post-item-other")) as HTMLElement[])
+      .filter((o) => (el.compareDocumentPosition(o) & Node.DOCUMENT_POSITION_PRECEDING) !== 0);
+    if (above.length === 0) return; // source already at the top — nothing to lift through
+    // ABSOLUTE target scroll, not a delta: the layout distance from the topmost
+    // removed post to the back button equals the scrollTop that lands the back button
+    // (and the source just below it) at the feed's content top — where they rest once
+    // the posts above unmount. Use offsetTop, NOT getBoundingClientRect().top: at this
+    // instant the receding posts are mid-transition under `.cur-branching`
+    // (transform: scale + translateX), and rect.top *includes* that transform, so a
+    // scaled-down post reads ~tens of px lower than its real layout top — under-lifting
+    // and leaving a small bounce on removal. offsetTop is transform-immune. (The back
+    // button + every post item are siblings, so their offsetTops share a parent.)
+    const topMostOffset = Math.min(...above.map((o) => o.offsetTop));
+    const target = topEl.offsetTop - topMostOffset;
     const scroller = activeScroller();
-    const topEl = (feedInnerRef.current?.querySelector(".cur-branch-back-pinned") as HTMLElement | null) ?? el;
-    easeScrollTop(scroller, scrollTopOf(scroller) + topWithinScroller(topEl, scroller) - 8, 460);
+    easeScrollTop(scroller, target, 460);
   }, [committedBranchUri]);
 
   // When the receded posts are removed (othersCleared), pin the source where it
