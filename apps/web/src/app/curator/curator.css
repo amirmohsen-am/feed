@@ -3978,8 +3978,22 @@
   .capsule.thinking{
     background: transparent; border-color: transparent;
     box-shadow: none; overflow: visible;
+    /* the whole goo pill is clickable → opens the conversation */
+    cursor: pointer;
   }
   .capsule.thinking .cap-meta{ opacity: .92; filter: url(#cur-goo) saturate(1.1); }
+  /* Clickable affordance: a soft aurora glow blooms behind the goo on hover
+     while thinking. Tap still opens the conversation on mobile (no hover). */
+  .capsule::before{
+    content: ''; position: absolute; left: 50%; top: 50%;
+    width: 150px; height: 150px; margin: -75px 0 0 -75px; border-radius: 50%;
+    background: radial-gradient(circle at 50% 50%, rgba(136,144,216,0.5), rgba(136,144,216,0) 66%);
+    opacity: 0; transform: scale(.62); pointer-events: none; filter: blur(6px);
+    transition: opacity .35s var(--ease-out), transform .35s var(--ease-out);
+  }
+  @media (hover: hover){
+    .capsule.thinking:hover::before{ opacity: .9; transform: scale(1); }
+  }
   .capsule.thinking .cap-status{ opacity: 0; }
   /* Resting: size + color only, NO animation — so nothing repaints when idle. */
   .cap-meta i{ position: absolute; left: 50%; top: 50%; border-radius: 50%; }
@@ -4239,9 +4253,15 @@
 }
 .cur-input:focus{ border: none; box-shadow: none; }
 
-/* loading → show metaballs, hide the input box + send + glyph */
+/* loading → free-floating metaballs: drop the pill chrome (bg/border/shadow)
+   and let the goo spill out, matching the capsule's thinking state — so the
+   composer animates into the metaballs instead of boxing them in. Also hide
+   the input + send + glyph. */
 .cur-input-wrap .cap-meta{ border-radius: inherit; }
-.cur-input-wrap.loading{ overflow: hidden; }
+.cur-input-wrap.loading{
+  background: transparent; border-color: transparent;
+  box-shadow: none; overflow: visible;
+}
 .cur-input-wrap.loading .cap-meta{ opacity: .92; filter: url(#cur-goo) saturate(1.1); }
 .cur-input-wrap.loading .cur-input,
 .cur-input-wrap.loading .send-btn,
