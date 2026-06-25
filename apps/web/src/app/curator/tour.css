@@ -100,3 +100,164 @@
 @media (max-width: 767px){
   .tour-cursor{ display: none; }
 }
+
+/* ── Mobile Tour — spotlight overlay ───── */
+
+@media (min-width: 768px){
+  .mtour-overlay{ display: none !important; }
+}
+
+.mtour-overlay{
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: auto;
+}
+
+.mtour-backdrop{
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+.mtour-overlay.backdrop-visible .mtour-backdrop{
+  opacity: 1;
+}
+.mtour-backdrop path{
+  fill: rgba(0, 0, 0, 0.52);
+  pointer-events: auto;
+}
+/* Block pointer events on backdrop only when visible */
+.mtour-overlay:not(.backdrop-visible) .mtour-backdrop path{
+  pointer-events: none;
+}
+
+.mtour-cutout-ring{
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  border-radius: 10px;
+  box-shadow: 0 0 0 3px rgba(136, 144, 216, 0.6);
+  animation: mtour-pulse 1.6s ease-in-out infinite;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+.mtour-overlay.backdrop-visible .mtour-cutout-ring{
+  opacity: 1;
+}
+
+@keyframes mtour-pulse{
+  0%, 100%{ box-shadow: 0 0 0 3px rgba(136, 144, 216, 0.6); }
+  50%     { box-shadow: 0 0 0 6px rgba(136, 144, 216, 0.25); }
+}
+
+.mtour-tooltip{
+  position: fixed;
+  z-index: 10000;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  width: min(320px, calc(100vw - 32px));
+  background: #fbfaf6;
+  border: 1px solid rgba(11, 24, 20, 0.1);
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 8px 32px rgba(11, 24, 20, 0.18);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.mtour-tooltip.visible{
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Caret arrow pointing toward the cutout */
+.mtour-tooltip.below::before{
+  content: '';
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 14px;
+  height: 14px;
+  background: #fbfaf6;
+  border-left: 1px solid rgba(11, 24, 20, 0.1);
+  border-top: 1px solid rgba(11, 24, 20, 0.1);
+}
+/* Caret aligned left — points toward a left-side element like the hamburger */
+.mtour-tooltip.below.caret-left{
+  left: 16px;
+  transform: translateX(0) translateY(8px);
+}
+.mtour-tooltip.below.caret-left.visible{
+  transform: translateX(0) translateY(0);
+}
+.mtour-tooltip.below.caret-left::before{
+  left: 24px;
+  transform: rotate(45deg);
+}
+.mtour-tooltip.above::after{
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 14px;
+  height: 14px;
+  background: #fbfaf6;
+  border-right: 1px solid rgba(11, 24, 20, 0.1);
+  border-bottom: 1px solid rgba(11, 24, 20, 0.1);
+}
+.mtour-tooltip.above.caret-left{
+  left: 16px;
+  transform: translateX(0) translateY(-8px);
+}
+.mtour-tooltip.above.caret-left.visible{
+  transform: translateX(0) translateY(0);
+}
+.mtour-tooltip.above.caret-left::after{
+  left: 24px;
+  transform: rotate(45deg);
+}
+
+.mtour-step{
+  font-family: var(--rf-mono, monospace);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #a8b0ab;
+  margin-bottom: 6px;
+}
+
+.mtour-text{
+  font-family: var(--rf-body, system-ui, sans-serif);
+  font-size: 14px;
+  line-height: 1.5;
+  color: #0b1814;
+  margin-bottom: 6px;
+}
+
+.mtour-hint{
+  font-family: var(--rf-mono, monospace);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: #a8b0ab;
+  margin-bottom: 12px;
+}
+
+.mtour-skip{
+  background: none;
+  border: none;
+  font-family: var(--rf-mono, monospace);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #a8b0ab;
+  cursor: pointer;
+  padding: 4px 0;
+  transition: color 0.15s;
+}
+.mtour-skip:active{ color: #3a4a44; }

@@ -45,6 +45,8 @@ export interface CuratorContextValue {
   // mirrored up from the workbench so the settings dialog can show it.
   unavailableCount: number;
   setUnavailableCount: (n: number) => void;
+  sidebarOpen: boolean;
+  setSidebarOpen: (b: boolean) => void;
   openPublish: () => void;
   openTune: () => void;
   registerOpenTune: (fn: () => void) => void;
