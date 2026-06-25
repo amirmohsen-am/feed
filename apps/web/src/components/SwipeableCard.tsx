@@ -10,11 +10,12 @@ const BRANCH_COLLAPSE_DISTANCE = 210; // right fold range (prototype COLLAPSE_DI
 const BRANCH_COMMIT = 0.5;         // fraction of the fold at which a release branches
 const TX_MAX = 224;                // rubber-band asymptote for the rightward ride
 // Left "less like this" reveal-and-confirm (iMessage style): the card parks open
-// to a red pill; tap the pill or slide all the way to commit.
-const LESS_OPEN = 175;             // parked-open distance — independent of the capsule width
+// to a red dot that mirrors the swipe-right "Dive deeper" dot; tap it or slide
+// all the way to commit.
+const LESS_OPEN = 120;             // parked-open distance — just far enough to reveal the dot + label
 const LESS_FULL = 250;             // slide-all-the-way commit distance
-const LESS_BASEW = 140;            // capsule width at rest / parked
-const LESS_CAPW = 320;             // max capsule width once stretched to fill the row
+const LESS_DOT = 46;               // circle diameter at rest / parked (mirrors the branch dot)
+const LESS_CAPW = 230;             // max oval width once stretched past the park
 
 const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
 const cl01 = (v: number) => Math.max(0, Math.min(1, v));
@@ -83,20 +84,29 @@ export default function SwipeableCard({
     if (action) { action.style.opacity = "0"; action.classList.remove("ready"); }
   }, []);
 
-  // Imperatively drive the red "less of this" pill from the card's x: it pops
-  // small→full as the card parks, then stretches circle→oval the further you pull.
-  // One constant red — no color transition.
+  // Imperatively drive the red "less like this" dot from the card's x. It mirrors
+  // the swipe-right branch dot: an outlined red circle that pops solid once you've
+  // pulled far enough to park (.ready), then stretches circle→oval the further you
+  // pull past the park. The label stays underneath throughout.
   const paintLessPill = useCallback((x: number) => {
     const wrap = lessActionRef.current;
     const pill = lessPillRef.current;
     if (!wrap || !pill) return;
     const gap = Math.max(0, -x);
-    const grow = Math.min(gap / LESS_OPEN, 1);
+    const readyAt = LESS_OPEN * 0.55;
+    const ready = gap >= readyAt;
+    wrap.classList.toggle("ready", ready);
     wrap.style.opacity = String(Math.min(gap / (LESS_OPEN * 0.4), 1));
-    pill.style.transform = `scale(${0.7 + grow * 0.3})`;
-    // capsule rests at LESS_BASEW, then its left edge tracks the card's trailing
-    // edge as you pull on — extending to fill the row when sliding all the way.
-    pill.style.width = `${Math.min(LESS_CAPW, Math.max(LESS_BASEW, gap - 28))}px`;
+    // Past the park the dot stretches leftward into an oval; before it, it stays a
+    // circle that scales in (then pops to 1.08 the moment it goes solid).
+    const over = Math.max(0, gap - LESS_OPEN);
+    const stretch = Math.min(over / (LESS_FULL - LESS_OPEN), 1);
+    const scale = ready ? 1.08 - 0.08 * stretch : 0.7 + Math.min(gap / readyAt, 1) * 0.3;
+    pill.style.transform = `scale(${scale})`;
+    // Grow at the same rate the card travels (1:1), so the oval's left edge rides
+    // along with the post's trailing edge instead of outrunning it and tucking
+    // under the card.
+    pill.style.width = `${Math.min(LESS_CAPW, LESS_DOT + over)}px`;
   }, []);
 
   const settleLessPill = useCallback((open: boolean) => {
@@ -105,11 +115,12 @@ export default function SwipeableCard({
     if (wrap) {
       wrap.style.transition = "opacity 0.2s";
       wrap.style.opacity = open ? "1" : "0";
+      wrap.classList.toggle("ready", open);
     }
     if (pill) {
-      pill.style.transition = "width 0.26s cubic-bezier(0.2,0.8,0.3,1), transform 0.26s";
-      pill.style.transform = open ? "scale(1)" : "scale(0.7)";
-      pill.style.width = `${LESS_BASEW}px`;
+      pill.style.transition = "width 0.26s cubic-bezier(0.2,0.8,0.3,1), transform 0.26s, background 0.18s, color 0.18s, border-color 0.18s";
+      pill.style.transform = open ? "scale(1.08)" : "scale(0.7)";
+      pill.style.width = `${LESS_DOT}px`;
     }
   }, []);
 
@@ -231,7 +242,9 @@ export default function SwipeableCard({
     // let the pill ride the finger without easing until release.
     baseXRef.current = leftOpenRef.current ? -LESS_OPEN : 0;
     if (lessActionRef.current) lessActionRef.current.style.transition = "none";
-    if (lessPillRef.current) lessPillRef.current.style.transition = "none";
+    // Width tracks the finger with no easing; the scale pop + the solid-fill
+    // colour change still animate smoothly while dragging.
+    if (lessPillRef.current) lessPillRef.current.style.transition = "transform 0.16s, background 0.18s, color 0.18s, border-color 0.18s";
   }
 
   function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
@@ -335,20 +348,27 @@ export default function SwipeableCard({
           </span>
           <span className="cur-swipe-branch-label">Dive deeper</span>
         </div>
-        {/* "less of this" affordance revealed on the right as the card rides left,
-            sitting behind the card in the space it vacates. The pill stays one
-            constant red; tapping it commits. */}
+        {/* "less like this" affordance revealed on the right as the card rides
+            left, sitting behind the card in the space it vacates. Mirrors the
+            "Dive deeper" dot: an outlined red circle with a label underneath that
+            fills solid at the park and stretches into an oval if you pull on.
+            Tapping it commits. */}
         <div ref={lessActionRef} className="cur-swipe-less-action" style={{ opacity: 0 }}>
           <button
             ref={lessPillRef}
             type="button"
             className="cur-swipe-less-icon"
             aria-label="See less like this"
-            style={{ width: LESS_BASEW }}
             onClick={(e) => { e.stopPropagation(); commitLess(); }}
           >
-            Less of this
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+              <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+              <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+              <line x1="2" y1="2" x2="22" y2="22" />
+            </svg>
           </button>
+          <span className="cur-swipe-less-label">Less like this</span>
         </div>
         <motion.div
           className="cur-swipe-wrap"
