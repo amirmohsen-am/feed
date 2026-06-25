@@ -56,7 +56,6 @@ export async function PATCH(req: NextRequest) {
     engagement_weight,
     recency_weight,
     recency_halflife_h,
-    seen_filter_enabled,
   } = body as {
     id?: number;
     name?: string;
@@ -69,7 +68,6 @@ export async function PATCH(req: NextRequest) {
     engagement_weight?: number;
     recency_weight?: number;
     recency_halflife_h?: number;
-    seen_filter_enabled?: boolean;
   };
 
   if (!id)
@@ -119,9 +117,6 @@ export async function PATCH(req: NextRequest) {
     updates.recency_weight = bias.recency_weight;
   if (bias.recency_halflife_h !== undefined)
     updates.recency_halflife_h = bias.recency_halflife_h;
-  if (typeof seen_filter_enabled === "boolean") {
-    updates.seen_filter_enabled = seen_filter_enabled;
-  }
   if (typeof name === "string") {
     const trimmed = name.trim();
     if (!trimmed) {

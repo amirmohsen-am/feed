@@ -2,7 +2,6 @@
 
 import { createContext, useContext } from "react";
 import type { UserProfile } from "@/lib/types";
-import type { PipelineStage } from "@/components/PipelineLoader";
 
 export interface SavedFeed {
   id: string;
@@ -37,6 +36,11 @@ export interface CuratorContextValue {
   setShowDebug: (b: boolean) => void;
   hideUnavailable: boolean;
   setHideUnavailable: (b: boolean) => void;
+  // Per-user preference (users.seen_filter_enabled), persisted server-side.
+  // Drives whether the feed hides posts you've already seen + whether the
+  // workbench records on-screen impressions. Default on.
+  hideSeen: boolean;
+  setHideSeen: (b: boolean) => void;
   // Count of posts the Bluesky availability probe flagged as unavailable,
   // mirrored up from the workbench so the settings dialog can show it.
   unavailableCount: number;
@@ -44,23 +48,6 @@ export interface CuratorContextValue {
   openPublish: () => void;
   openTune: () => void;
   registerOpenTune: (fn: () => void) => void;
-  pipelineStage: PipelineStage;
-  setPipelineStage: (s: PipelineStage) => void;
-  pipelineCandidates: number | undefined;
-  setPipelineCandidates: (n: number | undefined) => void;
-  pipelineHits: number | undefined;
-  setPipelineHits: (n: number | undefined) => void;
-  pipelineImages: number | undefined;
-  setPipelineImages: (n: number | undefined) => void;
-  pipelineModel: string | undefined;
-  setPipelineModel: (s: string | undefined) => void;
-  pipelineThinkingEnabled: boolean | undefined;
-  setPipelineThinkingEnabled: (b: boolean | undefined) => void;
-  pipelineSeenFiltered: number | undefined;
-  setPipelineSeenFiltered: (n: number | undefined) => void;
-  /** When set, overrides the feed name shown in the topbar (e.g. branch overlay). */
-  branchOverlayName: string | null;
-  setBranchOverlayName: (name: string | null) => void;
 }
 
 const CuratorContext = createContext<CuratorContextValue | null>(null);

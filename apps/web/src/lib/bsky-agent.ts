@@ -118,6 +118,9 @@ export async function publishFeedGenerator(
         did: params.serviceDid,
         displayName: params.displayName.slice(0, 24),
         description: params.description.slice(0, 300),
+        // Opt into the client feed-feedback API so Bluesky sends
+        // #interactionSeen events to our sendInteractions endpoint.
+        acceptsInteractions: true,
         createdAt: new Date().toISOString(),
       },
     }),

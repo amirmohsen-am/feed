@@ -77,7 +77,7 @@ The pgvector HNSW index is built once out-of-band (`CREATE INDEX CONCURRENTLY`, 
 
 - **Run locally:** `cd apps/jetstream-indexer && npm start` — ⚠️ writes to the **prod** bsky-db + GCS bucket.
 - **Cloud Run invariant:** `--no-cpu-throttling --min-instances=1 --max-instances=1 --concurrency=1 --cpu=2 --memory=2Gi`. Concurrency=1 prevents cursor races.
-- **Deploy:** `gcloud builds submit --config=cloudbuild.yaml` then `gcloud run deploy` with the flags above (env baked via `src/config.ts`).
+- **Deploy:** `./deploy.sh` (in each app dir) — builds locally (`docker buildx`, linux/amd64), pushes to Artifact Registry, then `gcloud run deploy`s the image. The image swap preserves the live revision's config (env via `src/config.ts`, scaling, secrets). Args: `full` (default), `push-only`, `deploy-only`.
 - **Fresh backfill:** `npx tsx scripts/wipe-and-rewind.ts <days>` — ⚠️ **TRUNCATEs `bsky.*`** and rewinds cursors; then restart the service. Replay is bounded by Jetstream retention (~hours).
 - **Logs:** `gcloud logging read 'resource.labels.service_name="jetstream-indexer"' --project=timelines-492720`. Dashboard: `apps/jetstream-indexer/monitoring/dashboard.json`.
 

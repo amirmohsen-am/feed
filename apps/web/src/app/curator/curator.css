@@ -13,11 +13,25 @@
   --ink-3:        #626090;
   --ink-4:        #9898c0;
   --hair:         rgba(13,11,30,0.08);
+  --hair-2:       rgba(13,11,30,0.05);
   --hair-strong:  rgba(13,11,30,0.16);
 
+  /* Design-E ("Capsule") tokens. Fonts reuse the app's loaded families;
+     greens from the mockup are mapped onto the purple palette. */
+  --display: var(--rf-display);
+  --body:    var(--rf-body);
+  --mono:    var(--rf-mono);
+  --serif:   'Instrument Serif', serif;
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.3, 0.4, 1);
+  /* Capsule width — clamps on small screens. */
+  --cap-w: min(560px, calc(100vw - 32px));
+  /* Deepest action shade (the mockup's #2f7058 → our deep purple). */
+  --aurora-deeper: #4448a0;
+
   /* Shared height for the sidebar head + main topbar so their bottom
-     separators line up across both columns. */
-  --cur-header-h: 72px;
+     separators line up across both columns. The E feed-head is 64px. */
+  --cur-header-h: 64px;
 
   display: flex;
   height: 100dvh;
@@ -97,7 +111,7 @@
   letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600;
   color: var(--aurora-deep);
   background: none; border: none; cursor: pointer;
-  padding: 3px 7px; border-radius: 6px;
+  padding: 3px 7px; border-radius: 10px;
   -webkit-tap-highlight-color: transparent;
 }
 .cur-topics-edit:hover{ background: rgba(85,88,184,0.1); }
@@ -112,7 +126,7 @@
 .cur-feed-item{
   display: flex; align-items: center; gap: 12px;
   padding: 11px 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   transition: background 0.18s;
   border: 1px solid transparent;
@@ -136,6 +150,34 @@
   background: #fff;
   border-color: var(--hair);
   box-shadow: 0 1px 0 rgba(13,11,30,0.04);
+}
+
+/* ── Lineage tree (Variant A) ──────────────────────────────
+   Home is the trunk; topics branch off it. The nesting carries the
+   relationship — no per-row jargon. Each level of children sits inside a
+   .cur-tree-children container whose left border draws the continuous branch
+   line; each row gets a short horizontal twig connecting it to that line. */
+.cur-tree-root{
+  /* Home as the trunk: no longer a separated "chrome" row, just the root. */
+  margin-bottom: 4px;
+  border-radius: 8px;
+  border-bottom: none;
+  padding-bottom: 11px;
+}
+.cur-tree-children{
+  margin-left: 16px;
+  padding-left: 10px;
+  border-left: 1.5px solid var(--hair-strong);
+}
+.cur-tree-node{ position: relative; }
+.cur-tree-twig{
+  position: absolute;
+  left: -10px;
+  top: 23px;
+  width: 10px;
+  height: 1.5px;
+  background: var(--hair-strong);
+  pointer-events: none;
 }
 .cur-feed-item.drafting .fi-name{
   font-style: normal;
@@ -176,7 +218,7 @@
   color: var(--ink);
   background: #fff;
   border: 1px solid var(--aurora-deep);
-  border-radius: 6px;
+  border-radius: 10px;
   outline: none;
   width: 100%;
   min-width: 0;
@@ -210,7 +252,7 @@
    hidden while confirming), so the topic name never clips. */
 .cur-feed-row{
   position: relative;
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
 }
 .cur-feed-confirm-del{
@@ -325,7 +367,7 @@
 .cur-new-feed{
   margin: 10px;
   padding: 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px dashed var(--hair-strong);
   font-family: var(--rf-mono); font-size: 10.5px;
   letter-spacing: 0.14em; text-transform: uppercase;
@@ -424,8 +466,8 @@
 }
 .cur-topbar-icon:hover{ border-color: var(--aurora-deep); color: var(--aurora-deep); background: rgba(136,144,216,0.08); }
 .cur-topbar-icon.active{ border-color: var(--aurora-deep); color: var(--aurora-deep); background: rgba(136,144,216,0.12); }
-/* Mobile-only icons — hidden on desktop, shown via media query override */
-.cur-topbar-tune,
+/* Publish-bsky icon is mobile-only; the Tune icon now shows on desktop too
+   (it's the only way to reach the Tune slide-over in the capsule layout). */
 .cur-topbar-publish-bsky{ display: none; }
 .cur-topbar-burger{
   display: none;
@@ -492,6 +534,13 @@
   .cur-workbench[data-right-pane="chat"] .ctrl-tower{ display: none; }
   .cur-workbench[data-right-pane="tune"] .cur-chat-pane{ display: none; }
 
+  /* Branch topics header: a bordered rectangle on desktop (square corners set
+     it apart from the rounded post cards), instead of the mobile full-width band. */
+  .cur-branch-header{
+    border: 1px solid var(--hair);
+    border-radius: 0;
+    margin: 8px 0;
+  }
 }
 
 /* ── SEGMENTED CHAT ↔ TUNE TOGGLE ───────────── */
@@ -500,7 +549,7 @@
   display: flex;
   gap: 2px;
   background: var(--paper-3);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 2px;
   flex-shrink: 0;
 }
@@ -514,7 +563,7 @@
   text-transform: uppercase;
   color: var(--ink-3);
   padding: 7px 0;
-  border-radius: 6px;
+  border-radius: 7px;
   cursor: pointer;
   transition: all 0.18s;
   font-weight: 600;
@@ -834,6 +883,54 @@
   border-color: var(--hair-strong);
   box-shadow: 0 4px 16px rgba(13,11,30,0.05);
 }
+
+/* Source post (the post a branch is being / was made from). No border, no
+   collapse — it renders as a normal full post, marked by a "Branched from" banner
+   at its top (mirrors the reply banner). The banner grows out of the post in
+   lockstep with the swipe-right drag (--branch-progress, set on the container), so
+   the mark previews itself as you swipe and completes when the branch commits. */
+.cur-post-branch-banner{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--rf-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--aurora-deep);
+  margin: -4px 0 -2px;
+  padding-bottom: 9px;
+  border-bottom: 1px dotted var(--hair);
+  overflow: hidden;
+  opacity: 1;
+  max-height: 3em;
+  /* commit completion: ease from the drag-progress size up to full */
+  transition: max-height 0.3s cubic-bezier(0.3,0.8,0.3,1), opacity 0.3s ease, padding 0.3s;
+}
+.cur-post-branch-banner svg{ color: var(--aurora-deep); flex-shrink: 0; }
+/* While dragging right, the source's banner grows with the gesture — but it
+   reaches FULL height at the commit threshold (--branch-progress = 0.5, the point
+   past which a release branches; the 2 below is 1 / 0.5). So by the time you
+   release it is already full: the post lands at its final position in one motion
+   instead of lifting to the top and then having the banner finish growing and
+   shove the content down. */
+.cur-branch-dragging .cur-post-item-source .cur-post-branch-banner{
+  max-height: calc(min(var(--branch-progress, 0) * 2, 1) * 3em);
+  opacity: min(var(--branch-progress, 0) * 2, 1);
+  padding-bottom: calc(min(var(--branch-progress, 0) * 2, 1) * 9px);
+  transition: none;
+}
+/* Back (return): the banner shrinks back out — reverse of the grow. */
+.cur-post-branch-banner-leaving{
+  animation: cur-branch-banner-shrink 0.46s cubic-bezier(0.3,0.8,0.3,1) forwards;
+}
+@keyframes cur-branch-banner-shrink{
+  from{ max-height: 3em; opacity: 1; padding-bottom: 9px; transform: translateY(0); }
+  to{ max-height: 0; opacity: 0; padding-bottom: 0; margin-bottom: 0; transform: translateY(-6px); }
+}
+@media (prefers-reduced-motion: reduce){
+  .cur-post-branch-banner{ transition: none; }
+  .cur-post-branch-banner-leaving{ animation: none; }
+}
 .cur-post-card-head{
   display: flex;
   align-items: flex-start;
@@ -1152,12 +1249,14 @@
   align-items: center;
   gap: 5px;
   font-family: var(--rf-mono);
-  font-size: 11.5px;
+  font-size: 10px;
   color: var(--ink-3);
   padding-top: 8px;
 }
 .cur-post-stat svg{
   opacity: 0.7;
+  width: 12px;
+  height: 12px;
 }
 .cur-post-like-btn{
   background: none;
@@ -1356,7 +1455,7 @@
 }
 .cur-branch-create{
   padding: 8px 16px;
-  border-radius: 9px;
+  border-radius: 10px;
   border: 1px solid var(--aurora-deep);
   background: var(--aurora-deep);
   color: #fff;
@@ -1395,24 +1494,6 @@
 }
 :root.cur-back-nav ::view-transition-new(root){
   animation: cur-back-page-in 0.3s cubic-bezier(0,0,0.2,1) both;
-}
-
-/* Rising branch panel — fixed so its position is always relative to the
-   viewport, never to the scroll container. Sitting outside cur-feed-posts
-   means the panel is unaffected by that container's scroll height or any
-   transform applied during pull-to-refresh. translateY(100vh) keeps it one
-   screen-height below the visible area at all scroll positions. */
-.cur-branch-rising-panel{
-  /* position:fixed; exact coordinates set by JS from the feed pane's
-     getBoundingClientRect() so the panel covers only the feed column.
-     display:none by default; JS sets display:block only during an active swipe. */
-  position: fixed;
-  /* left/right/top/bottom set imperatively — no defaults needed */
-  z-index: 50;
-  will-change: transform;
-  background: var(--paper);
-  overflow-y: auto;
-  display: none;
 }
 
 /* Inner overlay content — fills the fixed panel. */
@@ -1456,24 +1537,90 @@
   color: var(--ink-3);
   font-family: var(--rf-mono);
 }
-.cur-mock-branch-posts{
-  padding: 0 0 40px;
+/* Branch preview posts reuse the main feed's .cur-feed-posts-inner +
+   .cur-post-card styling so the overlay matches a real feed. The real feed
+   gets its side gutters from .cur-feed-posts (the scroll wrapper); the overlay
+   has no such wrapper, so mirror those gutters here — otherwise cards run
+   edge-to-edge on mobile/narrow panels. */
+.cur-mock-branch-overlay .cur-feed-posts-inner{
+  box-sizing: border-box;
+  padding: 0 32px 40px;
 }
-.cur-mock-branch-post{
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--hair);
+
+/* ── Swipe-to-branch recede → exit-left ──────────
+   On a rightward drag the OTHER posts recede (scale down + drift left + dim),
+   driven by --branch-progress (0→1) set imperatively on .cur-feed-posts-inner.
+   On commit they slide all the way out to the left; the dragged source lifts to
+   the top as a normal full post (marked by its "Branched from" banner) with the
+   branch view inline beneath it. The source is .cur-post-item-source and is
+   excluded from both. */
+.cur-post-item-other{
+  transition: transform 0.28s cubic-bezier(0.3, 0.8, 0.3, 1), opacity 0.28s ease;
 }
-.cur-mock-branch-author{
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink-2);
-  margin: 0 0 4px;
+/* Direct-child scope (`>`) is load-bearing: a nested branch feed is itself a
+   .cur-feed-posts-inner whose posts are all .cur-post-item-other. Without `>`,
+   a parent feed's .cur-branching would cascade into the nested feed and shove
+   every branch post off-screen (opacity:0). Each feed recedes only its own
+   direct posts; the rule then works recursively at any depth. */
+.cur-branch-dragging > .cur-post-item-other{
+  transform-origin: center top;
+  transform: translateX(calc(var(--branch-progress, 0) * -160px))
+             scale(calc(1 - var(--branch-progress, 0) * 0.12));
+  opacity: calc(1 - var(--branch-progress, 0) * 0.7);
+  transition: none; /* follow the finger 1:1 while dragging */
 }
-.cur-mock-branch-text{
-  font-size: 14px;
-  color: var(--ink);
-  margin: 0;
-  line-height: 1.5;
+.cur-branching > .cur-post-item-other{
+  transform: translateX(-150%) scale(0.85);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.42s ease;
+}
+/* Returning from a branch (Back): the exact reverse of the recede. The other
+   posts come back in from where they exited (off-screen left, scaled down) and
+   settle, while the source's "Branched from" banner clears. */
+.cur-branch-returning > .cur-post-item-other{
+  animation: cur-post-return 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+@keyframes cur-post-return{
+  from{ opacity: 0; transform: translateX(-150%) scale(0.85); }
+  to{ opacity: 1; transform: translateX(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce){
+  .cur-post-item-other,
+  .cur-branch-dragging > .cur-post-item-other,
+  .cur-branching > .cur-post-item-other{ transition: none; }
+  .cur-branch-returning > .cur-post-item-other{ animation: none; }
+}
+
+/* Everything below the header is wrapped in .cur-post-foldable, a flex column
+   that mirrors the card's own gap so the body, embeds, and footer space evenly. */
+.cur-post-foldable{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* The inline branch view that drops in beneath the folded source card. It
+   enters from the right (the "recede → page to the right" metaphor). */
+.cur-branch-inline-host{
+  animation: cur-branch-inline-in 0.42s cubic-bezier(0.3, 0.8, 0.3, 1) both;
+  max-width: calc(600px * 0.85);
+  width: 100%;
+  margin: 0 auto;
+}
+@keyframes cur-branch-inline-in{
+  from{ opacity: 0; transform: translateX(46px); }
+  to{ opacity: 1; transform: translateX(0); }
+}
+
+/* Inline mode: render the branch overlay in normal flow, not a fixed panel. */
+.cur-mock-branch-inline{
+  position: static;
+  inset: auto;
+  background: transparent;
+}
+@media (prefers-reduced-motion: reduce){
+  .cur-branch-inline-host{ animation: none; }
 }
 
 /* Back button on branch feeds */
@@ -1499,15 +1646,49 @@
   from{ opacity:0; transform:translateX(-6px); }
   to{ opacity:1; transform:translateX(0); }
 }
+/* The Back button sitting directly above the source post (inline branch): a
+   compact action hugging the post, not a full-width feed header. It grows in
+   (height 0 → full) on commit rather than inserting at full height, so it never
+   shoves the source down — the source's lift and this grow share a timeline, so
+   the post settles below it in one motion. */
+.cur-branch-back-pinned{
+  width: auto;
+  border-bottom: none;
+  padding: 4px 8px 8px;
+  font-size: 12px;
+  overflow: hidden;
+  /* Full height immediately — it just fades in (fast). It must NOT change height
+     during the commit lift: it sits ABOVE the post, so any height change would
+     shove the post mid-lift (the "up then down"). With its height constant, the
+     post's only motion is the scroll lift, which is monotonic by construction. */
+  animation: cur-branch-back-in 0.24s ease-out both;
+}
+/* Back (return): the Back button shrinks out so the source rises to the very top
+   as it collapses — on Back the scroll isn't lifting, so this is the only motion. */
+.cur-branch-back-pinned.cur-branch-back-leaving{
+  animation: cur-branch-back-shrink 0.42s cubic-bezier(0.33,1,0.68,1) forwards;
+}
+@keyframes cur-branch-back-shrink{
+  from{ max-height: 2.5em; opacity: 1; padding-top: 4px; padding-bottom: 8px; transform: translateY(0); }
+  to{ max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; transform: translateY(-4px); }
+}
+@media (prefers-reduced-motion: reduce){
+  .cur-branch-back-pinned{ animation: none; }
+}
 
-/* Branch topics header — shown at top of a swipe-branched feed */
+/* Branch topics header — atop a branched feed. A "Topics" heading over two
+   kind-split rows (deeper / adjacent), distinguished by color alone. Both rows
+   share ONE horizontal scroll. White, never sticky.
+   Mobile (base): a full-width band, bordered top + bottom.
+   Desktop (>=768px): a bordered rectangle, set apart from the rounded posts. */
 .cur-branch-header{
-  padding: 18px 20px 16px;
+  padding: 12px 0 13px;
+  border-top: 1px solid var(--hair);
   border-bottom: 1px solid var(--hair);
-  background: var(--paper);
+  background: #fff;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 .cur-branch-header-animate{
   animation: cur-branch-header-in 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) both;
@@ -1516,37 +1697,59 @@
   from{ opacity:0; transform:translateY(-8px); }
   to{ opacity:1; transform:translateY(0); }
 }
+
+/* Quiet section heading above the rows. */
 .cur-branch-header-label{
   font-family: var(--rf-mono);
   font-size: 9.5px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-3);
+  padding-left: 18px;
 }
-.cur-branch-header-group{
+
+/* Single scroll container for both rows. The track is sized to the longer row
+   (width:max-content), so one drag moves deeper + adjacent together and the
+   shorter row runs empty on the right. A right-edge fade hints at more; with
+   the track's matching trailing padding it falls on empty space at the end. */
+.cur-branch-scroll{
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent);
+}
+.cur-branch-scroll::-webkit-scrollbar{ display: none; }
+.cur-branch-track{
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 7px;
+  width: max-content;
+  min-width: 100%;
+  padding: 0 22px 0 18px;
 }
-.cur-branch-header-kind{
-  font-family: var(--rf-mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--aurora-deep);
-  white-space: nowrap;
-}
-.cur-branch-header-chips{
+.cur-branch-row{
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
 }
-/* Reuse the existing .cur-branch-chip.selected style for header chips,
-   but make them non-interactive (cursor default) */
-.cur-branch-header .cur-branch-chip{
-  cursor: default;
+
+/* Full label on a single line; the row scrolls to reach it (no truncation). */
+.cur-branch-tag{
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 4px 11px;
+  border-radius: 8px;
   font-size: 12.5px;
-  padding: 5px 11px;
+  line-height: 1.35;
+}
+.cur-branch-row-deeper .cur-branch-tag{
+  background: rgba(85, 88, 184, 0.12);
+  color: var(--aurora-deep);
+}
+.cur-branch-row-adjacent .cur-branch-tag{
+  background: rgba(62, 138, 108, 0.12);
+  color: #3e8a6c;
 }
 
 /* "Creating your feed…" placeholder shown while waiting for branch options */
@@ -1605,7 +1808,7 @@
   display: block;
   padding: 9px 11px;
   border: 1px solid var(--hair);
-  border-radius: 9px;
+  border-radius: 10px;
   background: #fff;
   text-decoration: none;
   transition: border-color 0.18s;
@@ -1672,7 +1875,7 @@
   font-family: var(--rf-mono);
   font-size: 11px; letter-spacing: 0.04em;
   padding: 5px 10px;
-  border-radius: 6px;
+  border-radius: 10px;
   border: 1px solid var(--hair-strong);
   background: var(--paper);
   color: var(--ink-3);
@@ -1738,7 +1941,7 @@
   cursor: pointer;
   user-select: none;
   padding: 4px 8px;
-  border-radius: 6px;
+  border-radius: 10px;
   transition: color 0.18s, background 0.18s;
 }
 .cur-rerank-toggle:hover:not([aria-disabled="true"]){
@@ -1910,10 +2113,8 @@
   z-index: 9999;
 }
 .cur-boot-mark{
-  font-family: 'Instrument Serif', serif;
-  font-size: 40px;
-  letter-spacing: -0.02em;
-  color: #0d0b1e;
+  width: 56px;
+  height: auto;
   animation: cur-boot-breathe 1.8s ease-in-out infinite;
 }
 .cur-boot-dots{ display: inline-flex; gap: 6px; }
@@ -1934,6 +2135,45 @@
 /* Pipeline loader placed inside the feed column (and branch overlay) rather
    than pinned to the topbar. Scrolls with the feed content. */
 .cur-feed-pl{ padding: 2px 0 14px; }
+/* Row that holds the pipeline loader on the left and the Refresh button on the
+   right. When the loader is idle it renders nothing, so the row carries the
+   bottom spacing and the Refresh button sits alone, still right-aligned. */
+.cur-feed-pl-row{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0 14px;
+}
+.cur-feed-pl-row .cur-feed-pl{ padding: 0; flex: 1 1 auto; min-width: 0; }
+.cur-feed-refresh{
+  margin-left: auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--hair-strong);
+  background: transparent;
+  color: var(--ink-3);
+  font-family: var(--rf-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+.cur-feed-refresh:hover{ border-color: var(--ink); color: var(--ink); }
+.cur-feed-refresh:disabled{ cursor: default; opacity: 0.55; }
+.cur-feed-refresh-icon{ flex-shrink: 0; }
+.cur-feed-refresh.busy .cur-feed-refresh-icon{
+  animation: cur-ptr-spin 0.8s linear infinite;
+  transform-origin: center;
+}
+/* Desktop only — on mobile the pull-to-refresh gesture replaces this button. */
+@media (max-width: 767px){
+  .cur-feed-refresh{ display: none; }
+}
 /* In the branch overlay, match the 20px horizontal padding of its other rows. */
 .cur-mock-branch-overlay .cur-feed-pl{ padding: 12px 20px 14px; }
 
@@ -2027,7 +2267,7 @@
   line-height: 1.6;
   background: var(--paper);
   border: 1px solid var(--hair-strong);
-  border-radius: 8px;
+  border-radius: 10px;
   box-shadow: 0 4px 20px rgba(13,11,30,0.12);
   animation: cur-pl-dropdown 0.15s ease;
 }
@@ -2493,35 +2733,36 @@
   margin-top: 4px;
 }
 
-/* Pill group */
+/* Segmented control (mockup .seg): a tinted track with rounded buttons; the
+   active one lifts to a white chip. Used for Time window, Include, etc. */
 .ctrl-pill-group{
   display: flex;
-  gap: 0;
-  border: 1px solid var(--hair-strong);
-  border-radius: 8px;
-  overflow: hidden;
-  background: #fff;
+  gap: 4px;
+  background: rgba(85,88,184,0.10);
+  border: none;
+  border-radius: 10px;
+  padding: 4px;
 }
 .ctrl-pill{
   flex: 1;
   padding: 7px 0;
   background: transparent;
   border: none;
-  border-right: 1px solid var(--hair);
-  color: var(--ink-2);
-  font-family: var(--rf-body);
-  font-size: 12px;
+  border-radius: 7px;
+  color: var(--ink-3);
+  font-family: var(--rf-mono);
+  font-size: 11px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
   text-align: center;
 }
-.ctrl-pill:last-child{ border-right: none; }
 .ctrl-pill.active{
-  background: var(--aurora-deep);
-  color: #fff;
+  background: #fff;
+  color: var(--ink);
   font-weight: 500;
+  box-shadow: 0 1px 3px rgba(13,11,30,0.08);
 }
-.ctrl-pill:hover:not(.active){ color: var(--ink); background: rgba(13,11,30,0.03); }
+.ctrl-pill:hover:not(.active){ color: var(--ink); }
 
 /* Toggle list */
 .ctrl-toggle-list{
@@ -2529,21 +2770,24 @@
   flex-direction: column;
   gap: 8px;
 }
+/* Mockup toggle row: label on the left, switch on the right. */
 .ctrl-toggle-row{
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 12.5px;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13.5px;
   color: var(--ink-2);
   cursor: pointer;
   font-family: var(--rf-body);
-  padding: 2px 0;
+  padding: 8px 0;
 }
+.ctrl-toggle-label{ flex: 1; min-width: 0; }
 .ctrl-switch{
-  width: 34px;
-  height: 18px;
-  border-radius: 9px;
-  background: rgba(13,11,30,0.12);
+  width: 36px;
+  height: 21px;
+  border-radius: 999px;
+  background: rgba(85,88,184,0.16);
   position: relative;
   transition: background 0.2s;
   cursor: pointer;
@@ -2552,16 +2796,16 @@
 .ctrl-switch.on{ background: var(--aurora-deep); }
 .ctrl-switch-thumb{
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 7px;
+  top: 2.5px;
+  left: 2.5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
   background: #fff;
-  transition: transform 0.2s;
+  transition: transform 0.22s var(--ease-spring);
   box-shadow: 0 1px 3px rgba(13,11,30,0.2);
 }
-.ctrl-switch.on .ctrl-switch-thumb{ transform: translateX(16px); }
+.ctrl-switch.on .ctrl-switch-thumb{ transform: translateX(15px); }
 
 /* Mini fields */
 .ctrl-inline-inputs{
@@ -2582,19 +2826,21 @@
   text-transform: uppercase;
   white-space: nowrap;
 }
-.ctrl-mini-field input{
+.ctrl-mini-field input,
+.ctrl-mini-field select{
   width: 100%;
   padding: 6px 10px;
   background: #fff;
   border: 1px solid var(--hair-strong);
-  border-radius: 6px;
+  border-radius: 10px;
   color: var(--ink);
   font-family: var(--rf-mono);
   font-size: 12px;
   outline: none;
   transition: border-color 0.2s;
 }
-.ctrl-mini-field input:focus{ border-color: var(--aurora-deep); }
+.ctrl-mini-field input:focus,
+.ctrl-mini-field select:focus{ border-color: var(--aurora-deep); }
 
 /* Tag inputs */
 .ctrl-tag-input{
@@ -2608,7 +2854,7 @@
   padding: 7px 10px;
   background: #fff;
   border: 1px solid var(--hair-strong);
-  border-radius: 6px;
+  border-radius: 10px;
   color: var(--ink);
   font-family: var(--rf-body);
   font-size: 12px;
@@ -2653,7 +2899,7 @@
 .ctrl-rerank-prompt{
   background: rgba(220,120,110,0.10);
   border: 1px solid rgba(220,120,110,0.4);
-  border-radius: 6px;
+  border-radius: 10px;
   padding: 10px 12px;
   font-family: var(--rf-body);
   font-size: 12.5px;
@@ -2678,9 +2924,9 @@
 .ctrl-subquery-text{
   flex: 1;
   text-align: left;
-  background: rgba(136,144,216,0.10);
-  border: 1px solid rgba(85,88,184,0.22);
-  border-radius: 6px;
+  background: #fff;
+  border: 1px solid var(--hair-strong);
+  border-radius: 10px;
   padding: 8px 10px;
   font-family: var(--rf-body);
   font-size: 13px;
@@ -2691,14 +2937,13 @@
 }
 .ctrl-subquery-text:hover{
   border-color: var(--aurora-deep);
-  background: rgba(136,144,216,0.16);
 }
 .ctrl-subquery-input{
   flex: 1;
   padding: 8px 10px;
   background: #fff;
   border: 1px solid var(--hair-strong);
-  border-radius: 6px;
+  border-radius: 10px;
   color: var(--ink);
   font-family: var(--rf-body);
   font-size: 13px;
@@ -2713,7 +2958,7 @@
   width: 28px;
   background: transparent;
   border: 1px solid var(--hair-strong);
-  border-radius: 6px;
+  border-radius: 10px;
   color: var(--ink-4);
   font-size: 16px;
   line-height: 1;
@@ -2777,7 +3022,7 @@
   padding: 8px 10px;
   background: #fff;
   border: 1px solid var(--hair-strong);
-  border-radius: 6px;
+  border-radius: 10px;
   color: var(--ink);
   font-family: var(--rf-body);
   font-size: 12.5px;
@@ -2801,7 +3046,7 @@
   padding: 10px 12px;
   background: #fff;
   border: 1px solid var(--hair-strong);
-  border-radius: 6px;
+  border-radius: 10px;
   color: var(--ink);
   font-family: var(--rf-body);
   font-size: 12.5px;
@@ -2817,7 +3062,7 @@
 .ctrl-safety{
   background: rgba(192, 86, 86, 0.05);
   border: 1px solid rgba(192, 86, 86, 0.2);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -2965,7 +3210,7 @@
   gap: 12px;
   width: 100%;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: none;
   background: transparent;
   cursor: pointer;
@@ -3191,25 +3436,10 @@
   .cur-ptr-spinner{ display: flex; }
   .cur-feed-posts-header .cur-toolbar{ display: none; }
 
-  /* Gaussian-blur the feed itself while the chat overlay is up — a true blur
-     on the background content, in addition to the overlay's backdrop frost. */
-  .cur-main[data-mobile-tab="chat"] .cur-feed-posts,
-  .cur-main[data-mobile-tab="chat"] .cur-topbar{
-    filter: blur(10px);
-  }
-  /* Tune overlay is opaque — no need to blur what's behind it */
-  .cur-main[data-mobile-tab="chat"]:has(.cur-workbench[data-right-pane="tune"]) .cur-feed-posts,
-  .cur-main[data-mobile-tab="chat"]:has(.cur-workbench[data-right-pane="tune"]) .cur-topbar{
-    filter: none;
-  }
-  .cur-topbar{
-    transition: filter 0.42s cubic-bezier(0.65, 0, 0.35, 1);
-  }
-
-  /* Chat pane: covers the screen but is invisible + click-through when
-     closed — except its input bar, which is ALWAYS pinned at the bottom over
-     the feed. Focusing the input fades in the frost and raises the messages
-     from below; the input itself never moves or swaps. */
+  /* Chat pane: the full-screen frosted conversation sheet. It fades + rises in
+     as one panel (matching the mockup's float sheet) — no separate message
+     rise, and no extra blur of the feed: the sheet's own backdrop-filter
+     frosts whatever is behind it. */
   .cur-chat-pane{
     position: fixed;
     inset: 0;
@@ -3219,36 +3449,31 @@
     display: flex;
     border-right: none;
     overflow: hidden;
-    background: transparent;
+    background: var(--paper);
+    opacity: 0;
+    visibility: hidden;
     pointer-events: none;
-    transition: background-color 0.42s cubic-bezier(0.65, 0, 0.35, 1);
+    transform: translateY(16px) scale(0.992);
+    transform-origin: center bottom;
+    transition:
+      opacity 0.34s var(--ease-out),
+      transform 0.34s var(--ease-out),
+      visibility 0.34s;
   }
   .cur-main[data-mobile-tab="chat"] .cur-chat-pane{
-    background: rgba(251,250,246,0.86);
-    backdrop-filter: blur(36px) saturate(1.15);
-    -webkit-backdrop-filter: blur(36px) saturate(1.15);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
   }
-  /* Tune has its own opaque overlay — kill the chat-pane frost behind it */
+  /* Tune has its own opaque overlay — hide the chat sheet frost behind it */
   .cur-main[data-mobile-tab="chat"] .cur-workbench[data-right-pane="tune"] .cur-chat-pane{
     background: transparent;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
-  /* Messages rise gently into place over the frost; hidden when closed. */
-  .cur-chat-pane .cur-chat-area{
-    opacity: 0;
-    transform: translateY(28px);
-    pointer-events: none;
-    transition:
-      opacity 0.42s cubic-bezier(0.65, 0, 0.35, 1),
-      transform 0.42s cubic-bezier(0.65, 0, 0.35, 1);
-  }
-  .cur-main[data-mobile-tab="chat"] .cur-chat-pane .cur-chat-area{
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
-  }
-  /* The input bar is the one interactive piece of the closed pane. */
+  /* The sheet animates as a whole — its contents don't move independently. */
+  .cur-chat-pane .cur-chat-area{ pointer-events: auto; }
   .cur-chat-pane .cur-input-bar{ pointer-events: auto; }
   /* Option chips / mode rows only make sense with the chat open — keep the
      closed bar to just the input + send. */
@@ -3293,6 +3518,23 @@
   }
   .cur-feed-posts-inner{
     overflow-x: clip;
+    /* Let a child bleed up to 12px past the column edge (the feed's side
+       gutter) without being clipped — used by the full-width topics band.
+       Flung/receding swipe cards travel far past 12px, so they still clip. */
+    overflow-clip-margin: 12px;
+  }
+  /* Topics band goes edge to edge on mobile: cancel the feed pane's 12px side
+     gutter so the white band touches the screen (its label/chips keep their own
+     inset). The clip-margin above keeps this from being clipped by the column. */
+  .cur-branch-header{
+    margin-left: -12px;
+    margin-right: -12px;
+  }
+  /* Match the mobile feed's 12px side gutter (the overlay has no padded
+     .cur-feed-posts wrapper of its own). */
+  .cur-mock-branch-overlay .cur-feed-posts-inner{
+    padding-left: 12px;
+    padding-right: 12px;
   }
   .cur-feed-posts-header{
     padding: 4px 0 8px;
@@ -3398,12 +3640,15 @@
   .cur-input-wrap{ gap: 8px; }
   .cur-input{
     font-size: 16px; /* avoid iOS zoom-on-focus */
-    padding: 12px 16px;
-    min-height: 42px;
+    padding: 8px 2px;
+    min-height: 36px;
     max-height: 120px;
-    border-radius: 14px;
-    background: rgba(255,255,255,0.94);
-    box-shadow: 0 6px 24px rgba(13,11,30,0.1);
+    /* The pill (.cur-input-wrap) is the white surface — the textarea must be
+       transparent so the input + glyph + send read as one continuous box, not
+       a white box nested inside a differently-shaded one. */
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
   }
   /* Placeholder sizes: the default "Describe your ideal feed…" reads larger;
      the longer interview hints ("Tap the options above…") stay small. Only
@@ -3445,7 +3690,7 @@
 .cur-bsky-auth-input{
   width: 100%;
   padding: 12px 16px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid var(--hair-strong);
   background: var(--paper);
   color: var(--ink);
@@ -3501,7 +3746,7 @@
   margin-top: 12px;
   padding: 10px 12px;
   border: 1px solid var(--hair-strong);
-  border-radius: 8px;
+  border-radius: 10px;
   background: #fff;
   color: var(--ink);
   font-family: var(--rf-body);
@@ -3554,7 +3799,7 @@
   align-items: center;
   justify-content: center;
   padding: 10px 20px;
-  border-radius: 8px;
+  border-radius: 10px;
   font-family: var(--rf-body);
   font-size: 13px;
   font-weight: 500;
@@ -3572,4 +3817,472 @@
   background: #fff;
   color: var(--ink);
   border: 1px solid var(--hair-strong);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   DESIGN E — "Capsule" overhaul. Floating input capsule + side chat +
+   tune slide-over. Recolored onto the purple palette. Appended last so
+   these rules win over the earlier (pre-E) chat-pane layout.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* shared keyframes */
+@keyframes cur-spin{ to{ transform: rotate(360deg);} }
+@keyframes cur-blink{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+@keyframes cur-pop{ from{ transform:scale(.6); opacity:0;} to{ transform:scale(1); opacity:1;} }
+@keyframes cur-rise{ from{ opacity:0; transform:translateY(14px);} to{ opacity:1; transform:none;} }
+@keyframes cur-shimmer{ from{ background-position:130% 0;} to{ background-position:-90% 0;} }
+@keyframes cur-mb1{ from{ transform:translate(-46px,-4px);} to{ transform:translate(40px,5px);} }
+@keyframes cur-mb2{ from{ transform:translate(34px,7px);} to{ transform:translate(-38px,-6px);} }
+@keyframes cur-mb3{ from{ transform:translate(-14px,9px);} to{ transform:translate(20px,-8px);} }
+@keyframes cur-mb4{ from{ transform:translate(48px,-7px);} to{ transform:translate(-44px,3px);} }
+@keyframes cur-mb5{ from{ transform:translate(2px,-10px);} to{ transform:translate(-26px,10px);} }
+
+/* The stage wrapper is transparent in flow except on desktop, where it
+   becomes the positioning context for the floating capsule + tune panel. */
+.cur-stage{ display: contents; }
+
+/* ── CAPSULE chrome + visuals (shared by desktop + mobile; positioning is
+   set per-breakpoint below). Hidden by default. ── */
+.capsule{
+  display: none; z-index: 40; overflow: hidden;
+  /* Solid (no backdrop-filter): animating width/height on a frosted element
+     recomputes the blur every frame and stutters. Solid white keeps the resize
+     smooth and matches the rest of the (non-transparent) chrome. */
+  background: #fff;
+  border: 1px solid rgba(13,11,30,0.10); border-radius: 29px;
+  box-shadow: 0 2px 6px rgba(13,11,30,0.05), 0 18px 44px -14px rgba(13,11,30,0.26);
+  will-change: width, height;
+  transition:
+    width .4s cubic-bezier(0.4, 0, 0.2, 1),
+    height .4s cubic-bezier(0.4, 0, 0.2, 1),
+    border-radius .4s cubic-bezier(0.4, 0, 0.2, 1),
+    background .3s, box-shadow .3s, border-color .3s;
+}
+.capsule:focus-within{
+  border-color: rgba(85,88,184,0.45);
+  box-shadow: 0 0 0 4px rgba(136,144,216,0.16), 0 18px 44px -14px rgba(13,11,30,0.26);
+}
+.cap-inner{
+    display: flex; align-items: center; gap: 10px;
+    height: 58px; padding: 0 10px 0 16px; transition: opacity .25s;
+  }
+  .cap-glyph{
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1.5px solid var(--aurora-deep); position: relative; flex-shrink: 0;
+  }
+  .cap-glyph::after{ content:''; position:absolute; inset:6px; border-radius:50%; background:var(--aurora-deep); }
+  .cap-field{
+    flex: 1; min-width: 0; font-family: var(--body); font-size: 14.5px;
+    line-height: 1.45; color: var(--ink);
+    border: none; outline: none; background: transparent;
+    padding: 0; margin: 0; height: 22px;
+  }
+  .cap-field::placeholder{ color: var(--ink-4); }
+  .cap-expand{
+    width: 32px; height: 32px; border-radius: 50%;
+    display: grid; place-items: center; color: var(--ink-3); flex-shrink: 0;
+    transition: all .15s; background: none; border: none; cursor: pointer;
+  }
+  .cap-expand:hover{ background: rgba(13,11,30,0.05); color: var(--ink); }
+  .cap-expand svg{ width: 15px; height: 15px; transition: transform .3s var(--ease-out); }
+  .cur-workbench[data-expanded] .cap-expand svg{ transform: rotate(180deg); }
+  .cap-send{
+    width: 38px; height: 38px; border-radius: 50%;
+    background: linear-gradient(140deg, var(--aurora-deep), var(--aurora-deeper));
+    color: #fff; display: grid; place-items: center; flex-shrink: 0;
+    box-shadow: 0 4px 12px -3px rgba(85,88,184,0.5);
+    transition: transform .18s var(--ease-spring); border: none; cursor: pointer;
+  }
+  .cap-send:hover:not(:disabled){ transform: scale(1.07); }
+  .cap-send:active:not(:disabled){ transform: scale(.96); }
+  .cap-send:disabled{ opacity:.45; cursor: default; }
+  .cap-send svg{ width: 15px; height: 15px; }
+
+  /* progressing pill (Meta goo, goo-only) */
+  .capsule.progressing{ width: 142px; height: 44px; border-radius: 22px; }
+  .capsule.progressing.updated{ width: 214px; }
+  .capsule.progressing .cap-inner{ opacity: 0; pointer-events: none; }
+
+  .cap-status{
+    position: absolute; inset: 0; display: flex; align-items: center; gap: 11px;
+    padding: 0 18px; opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 3;
+  }
+  .capsule.updated .cap-status{ opacity: 1; pointer-events: auto; }
+  .cap-status .st-glyph{
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1.5px solid var(--aurora-deep); position: relative; flex-shrink: 0;
+  }
+  .st-text{ font-size: 13.5px; color: var(--ink-2); white-space: nowrap; }
+  .st-check{
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--aurora-deep); color: #fff; display: none; place-items: center; flex-shrink: 0;
+  }
+  .st-check svg{ width: 12px; height: 12px; }
+  .capsule.updated .st-glyph{ display: none; }
+  .capsule.updated .st-check{ display: grid; animation: cur-pop .4s var(--ease-spring); }
+  .capsule.updated{ cursor: pointer; border-color: rgba(85,88,184,0.5); background: #eceefb; }
+  .capsule.updated .st-text{ color: var(--ink); font-weight: 500; }
+  .st-detail{
+    margin-left: auto; flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
+    display: grid; place-items: center; color: var(--aurora-deep);
+    background: rgba(136,144,216,0.22); border: none; cursor: pointer;
+  }
+  .st-detail:hover{ background: rgba(136,144,216,0.4); }
+  .st-detail svg{ width: 13px; height: 13px; }
+
+  /* META metaballs — pure goo, no text while thinking. The goo filter +
+     ball animations are EXPENSIVE (per-frame Gaussian blur), so they are
+     OFF unless actually thinking — otherwise they repaint 60fps behind an
+     opacity:0 layer and make typing lag. */
+  .cap-meta{
+    position: absolute; inset: 0; pointer-events: none; opacity: 0;
+    transition: opacity .35s;
+  }
+  /* Free-floating goo: drop the pill chrome + clip while thinking so the
+     metaballs spill out and read as free-floating, not boxed in a capsule. */
+  .capsule.thinking{
+    background: transparent; border-color: transparent;
+    box-shadow: none; overflow: visible;
+  }
+  .capsule.thinking .cap-meta{ opacity: .92; filter: url(#cur-goo) saturate(1.1); }
+  .capsule.thinking .cap-status{ opacity: 0; }
+  /* Resting: size + color only, NO animation — so nothing repaints when idle. */
+  .cap-meta i{ position: absolute; left: 50%; top: 50%; border-radius: 50%; }
+  .cap-meta i:nth-child(1){ width:30px; height:30px; margin:-15px; background: var(--aurora-deep); }
+  .cap-meta i:nth-child(2){ width:22px; height:22px; margin:-11px; background: var(--aurora); }
+  .cap-meta i:nth-child(3){ width:18px; height:18px; margin:-9px;  background: var(--amber); }
+  .cap-meta i:nth-child(4){ width:24px; height:24px; margin:-12px; background: var(--mist); }
+  .cap-meta i:nth-child(5){ width:14px; height:14px; margin:-7px;  background: var(--sage); }
+  /* Animate the goo ONLY while a turn is in flight (capsule thinking OR the
+     in-conversation composer loading). Defined here so idle pages stay still. */
+  .capsule.thinking .cap-meta i:nth-child(1),
+  .cur-input-wrap.loading .cap-meta i:nth-child(1){ animation: cur-mb1 2.9s ease-in-out infinite alternate; }
+  .capsule.thinking .cap-meta i:nth-child(2),
+  .cur-input-wrap.loading .cap-meta i:nth-child(2){ animation: cur-mb2 3.7s ease-in-out infinite alternate; }
+  .capsule.thinking .cap-meta i:nth-child(3),
+  .cur-input-wrap.loading .cap-meta i:nth-child(3){ animation: cur-mb3 2.3s ease-in-out infinite alternate; }
+  .capsule.thinking .cap-meta i:nth-child(4),
+  .cur-input-wrap.loading .cap-meta i:nth-child(4){ animation: cur-mb4 4.3s ease-in-out infinite alternate; }
+  .capsule.thinking .cap-meta i:nth-child(5),
+  .cur-input-wrap.loading .cap-meta i:nth-child(5){ animation: cur-mb5 3.1s ease-in-out infinite alternate; }
+
+  /* collapsed "Refine" pill — ripple glyph + label, hugging its content. */
+  .cap-mini{
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    gap: 8px; opacity: 0; pointer-events: none; transition: opacity .25s .1s; z-index: 2;
+  }
+  .cap-mini .m-glyph{ width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--aurora); position: relative; flex-shrink: 0; }
+  .cap-mini .m-glyph::after{ content:''; position:absolute; inset:5px; border-radius:50%; background: var(--aurora); }
+  .cap-mini .m-hint{ font-size: 12.5px; font-weight: 500; color: #e9e6f6; white-space: nowrap; }
+
+  /* Shared collapse (mockup behavior): the capsule transitions between FIXED
+     widths and CROSSFADES its faces with opacity — never width:auto / display,
+     which can't animate. A compact centered pill that fits "Refine" + glyph,
+     so it still reads as hugging while the width/radius animate smoothly. The
+     lifted ink is lighter than the resting dark chip. */
+  .capsule.c-shrink{
+    width: 112px; height: 42px; border-radius: 21px; cursor: pointer;
+    background: rgba(54,47,96,0.93);
+    border-color: rgba(255,255,255,0.18);
+    box-shadow: 0 2px 6px rgba(13,11,30,0.12), 0 16px 38px -14px rgba(13,11,30,0.4);
+  }
+  .capsule.c-shrink .cap-inner{ opacity: 0; pointer-events: none; }
+  .capsule.c-shrink .cap-mini{ opacity: 1; }
+
+/* ── DESKTOP layout (positioning only — capsule visuals are global above) ── */
+@media (min-width: 768px){
+  .cur-workbench{ position: relative; }
+  .cur-stage{
+    display: flex; flex-direction: column;
+    flex: 1; min-width: 0; position: relative; overflow: hidden;
+  }
+  .cur-feed-posts{ border-right: none; padding-bottom: 104px; }
+  .capsule{
+    display: block;
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: 18px; width: var(--cap-w); height: 58px;
+  }
+  .cur-workbench[data-expanded] .capsule,
+  .cur-workbench[data-tuning] .capsule{ display: none; }
+
+  /* SHRINK collapse: the "Refine" pill stays centered (left:50% + the
+     translateX(-50%) carried from the resting capsule); appearance is global. */
+
+  /* ── SIDE CHAT (expanded conversation) ── */
+  .chat-side{
+    width: 0; flex-shrink: 0; border-left: 1px solid transparent;
+    background: var(--paper-2); overflow: hidden;
+    transition: width .45s var(--ease-out), border-color .45s;
+  }
+  .cur-workbench[data-expanded="side"] .chat-side{
+    width: var(--cur-right-w, 380px); border-left-color: var(--hair);
+  }
+  .chat-side .cur-chat-area,
+  .chat-side .cur-input-bar{ width: var(--cur-right-w, 380px); box-sizing: border-box; }
+  .thread-head{
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 16px 12px; border-bottom: 1px solid var(--hair-2); flex-shrink: 0;
+  }
+  .thread-head .h-glyph{
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 1.5px solid var(--aurora-deep); position: relative; flex-shrink: 0;
+  }
+  .thread-head .h-glyph::after{ content:''; position:absolute; inset:5.5px; border-radius:50%; background: var(--aurora-deep); }
+  .th-titles .th-t{ font-family: var(--display); font-size: 13.5px; font-weight: 600; color: var(--ink); }
+  .th-titles .th-s{ font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-4); }
+  .th-x{
+    margin-left: auto; width: 26px; height: 26px; border-radius: 8px;
+    display: grid; place-items: center; color: var(--ink-3); border: none; background: none; cursor: pointer;
+  }
+  .th-x:hover{ background: rgba(13,11,30,0.05); color: var(--ink); }
+
+  /* resizer only when the side chat is open */
+  .cur-resizer-workbench{ display: none; }
+  .cur-workbench[data-expanded="side"] .cur-resizer-workbench{ display: block; }
+
+  /* ── TUNE SLIDE-OVER ── */
+  .tune-scrim{
+    position: fixed; inset: 0; z-index: 44;
+    background: rgba(13,11,30,0.12);
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+    opacity: 0; visibility: hidden;
+    transition: opacity .35s var(--ease-out), visibility .35s;
+  }
+  .cur-workbench[data-tuning] .tune-scrim{ opacity: 1; visibility: visible; }
+  /* Override the legacy data-right-pane display toggle: the tune panel is now
+     a persistent slide-over, shown/hidden via transform + visibility. */
+  .cur-workbench[data-right-pane="chat"] .ctrl-tower,
+  .cur-workbench .ctrl-tower{ display: flex; flex-direction: column; }
+  .ctrl-tower{
+    position: fixed; top: calc(var(--cur-header-h) + 10px); right: 10px; bottom: 10px;
+    width: min(360px, calc(100vw - 20px)); height: auto;
+    background: #fff;
+    border: 1px solid var(--hair); border-radius: 18px;
+    box-shadow: 0 24px 60px -18px rgba(13,11,30,0.28);
+    z-index: 45; transform: translateX(calc(100% + 24px)); visibility: hidden;
+    transition: transform .45s var(--ease-out), visibility .45s;
+  }
+  .cur-workbench[data-tuning] .ctrl-tower{ transform: none; visibility: visible; }
+}
+
+/* ── tune panel header close (all sizes) ── */
+.ctrl-header{ position: relative; }
+.ctrl-close{
+  width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+  display: grid; place-items: center; color: var(--ink-3);
+  border: none; background: none; cursor: pointer; margin-left: 4px;
+}
+.ctrl-close:hover{ background: rgba(13,11,30,0.05); color: var(--ink); }
+
+/* ── MOBILE tweaks ── */
+@media (max-width: 767px){
+  /* The SAME floating capsule as desktop — input-only, types in place. It
+     floats above the feed (and above the on-screen keyboard via the
+     visualViewport-driven --cap-kb-offset). Tapping the expand chevron opens
+     the conversation sheet; typing never reveals it. */
+  .capsule{
+    display: block;
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(12px + env(safe-area-inset-bottom) + var(--cap-kb-offset, 0px));
+    width: min(560px, calc(100vw - 24px)); height: 58px; z-index: 55;
+    transition:
+      width .4s cubic-bezier(0.4, 0, 0.2, 1),
+      height .4s cubic-bezier(0.4, 0, 0.2, 1),
+      border-radius .4s cubic-bezier(0.4, 0, 0.2, 1),
+      background .3s, box-shadow .3s, border-color .3s,
+      bottom .25s var(--ease-out);
+  }
+  /* Hide the floating capsule whenever a full-screen layer owns the input:
+     the conversation sheet (which carries its own composer) or the tune sheet. */
+  .cur-main[data-mobile-tab="chat"] .capsule,
+  .cur-workbench[data-tuning] .capsule{ display: none; }
+
+  /* The conversation composer only exists inside the sheet now — hidden on the
+     feed tab (the floating capsule replaces the old pinned-pill impersonation). */
+  .cur-main[data-mobile-tab="feed"] .cur-chat-pane .cur-input-bar{ display: none; }
+  .cur-input-bar{
+    background: transparent; border-top: none;
+    padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
+  }
+  /* Solid (not frosted) input surfaces on mobile — the chat sheet behind them
+     is opaque now, so the composer + options card read as solid white. */
+  .cur-input-wrap{
+    max-width: none; margin: 0;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(13,11,30,0.05), 0 14px 36px -12px rgba(13,11,30,0.28);
+  }
+  .cur-opts-card{ background: #fff; }
+
+  /* the desktop-only thread-head is hidden in favour of the down-arrow. */
+  .thread-head{ display: none; }
+
+  /* Tune = right slide-over (same as desktop, just sized for the phone) — a
+     white rounded panel that slides in from the right over a dim scrim, NOT a
+     full-screen sheet. */
+  .tune-scrim{
+    display: block; position: fixed; inset: 0; z-index: 79;
+    background: rgba(13,11,30,0.28);
+    opacity: 0; visibility: hidden;
+    transition: opacity .35s var(--ease-out), visibility .35s;
+  }
+  .cur-workbench[data-tuning] .tune-scrim{ opacity: 1; visibility: visible; }
+  .ctrl-tower{
+    display: flex; flex-direction: column;
+    position: fixed; left: auto;
+    top: calc(var(--cur-header-h) + 8px); right: 8px; bottom: 8px;
+    width: min(360px, calc(100vw - 16px)); height: auto;
+    background: #fff;
+    border: 1px solid var(--hair); border-radius: 18px;
+    box-shadow: 0 24px 60px -18px rgba(13,11,30,0.3);
+    z-index: 80; overflow: hidden;
+    padding-top: 0;
+    transform: translateX(calc(100% + 20px)); visibility: hidden;
+    transition: transform .4s var(--ease-out), visibility .4s;
+  }
+  .cur-workbench[data-tuning] .ctrl-tower{ transform: none; visibility: visible; }
+}
+
+/* ── Bluesky-style placeholder skeletons while the feed is curating ── */
+.cur-skel-wrap{ max-width: 560px; margin: 0 auto; }
+.cur-skel-note{
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--ink-4);
+  display: flex; align-items: center; gap: 9px; margin: 4px 0 16px;
+}
+.cur-skel-dot{
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--aurora-deep); animation: cur-blink 1.2s ease-in-out infinite;
+}
+.cur-skel-card{
+  background: #fff; border: 1px solid var(--hair-2); border-radius: 14px;
+  padding: 16px 18px; margin-bottom: 12px;
+  opacity: 0; animation: cur-rise .5s var(--ease-out) forwards;
+}
+.cur-skel-card:nth-child(3){ animation-delay: .08s; }
+.cur-skel-card:nth-child(4){ animation-delay: .16s; }
+.cur-skel-head{ display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
+.cur-skel-av{
+  width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+  background: linear-gradient(90deg, var(--paper-3) 25%, var(--paper-2) 45%, var(--paper-3) 65%);
+  background-size: 220% 100%; animation: cur-shimmer 1.4s linear infinite;
+}
+.cur-skel-line{
+  height: 11px; border-radius: 6px; margin-bottom: 9px;
+  background: linear-gradient(90deg, var(--paper-3) 25%, var(--paper-2) 45%, var(--paper-3) 65%);
+  background-size: 220% 100%; animation: cur-shimmer 1.4s linear infinite;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   COMPOSER PILL — the expanded conversation's composer (side chat on
+   desktop, full-screen sheet on mobile) keeps the capsule oval shape, and
+   collapses to a metaballs goo pill while a turn is in flight (no input box).
+   ════════════════════════════════════════════════════════════════════ */
+.cur-input-wrap{
+  position: relative;
+  max-width: 640px; margin: 0 auto;
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.96);
+  border: 1px solid rgba(13,11,30,0.10); border-radius: 26px;
+  box-shadow: 0 2px 6px rgba(13,11,30,0.05);
+  padding: 6px 8px 6px 14px;
+  transition: width .4s var(--ease-out), background .3s, border-color .3s, box-shadow .25s;
+}
+.cur-input-wrap:focus-within{
+  border-color: rgba(85,88,184,0.45);
+  box-shadow: 0 0 0 4px rgba(136,144,216,0.16);
+}
+/* the capsule glyph (ring + dot), drawn with a single pseudo-element */
+.cur-input-wrap::before{
+  content: ''; flex-shrink: 0; align-self: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 1.5px solid var(--aurora-deep);
+  background: radial-gradient(circle at center, var(--aurora-deep) 0 4px, transparent 4.5px);
+}
+.cur-input{
+  background: transparent; border: none; border-radius: 0;
+  padding: 8px 2px; min-height: 36px;
+}
+.cur-input:focus{ border: none; box-shadow: none; }
+
+/* loading → show metaballs, hide the input box + send + glyph */
+.cur-input-wrap .cap-meta{ border-radius: inherit; }
+.cur-input-wrap.loading{ overflow: hidden; }
+.cur-input-wrap.loading .cap-meta{ opacity: .92; filter: url(#cur-goo) saturate(1.1); }
+.cur-input-wrap.loading .cur-input,
+.cur-input-wrap.loading .send-btn,
+.cur-input-wrap.loading::before{ opacity: 0; pointer-events: none; }
+
+/* ════════════════════════════════════════════════════════════════════
+   OPTIONS CARD — when the agent asks a question, its choices render as a
+   structured card pinned at the bottom of the conversation: a numbered,
+   multi-select list (rows grow to fit multi-line labels, dividers between)
+   plus an answer field. Replaces the old chip list + plain composer.
+   ════════════════════════════════════════════════════════════════════ */
+.cur-opts-card{
+  max-width: 640px; margin: 0 auto;
+  background: rgba(255,255,255,0.97);
+  border: 1px solid var(--hair);
+  border-radius: 18px;
+  box-shadow: 0 2px 6px rgba(13,11,30,0.05), 0 16px 40px -16px rgba(13,11,30,0.2);
+  overflow: hidden;
+  animation: cur-rise .32s var(--ease-out);
+}
+.cur-opts-card-head{
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 12px 10px 18px;
+}
+.cur-opts-card-lbl{
+  font-family: var(--rf-mono); font-size: 10px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ink-4);
+}
+.cur-opts-card-x{
+  width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+  display: grid; place-items: center; color: var(--ink-3);
+  border: none; background: none; cursor: pointer; transition: all .15s;
+}
+.cur-opts-card-x:hover{ background: rgba(13,11,30,0.05); color: var(--ink); }
+
+.cur-opts-rows{
+  display: flex; flex-direction: column;
+  max-height: min(46vh, 360px); overflow-y: auto;
+  scrollbar-width: thin;
+}
+.cur-opts-row{
+  display: flex; align-items: center; gap: 13px;
+  width: 100%; text-align: left;
+  padding: 12px 18px;
+  border: none; background: none; cursor: pointer;
+  border-top: 1px solid var(--hair-2);
+  font-family: var(--body); font-size: 14.5px; line-height: 1.4; color: var(--ink);
+  transition: background .15s;
+}
+.cur-opts-row:first-child{ border-top: none; }
+.cur-opts-row:hover:not(:disabled){ background: rgba(13,11,30,0.03); }
+.cur-opts-row:disabled{ cursor: default; opacity: .6; }
+.cur-opts-row[data-selected="true"]{ background: rgba(136,144,216,0.10); }
+.cur-opts-num{
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--paper-2); color: var(--ink-3);
+  font-family: var(--rf-mono); font-size: 12px;
+  transition: background .15s, color .15s;
+}
+.cur-opts-row[data-selected="true"] .cur-opts-num{ background: var(--aurora-deep); color: #fff; }
+.cur-opts-label{ flex: 1; min-width: 0; }
+
+.cur-opts-answer{
+  display: flex; align-items: center; gap: 11px;
+  padding: 8px 10px 8px 18px;
+  border-top: 1px solid var(--hair);
+}
+.cur-opts-pencil{ flex-shrink: 0; color: var(--ink-4); display: grid; place-items: center; }
+.cur-opts-input{
+  flex: 1; min-width: 0; resize: none;
+  border: none; outline: none; background: transparent;
+  font-family: var(--body); font-size: 14.5px; line-height: 1.45; color: var(--ink);
+  padding: 8px 0; max-height: 104px;
+}
+.cur-opts-input::placeholder{ color: var(--ink-4); }
+@media (max-width: 767px){
+  .cur-opts-input{ font-size: 16px; }  /* avoid iOS zoom-on-focus */
 }

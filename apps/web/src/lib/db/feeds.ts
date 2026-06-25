@@ -31,9 +31,6 @@ export interface DbFeed {
   engagement_weight: number;
   recency_weight: number;
   recency_halflife_h: number;
-  // Per-user serve-time "seen" filtering. Off by default. Applied after the
-  // shared snapshot is built (never baked into the cache).
-  seen_filter_enabled: boolean;
   published_rkey: string | null;
   is_active: boolean;
   color: string | null;
@@ -59,7 +56,6 @@ interface DbFeedRow {
   engagement_weight: number | null;
   recency_weight: number | null;
   recency_halflife_h: number | null;
-  seen_filter_enabled: boolean | null;
   published_rkey: string | null;
   is_active: boolean;
   color: string | null;
@@ -110,7 +106,6 @@ export function rowToFeed(row: DbFeedRow): DbFeed {
       typeof row.recency_halflife_h === "number" && row.recency_halflife_h > 0
         ? row.recency_halflife_h
         : DEFAULT_RECENCY_HALFLIFE_H,
-    seen_filter_enabled: row.seen_filter_enabled === true,
     published_rkey: row.published_rkey,
     is_active: row.is_active,
     color: row.color,
@@ -279,7 +274,6 @@ export async function updateFeed(
     engagement_weight?: number;
     recency_weight?: number;
     recency_halflife_h?: number;
-    seen_filter_enabled?: boolean;
     published_rkey?: string;
     is_active?: boolean;
     color?: string;
@@ -295,9 +289,8 @@ export async function updateFeed(
        rerank_prompt = $5, rerank_model = $6, rerank_thinking_enabled = $7,
        published_rkey = $8, is_active = $9, color = $10,
        engagement_weight = $11, recency_weight = $12, recency_halflife_h = $13,
-       seen_filter_enabled = $14,
        updated_at = now()
-     WHERE id = $15 RETURNING *`,
+     WHERE id = $14 RETURNING *`,
     [
       updates.name ?? feed.name,
       JSON.stringify(updates.mechanical_filters ?? feed.mechanical_filters),
@@ -312,7 +305,6 @@ export async function updateFeed(
       updates.engagement_weight ?? feed.engagement_weight,
       updates.recency_weight ?? feed.recency_weight,
       updates.recency_halflife_h ?? feed.recency_halflife_h,
-      updates.seen_filter_enabled ?? feed.seen_filter_enabled,
       id,
     ]
   );
