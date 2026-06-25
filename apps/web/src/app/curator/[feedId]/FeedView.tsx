@@ -15,6 +15,7 @@ import SwipeableCard, { type SwipeVerdict } from "@/components/SwipeableCard";
 import SwipeFollowupCard from "@/components/SwipeFollowupCard";
 import BranchTopicsHeader from "@/components/BranchTopicsHeader";
 import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
+import { FeedSkeleton } from "@/components/FeedSkeleton";
 import PostCard, { EngageFooter } from "@/components/PostCard";
 import { BlueskyEmbed } from "@/components/postCardUtils";
 import { authedFetch } from "@/lib/authed-fetch";
@@ -190,6 +191,15 @@ function FeedViewImpl(
   // ── Streaming post loader ───────────────────────────────────────
   const loadPosts = useCallback(async (force?: boolean) => {
     setPostsLoading(true);
+    // A non-forced load means we're entering a feed fresh (feed switch, branch
+    // mount, or a chat-driven config change) rather than refreshing the current
+    // one in place. Drop the prior feed's posts so the skeleton shows instead of
+    // stale results lingering dimmed. Forced loads (Refresh button, pull-to-
+    // refresh) keep the posts on screen and dim them via the .refreshing class.
+    if (!force) {
+      setPosts([]);
+      setPostCount(0);
+    }
     setPipelineStage("searching");
     setPipelineCandidates(undefined);
     setPipelineHits(undefined);
@@ -629,30 +639,50 @@ function FeedViewImpl(
 
       {headerContent}
 
-      {pipelineStage !== "idle" && (
-        <div className="cur-feed-pl">
-          <PipelineLoader
-            stage={pipelineStage}
-            candidates={pipelineCandidates}
-            hits={pipelineHits}
-            images={pipelineImages}
-            model={pipelineModel}
-            thinkingEnabled={pipelineThinkingEnabled}
-            seenFiltered={pipelineSeenFiltered}
-            topK={25}
-          />
+      {(pipelineStage !== "idle" || posts.length > 0) && (
+        <div className="cur-feed-pl-row">
+          {pipelineStage !== "idle" && (
+            <div className="cur-feed-pl">
+              <PipelineLoader
+                stage={pipelineStage}
+                candidates={pipelineCandidates}
+                hits={pipelineHits}
+                images={pipelineImages}
+                model={pipelineModel}
+                thinkingEnabled={pipelineThinkingEnabled}
+                seenFiltered={pipelineSeenFiltered}
+                topK={25}
+              />
+            </div>
+          )}
+          {posts.length > 0 && (
+            <button
+              type="button"
+              className={`cur-feed-refresh${postsLoading ? " busy" : ""}`}
+              onClick={() => loadPosts(true)}
+              disabled={postsLoading}
+              title="Refresh this feed"
+              aria-label="Refresh this feed"
+            >
+              <svg className="cur-feed-refresh-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <polyline points="23 4 23 10 17 10" />
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+              </svg>
+              <span>Refresh</span>
+            </button>
+          )}
         </div>
       )}
 
       {posts.length === 0 ? (
-        <div className="cur-empty">
-          {postsLoading ? null : (
-            <>
-              <p>No posts yet.</p>
-              <p className="sub">Try Refresh, or refine the subqueries in chat or the Tune panel.</p>
-            </>
-          )}
-        </div>
+        postsLoading ? (
+          <FeedSkeleton />
+        ) : (
+          <div className="cur-empty">
+            <p>No posts yet.</p>
+            <p className="sub">Try Refresh, or refine the subqueries in chat or the Tune panel.</p>
+          </div>
+        )
       ) : viewMode === "embed" ? (
         posts.map((post) => {
           const bskyUrl = (() => {
