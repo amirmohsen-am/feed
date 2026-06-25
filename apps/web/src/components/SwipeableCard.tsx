@@ -103,7 +103,10 @@ export default function SwipeableCard({
     const stretch = Math.min(over / (LESS_FULL - LESS_OPEN), 1);
     const scale = ready ? 1.08 - 0.08 * stretch : 0.7 + Math.min(gap / readyAt, 1) * 0.3;
     pill.style.transform = `scale(${scale})`;
-    pill.style.width = `${Math.min(LESS_CAPW, LESS_DOT + over * 2.4)}px`;
+    // Grow at the same rate the card travels (1:1), so the oval's left edge rides
+    // along with the post's trailing edge instead of outrunning it and tucking
+    // under the card.
+    pill.style.width = `${Math.min(LESS_CAPW, LESS_DOT + over)}px`;
   }, []);
 
   const settleLessPill = useCallback((open: boolean) => {
