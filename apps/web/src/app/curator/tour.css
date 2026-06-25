@@ -273,7 +273,10 @@
   left: 0;
   right: 0;
   z-index: 100;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   font-family: var(--rf-mono, monospace);
   font-size: 12px;
   letter-spacing: 0.04em;
@@ -282,9 +285,9 @@
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(136, 144, 216, 0.3);
-  border-radius: 10px;
+  border-radius: 14px;
   margin: 0 20px;
-  padding: 12px 16px;
+  padding: 14px 16px;
   opacity: 0;
   transform: translateY(4px);
   transition: opacity 0.3s ease, transform 0.3s ease;
@@ -293,4 +296,24 @@
 .swipe-demo-tip.visible{
   opacity: 1;
   transform: translateY(0);
+  pointer-events: auto;
+}
+.swipe-demo-btn{
+  flex-shrink: 0;
+  background: #fff;
+  color: rgba(107, 99, 184, 1);
+  border: none;
+  font-family: var(--rf-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 7px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+}
+.swipe-demo-btn:active{
+  transform: scale(0.95);
+  background: rgba(255, 255, 255, 0.85);
 }

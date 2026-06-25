@@ -38,6 +38,7 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
     "waiting" | "swipe-left" | "hold-left" | "return-left" |
     "swipe-right" | "hold-right" | "return-right" | "done"
   >("waiting");
+  const [showButton, setShowButton] = useState(false);
   const [tipText, setTipText] = useState("");
   const [tipVisible, setTipVisible] = useState(false);
   const cancelRef = useRef<(() => void) | null>(null);
@@ -184,13 +185,8 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
         break;
 
       case "hold-left":
-        timerRef.current = setTimeout(() => {
-          if (!alive) return;
-          setTipVisible(false);
-          timerRef.current = setTimeout(() => {
-            if (alive) setPhase("return-left");
-          }, 300);
-        }, 1200);
+        // Wait for user to tap the "Got it" button
+        setShowButton(true);
         break;
 
       case "return-left":
@@ -215,13 +211,8 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
         break;
 
       case "hold-right":
-        timerRef.current = setTimeout(() => {
-          if (!alive) return;
-          setTipVisible(false);
-          timerRef.current = setTimeout(() => {
-            if (alive) setPhase("return-right");
-          }, 300);
-        }, 1500);
+        // Wait for user to tap the "Got it" button
+        setShowButton(true);
         break;
 
       case "return-right":
@@ -254,6 +245,15 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
     setTipTop(rect.bottom + 8);
   }, [tipVisible]);
 
+  function handleGotIt() {
+    setShowButton(false);
+    setTipVisible(false);
+    setTimeout(() => {
+      if (phase === "hold-left") setPhase("return-left");
+      else if (phase === "hold-right") setPhase("return-right");
+    }, 300);
+  }
+
   if (!shouldRun || phase === "done" || phase === "waiting") return null;
 
   return (
@@ -261,7 +261,12 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
       className={`swipe-demo-tip${tipVisible ? " visible" : ""}`}
       style={{ top: tipTop }}
     >
-      {tipText}
+      <span>{tipText}</span>
+      {showButton && (
+        <button className="swipe-demo-btn" onClick={handleGotIt}>
+          Got it
+        </button>
+      )}
     </div>
   );
 }

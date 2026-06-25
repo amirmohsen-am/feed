@@ -22,16 +22,6 @@ interface MobileTourStep {
 
 const STEPS: MobileTourStep[] = [
   {
-    target: ".capsule",
-    label: "Describe what you want to read and the AI will curate your feed.",
-    tapHint: "Tap the input to continue",
-    tooltipPos: "above",
-    caretAlign: "center",
-    advanceDelay: 300,
-    tapOnly: false,
-    prep: ({ setSidebarOpen, setMobileTab }) => { setSidebarOpen(false); setMobileTab("feed"); },
-  },
-  {
     target: ".cur-topbar-burger",
     label: "Tap to see all your feeds and create new ones.",
     tapHint: "Tap the menu to continue",
