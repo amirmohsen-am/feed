@@ -884,11 +884,12 @@
   box-shadow: 0 4px 16px rgba(13,11,30,0.05);
 }
 
-/* Source post (the post a branch is being / was made from). No border, no
-   collapse — it renders as a normal full post, marked by a "Branched from" banner
-   at its top (mirrors the reply banner). The banner grows out of the post in
+/* Source post (the post a branch is being / was made from). Marked by a "Branched
+   from" banner at its top (mirrors the reply banner) that grows out of the post in
    lockstep with the swipe-right drag (--branch-progress, set on the container), so
-   the mark previews itself as you swipe and completes when the branch commits. */
+   the mark previews itself as you swipe and completes when the branch commits. The
+   body below the header folds at the same time into a compact pinned preview (see
+   .cur-post-foldable / the chevron) — driven by FeedView. */
 .cur-post-branch-banner{
   display: flex;
   align-items: center;
@@ -1551,9 +1552,9 @@
    On a rightward drag the OTHER posts recede (scale down + drift left + dim),
    driven by --branch-progress (0→1) set imperatively on .cur-feed-posts-inner.
    On commit they slide all the way out to the left; the dragged source lifts to
-   the top as a normal full post (marked by its "Branched from" banner) with the
-   branch view inline beneath it. The source is .cur-post-item-source and is
-   excluded from both. */
+   the top, folded into a compact pinned preview (marked by its "Branched from"
+   banner, with a chevron to expand it), and the branch view drops in beneath it.
+   The source is .cur-post-item-source and is excluded from both. */
 .cur-post-item-other{
   transition: transform 0.28s cubic-bezier(0.3, 0.8, 0.3, 1), opacity 0.28s ease;
 }
@@ -1593,11 +1594,45 @@
 }
 
 /* Everything below the header is wrapped in .cur-post-foldable, a flex column
-   that mirrors the card's own gap so the body, embeds, and footer space evenly. */
+   that mirrors the card's own gap so the body, embeds, and footer space evenly.
+   When a branch commits, FeedView folds this region (max-height + a bottom mask
+   that dissolves the text to transparent — no hard clip) into a compact preview;
+   those are inline styles driven imperatively, so nothing is needed here. */
 .cur-post-foldable{
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* Expand / collapse chevron on the committed source post, bottom-right over the
+   folded preview's faded edge. Rotates to point up when the post is expanded. */
+.cur-post-fold-toggle{
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 6;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  padding: 0;
+  border: 1px solid var(--hair-strong);
+  background: #fff;
+  color: var(--aurora-deep);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 6px rgba(13,11,30,0.08);
+  transition: transform 0.34s cubic-bezier(0.4,0,0.2,1), background 0.15s, color 0.15s, border-color 0.15s;
+}
+.cur-post-fold-toggle:hover{
+  background: var(--aurora-deep);
+  color: #fff;
+  border-color: var(--aurora-deep);
+}
+.cur-post-fold-toggle svg{ display: block; }
+.cur-post-fold-toggle.expanded{ transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce){
+  .cur-post-fold-toggle{ transition: background 0.15s, color 0.15s, border-color 0.15s; }
 }
 
 /* The inline branch view that drops in beneath the folded source card. It

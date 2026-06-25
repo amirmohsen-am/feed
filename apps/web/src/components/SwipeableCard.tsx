@@ -8,7 +8,7 @@ export type SwipeVerdict = "approve" | "reject";
 const SWIPE_THRESHOLD = 120;       // right (branch) flick commit power
 const BRANCH_COLLAPSE_DISTANCE = 210; // right fold range (prototype COLLAPSE_DIST)
 const BRANCH_COMMIT = 0.5;         // fraction of the fold at which a release branches
-const TX_MAX = 132;                // rubber-band asymptote for the rightward ride
+const TX_MAX = 224;                // rubber-band asymptote for the rightward ride
 // Left "less like this" reveal-and-confirm (iMessage style): the card parks open
 // to a red pill; tap the pill or slide all the way to commit.
 const LESS_OPEN = 175;             // parked-open distance — independent of the capsule width
@@ -129,9 +129,10 @@ export default function SwipeableCard({
     decidedRef.current = true;
     branchCommittedRef.current = true;
     swallowNextClick();
-    // The source post renders as a normal full post in the parent (marked by the
-    // "Branched from" banner) — no fold to undo. Just unlock content so its links
-    // stay clickable and settle the card back to x=0.
+    // The source post folds into a compact pinned preview — but the fold itself is
+    // owned by the parent FeedView (it measures heights + drives the collapse on
+    // commit / chevron / Back). Here we just unlock content so its links stay
+    // clickable and settle the card's rubber-banded ride back to x=0.
     setLocked(false);
     const action = branchActionRef.current;
     if (action) { action.style.transition = "opacity 0.2s"; action.style.opacity = "0"; }
@@ -332,7 +333,7 @@ export default function SwipeableCard({
               <path d="M6 8.4v7.2M8.2 7 16 8.6M8 17l8-6.6" />
             </svg>
           </span>
-          <span className="cur-swipe-branch-label">release to branch</span>
+          <span className="cur-swipe-branch-label">Dive deeper</span>
         </div>
         {/* "less of this" affordance revealed on the right as the card rides left,
             sitting behind the card in the space it vacates. The pill stays one
