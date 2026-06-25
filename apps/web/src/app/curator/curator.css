@@ -3482,6 +3482,17 @@
   }
   .cur-feed-posts-inner{
     overflow-x: clip;
+    /* Let a child bleed up to 12px past the column edge (the feed's side
+       gutter) without being clipped — used by the full-width topics band.
+       Flung/receding swipe cards travel far past 12px, so they still clip. */
+    overflow-clip-margin: 12px;
+  }
+  /* Topics band goes edge to edge on mobile: cancel the feed pane's 12px side
+     gutter so the white band touches the screen (its label/chips keep their own
+     inset). The clip-margin above keeps this from being clipped by the column. */
+  .cur-branch-header{
+    margin-left: -12px;
+    margin-right: -12px;
   }
   /* Match the mobile feed's 12px side gutter (the overlay has no padded
      .cur-feed-posts wrapper of its own). */
