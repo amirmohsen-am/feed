@@ -13,11 +13,25 @@
   --ink-3:        #626090;
   --ink-4:        #9898c0;
   --hair:         rgba(13,11,30,0.08);
+  --hair-2:       rgba(13,11,30,0.05);
   --hair-strong:  rgba(13,11,30,0.16);
 
+  /* Design-E ("Capsule") tokens. Fonts reuse the app's loaded families;
+     greens from the mockup are mapped onto the purple palette. */
+  --display: var(--rf-display);
+  --body:    var(--rf-body);
+  --mono:    var(--rf-mono);
+  --serif:   'Instrument Serif', serif;
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.3, 0.4, 1);
+  /* Capsule width — clamps on small screens. */
+  --cap-w: min(560px, calc(100vw - 32px));
+  /* Deepest action shade (the mockup's #2f7058 → our deep purple). */
+  --aurora-deeper: #4448a0;
+
   /* Shared height for the sidebar head + main topbar so their bottom
-     separators line up across both columns. */
-  --cur-header-h: 72px;
+     separators line up across both columns. The E feed-head is 64px. */
+  --cur-header-h: 64px;
 
   display: flex;
   height: 100dvh;
@@ -424,8 +438,8 @@
 }
 .cur-topbar-icon:hover{ border-color: var(--aurora-deep); color: var(--aurora-deep); background: rgba(136,144,216,0.08); }
 .cur-topbar-icon.active{ border-color: var(--aurora-deep); color: var(--aurora-deep); background: rgba(136,144,216,0.12); }
-/* Mobile-only icons — hidden on desktop, shown via media query override */
-.cur-topbar-tune,
+/* Publish-bsky icon is mobile-only; the Tune icon now shows on desktop too
+   (it's the only way to reach the Tune slide-over in the capsule layout). */
 .cur-topbar-publish-bsky{ display: none; }
 .cur-topbar-burger{
   display: none;
@@ -2493,35 +2507,36 @@
   margin-top: 4px;
 }
 
-/* Pill group */
+/* Segmented control (mockup .seg): a tinted track with rounded buttons; the
+   active one lifts to a white chip. Used for Time window, Include, etc. */
 .ctrl-pill-group{
   display: flex;
-  gap: 0;
-  border: 1px solid var(--hair-strong);
-  border-radius: 8px;
-  overflow: hidden;
-  background: #fff;
+  gap: 4px;
+  background: var(--paper-2);
+  border: none;
+  border-radius: 10px;
+  padding: 4px;
 }
 .ctrl-pill{
   flex: 1;
   padding: 7px 0;
   background: transparent;
   border: none;
-  border-right: 1px solid var(--hair);
-  color: var(--ink-2);
-  font-family: var(--rf-body);
-  font-size: 12px;
+  border-radius: 7px;
+  color: var(--ink-3);
+  font-family: var(--rf-mono);
+  font-size: 11px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
   text-align: center;
 }
-.ctrl-pill:last-child{ border-right: none; }
 .ctrl-pill.active{
-  background: var(--aurora-deep);
-  color: #fff;
+  background: #fff;
+  color: var(--ink);
   font-weight: 500;
+  box-shadow: 0 1px 3px rgba(13,11,30,0.08);
 }
-.ctrl-pill:hover:not(.active){ color: var(--ink); background: rgba(13,11,30,0.03); }
+.ctrl-pill:hover:not(.active){ color: var(--ink); }
 
 /* Toggle list */
 .ctrl-toggle-list{
@@ -2529,21 +2544,24 @@
   flex-direction: column;
   gap: 8px;
 }
+/* Mockup toggle row: label on the left, switch on the right. */
 .ctrl-toggle-row{
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 12.5px;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13.5px;
   color: var(--ink-2);
   cursor: pointer;
   font-family: var(--rf-body);
-  padding: 2px 0;
+  padding: 8px 0;
 }
+.ctrl-toggle-label{ flex: 1; min-width: 0; }
 .ctrl-switch{
-  width: 34px;
-  height: 18px;
-  border-radius: 9px;
-  background: rgba(13,11,30,0.12);
+  width: 36px;
+  height: 21px;
+  border-radius: 999px;
+  background: var(--paper-3);
   position: relative;
   transition: background 0.2s;
   cursor: pointer;
@@ -2552,16 +2570,16 @@
 .ctrl-switch.on{ background: var(--aurora-deep); }
 .ctrl-switch-thumb{
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 7px;
+  top: 2.5px;
+  left: 2.5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
   background: #fff;
-  transition: transform 0.2s;
+  transition: transform 0.22s var(--ease-spring);
   box-shadow: 0 1px 3px rgba(13,11,30,0.2);
 }
-.ctrl-switch.on .ctrl-switch-thumb{ transform: translateX(16px); }
+.ctrl-switch.on .ctrl-switch-thumb{ transform: translateX(15px); }
 
 /* Mini fields */
 .ctrl-inline-inputs{
@@ -3191,25 +3209,10 @@
   .cur-ptr-spinner{ display: flex; }
   .cur-feed-posts-header .cur-toolbar{ display: none; }
 
-  /* Gaussian-blur the feed itself while the chat overlay is up — a true blur
-     on the background content, in addition to the overlay's backdrop frost. */
-  .cur-main[data-mobile-tab="chat"] .cur-feed-posts,
-  .cur-main[data-mobile-tab="chat"] .cur-topbar{
-    filter: blur(10px);
-  }
-  /* Tune overlay is opaque — no need to blur what's behind it */
-  .cur-main[data-mobile-tab="chat"]:has(.cur-workbench[data-right-pane="tune"]) .cur-feed-posts,
-  .cur-main[data-mobile-tab="chat"]:has(.cur-workbench[data-right-pane="tune"]) .cur-topbar{
-    filter: none;
-  }
-  .cur-topbar{
-    transition: filter 0.42s cubic-bezier(0.65, 0, 0.35, 1);
-  }
-
-  /* Chat pane: covers the screen but is invisible + click-through when
-     closed — except its input bar, which is ALWAYS pinned at the bottom over
-     the feed. Focusing the input fades in the frost and raises the messages
-     from below; the input itself never moves or swaps. */
+  /* Chat pane: the full-screen frosted conversation sheet. It fades + rises in
+     as one panel (matching the mockup's float sheet) — no separate message
+     rise, and no extra blur of the feed: the sheet's own backdrop-filter
+     frosts whatever is behind it. */
   .cur-chat-pane{
     position: fixed;
     inset: 0;
@@ -3219,36 +3222,31 @@
     display: flex;
     border-right: none;
     overflow: hidden;
-    background: transparent;
+    background: var(--paper);
+    opacity: 0;
+    visibility: hidden;
     pointer-events: none;
-    transition: background-color 0.42s cubic-bezier(0.65, 0, 0.35, 1);
+    transform: translateY(16px) scale(0.992);
+    transform-origin: center bottom;
+    transition:
+      opacity 0.34s var(--ease-out),
+      transform 0.34s var(--ease-out),
+      visibility 0.34s;
   }
   .cur-main[data-mobile-tab="chat"] .cur-chat-pane{
-    background: rgba(251,250,246,0.86);
-    backdrop-filter: blur(36px) saturate(1.15);
-    -webkit-backdrop-filter: blur(36px) saturate(1.15);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
   }
-  /* Tune has its own opaque overlay — kill the chat-pane frost behind it */
+  /* Tune has its own opaque overlay — hide the chat sheet frost behind it */
   .cur-main[data-mobile-tab="chat"] .cur-workbench[data-right-pane="tune"] .cur-chat-pane{
     background: transparent;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
-  /* Messages rise gently into place over the frost; hidden when closed. */
-  .cur-chat-pane .cur-chat-area{
-    opacity: 0;
-    transform: translateY(28px);
-    pointer-events: none;
-    transition:
-      opacity 0.42s cubic-bezier(0.65, 0, 0.35, 1),
-      transform 0.42s cubic-bezier(0.65, 0, 0.35, 1);
-  }
-  .cur-main[data-mobile-tab="chat"] .cur-chat-pane .cur-chat-area{
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
-  }
-  /* The input bar is the one interactive piece of the closed pane. */
+  /* The sheet animates as a whole — its contents don't move independently. */
+  .cur-chat-pane .cur-chat-area{ pointer-events: auto; }
   .cur-chat-pane .cur-input-bar{ pointer-events: auto; }
   /* Option chips / mode rows only make sense with the chat open — keep the
      closed bar to just the input + send. */
@@ -3398,12 +3396,15 @@
   .cur-input-wrap{ gap: 8px; }
   .cur-input{
     font-size: 16px; /* avoid iOS zoom-on-focus */
-    padding: 12px 16px;
-    min-height: 42px;
+    padding: 8px 2px;
+    min-height: 36px;
     max-height: 120px;
-    border-radius: 14px;
-    background: rgba(255,255,255,0.94);
-    box-shadow: 0 6px 24px rgba(13,11,30,0.1);
+    /* The pill (.cur-input-wrap) is the white surface — the textarea must be
+       transparent so the input + glyph + send read as one continuous box, not
+       a white box nested inside a differently-shaded one. */
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
   }
   /* Placeholder sizes: the default "Describe your ideal feed…" reads larger;
      the longer interview hints ("Tap the options above…") stay small. Only
@@ -3572,4 +3573,450 @@
   background: #fff;
   color: var(--ink);
   border: 1px solid var(--hair-strong);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   DESIGN E — "Capsule" overhaul. Floating input capsule + side chat +
+   tune slide-over. Recolored onto the purple palette. Appended last so
+   these rules win over the earlier (pre-E) chat-pane layout.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* shared keyframes */
+@keyframes cur-spin{ to{ transform: rotate(360deg);} }
+@keyframes cur-blink{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+@keyframes cur-pop{ from{ transform:scale(.6); opacity:0;} to{ transform:scale(1); opacity:1;} }
+@keyframes cur-rise{ from{ opacity:0; transform:translateY(14px);} to{ opacity:1; transform:none;} }
+@keyframes cur-shimmer{ from{ background-position:130% 0;} to{ background-position:-90% 0;} }
+@keyframes cur-mb1{ from{ transform:translate(-46px,-4px);} to{ transform:translate(40px,5px);} }
+@keyframes cur-mb2{ from{ transform:translate(34px,7px);} to{ transform:translate(-38px,-6px);} }
+@keyframes cur-mb3{ from{ transform:translate(-14px,9px);} to{ transform:translate(20px,-8px);} }
+@keyframes cur-mb4{ from{ transform:translate(48px,-7px);} to{ transform:translate(-44px,3px);} }
+@keyframes cur-mb5{ from{ transform:translate(2px,-10px);} to{ transform:translate(-26px,10px);} }
+
+/* The stage wrapper is transparent in flow except on desktop, where it
+   becomes the positioning context for the floating capsule + tune panel. */
+.cur-stage{ display: contents; }
+
+/* ── CAPSULE chrome + visuals (shared by desktop + mobile; positioning is
+   set per-breakpoint below). Hidden by default. ── */
+.capsule{
+  display: none; z-index: 40; overflow: hidden;
+  /* Solid (no backdrop-filter): animating width/height on a frosted element
+     recomputes the blur every frame and stutters. Solid white keeps the resize
+     smooth and matches the rest of the (non-transparent) chrome. */
+  background: #fff;
+  border: 1px solid rgba(13,11,30,0.10); border-radius: 29px;
+  box-shadow: 0 2px 6px rgba(13,11,30,0.05), 0 18px 44px -14px rgba(13,11,30,0.26);
+  will-change: width, height;
+  transition:
+    width .4s cubic-bezier(0.4, 0, 0.2, 1),
+    height .4s cubic-bezier(0.4, 0, 0.2, 1),
+    border-radius .4s cubic-bezier(0.4, 0, 0.2, 1),
+    background .3s, box-shadow .3s, border-color .3s;
+}
+.capsule:focus-within{
+  border-color: rgba(85,88,184,0.45);
+  box-shadow: 0 0 0 4px rgba(136,144,216,0.16), 0 18px 44px -14px rgba(13,11,30,0.26);
+}
+.cap-inner{
+    display: flex; align-items: center; gap: 10px;
+    height: 58px; padding: 0 10px 0 16px; transition: opacity .25s;
+  }
+  .cap-glyph{
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1.5px solid var(--aurora-deep); position: relative; flex-shrink: 0;
+  }
+  .cap-glyph::after{ content:''; position:absolute; inset:6px; border-radius:50%; background:var(--aurora-deep); }
+  .cap-field{
+    flex: 1; min-width: 0; font-family: var(--body); font-size: 14.5px;
+    line-height: 1.45; color: var(--ink);
+    border: none; outline: none; background: transparent;
+    padding: 0; margin: 0; height: 22px;
+  }
+  .cap-field::placeholder{ color: var(--ink-4); }
+  .cap-expand{
+    width: 32px; height: 32px; border-radius: 50%;
+    display: grid; place-items: center; color: var(--ink-3); flex-shrink: 0;
+    transition: all .15s; background: none; border: none; cursor: pointer;
+  }
+  .cap-expand:hover{ background: rgba(13,11,30,0.05); color: var(--ink); }
+  .cap-expand svg{ width: 15px; height: 15px; transition: transform .3s var(--ease-out); }
+  .cur-workbench[data-expanded] .cap-expand svg{ transform: rotate(180deg); }
+  .cap-send{
+    width: 38px; height: 38px; border-radius: 50%;
+    background: linear-gradient(140deg, var(--aurora-deep), var(--aurora-deeper));
+    color: #fff; display: grid; place-items: center; flex-shrink: 0;
+    box-shadow: 0 4px 12px -3px rgba(85,88,184,0.5);
+    transition: transform .18s var(--ease-spring); border: none; cursor: pointer;
+  }
+  .cap-send:hover:not(:disabled){ transform: scale(1.07); }
+  .cap-send:active:not(:disabled){ transform: scale(.96); }
+  .cap-send:disabled{ opacity:.45; cursor: default; }
+  .cap-send svg{ width: 15px; height: 15px; }
+
+  /* progressing pill (Meta goo, goo-only) */
+  .capsule.progressing{ width: 142px; height: 44px; border-radius: 22px; }
+  .capsule.progressing.updated{ width: 214px; }
+  .capsule.progressing .cap-inner{ opacity: 0; pointer-events: none; }
+
+  .cap-status{
+    position: absolute; inset: 0; display: flex; align-items: center; gap: 11px;
+    padding: 0 18px; opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 3;
+  }
+  .capsule.updated .cap-status{ opacity: 1; pointer-events: auto; }
+  .cap-status .st-glyph{
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1.5px solid var(--aurora-deep); position: relative; flex-shrink: 0;
+  }
+  .st-text{ font-size: 13.5px; color: var(--ink-2); white-space: nowrap; }
+  .st-check{
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--aurora-deep); color: #fff; display: none; place-items: center; flex-shrink: 0;
+  }
+  .st-check svg{ width: 12px; height: 12px; }
+  .capsule.updated .st-glyph{ display: none; }
+  .capsule.updated .st-check{ display: grid; animation: cur-pop .4s var(--ease-spring); }
+  .capsule.updated{ cursor: pointer; border-color: rgba(85,88,184,0.5); background: #eceefb; }
+  .capsule.updated .st-text{ color: var(--ink); font-weight: 500; }
+  .st-detail{
+    margin-left: auto; flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
+    display: grid; place-items: center; color: var(--aurora-deep);
+    background: rgba(136,144,216,0.22); border: none; cursor: pointer;
+  }
+  .st-detail:hover{ background: rgba(136,144,216,0.4); }
+  .st-detail svg{ width: 13px; height: 13px; }
+
+  /* META metaballs — pure goo, no text while thinking */
+  .cap-meta{
+    position: absolute; inset: 0; pointer-events: none; opacity: 0;
+    transition: opacity .35s; filter: url(#cur-goo) saturate(1.1);
+  }
+  .capsule.thinking .cap-meta{ opacity: .92; }
+  .capsule.thinking .cap-status{ opacity: 0; }
+  .cap-meta i{ position: absolute; left: 50%; top: 50%; border-radius: 50%; }
+  .cap-meta i:nth-child(1){ width:30px; height:30px; margin:-15px; background: var(--aurora-deep); animation: cur-mb1 2.9s ease-in-out infinite alternate; }
+  .cap-meta i:nth-child(2){ width:22px; height:22px; margin:-11px; background: var(--aurora);      animation: cur-mb2 3.7s ease-in-out infinite alternate; }
+  .cap-meta i:nth-child(3){ width:18px; height:18px; margin:-9px;  background: var(--amber);       animation: cur-mb3 2.3s ease-in-out infinite alternate; }
+  .cap-meta i:nth-child(4){ width:24px; height:24px; margin:-12px; background: var(--mist);        animation: cur-mb4 4.3s ease-in-out infinite alternate; }
+  .cap-meta i:nth-child(5){ width:14px; height:14px; margin:-7px;  background: var(--sage);        animation: cur-mb5 3.1s ease-in-out infinite alternate; }
+
+  /* collapsed "Refine" pill — ripple glyph + label, hugging its content. */
+  .cap-mini{
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    gap: 8px; opacity: 0; pointer-events: none; transition: opacity .25s .1s; z-index: 2;
+  }
+  .cap-mini .m-glyph{ width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--aurora); position: relative; flex-shrink: 0; }
+  .cap-mini .m-glyph::after{ content:''; position:absolute; inset:5px; border-radius:50%; background: var(--aurora); }
+  .cap-mini .m-hint{ font-size: 12.5px; font-weight: 500; color: #e9e6f6; white-space: nowrap; }
+
+  /* Shared collapse (mockup behavior): the capsule transitions between FIXED
+     widths and CROSSFADES its faces with opacity — never width:auto / display,
+     which can't animate. A compact centered pill that fits "Refine" + glyph,
+     so it still reads as hugging while the width/radius animate smoothly. The
+     lifted ink is lighter than the resting dark chip. */
+  .capsule.c-shrink{
+    width: 112px; height: 42px; border-radius: 21px; cursor: pointer;
+    background: rgba(54,47,96,0.93);
+    border-color: rgba(255,255,255,0.18);
+    box-shadow: 0 2px 6px rgba(13,11,30,0.12), 0 16px 38px -14px rgba(13,11,30,0.4);
+  }
+  .capsule.c-shrink .cap-inner{ opacity: 0; pointer-events: none; }
+  .capsule.c-shrink .cap-mini{ opacity: 1; }
+
+/* ── DESKTOP layout (positioning only — capsule visuals are global above) ── */
+@media (min-width: 768px){
+  .cur-workbench{ position: relative; }
+  .cur-stage{
+    display: flex; flex-direction: column;
+    flex: 1; min-width: 0; position: relative; overflow: hidden;
+  }
+  .cur-feed-posts{ border-right: none; padding-bottom: 104px; }
+  .capsule{
+    display: block;
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: 18px; width: var(--cap-w); height: 58px;
+  }
+  .cur-workbench[data-expanded] .capsule,
+  .cur-workbench[data-tuning] .capsule{ display: none; }
+
+  /* SHRINK collapse: the "Refine" pill stays centered (left:50% + the
+     translateX(-50%) carried from the resting capsule); appearance is global. */
+
+  /* ── SIDE CHAT (expanded conversation) ── */
+  .chat-side{
+    width: 0; flex-shrink: 0; border-left: 1px solid transparent;
+    background: var(--paper-2); overflow: hidden;
+    transition: width .45s var(--ease-out), border-color .45s;
+  }
+  .cur-workbench[data-expanded="side"] .chat-side{
+    width: var(--cur-right-w, 380px); border-left-color: var(--hair);
+  }
+  .chat-side .cur-chat-area,
+  .chat-side .cur-input-bar{ width: var(--cur-right-w, 380px); box-sizing: border-box; }
+  .thread-head{
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 16px 12px; border-bottom: 1px solid var(--hair-2); flex-shrink: 0;
+  }
+  .thread-head .h-glyph{
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 1.5px solid var(--aurora-deep); position: relative; flex-shrink: 0;
+  }
+  .thread-head .h-glyph::after{ content:''; position:absolute; inset:5.5px; border-radius:50%; background: var(--aurora-deep); }
+  .th-titles .th-t{ font-family: var(--display); font-size: 13.5px; font-weight: 600; color: var(--ink); }
+  .th-titles .th-s{ font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-4); }
+  .th-x{
+    margin-left: auto; width: 26px; height: 26px; border-radius: 8px;
+    display: grid; place-items: center; color: var(--ink-3); border: none; background: none; cursor: pointer;
+  }
+  .th-x:hover{ background: rgba(13,11,30,0.05); color: var(--ink); }
+
+  /* resizer only when the side chat is open */
+  .cur-resizer-workbench{ display: none; }
+  .cur-workbench[data-expanded="side"] .cur-resizer-workbench{ display: block; }
+
+  /* ── TUNE SLIDE-OVER ── */
+  .tune-scrim{
+    position: fixed; inset: 0; z-index: 44;
+    background: rgba(13,11,30,0.12);
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+    opacity: 0; visibility: hidden;
+    transition: opacity .35s var(--ease-out), visibility .35s;
+  }
+  .cur-workbench[data-tuning] .tune-scrim{ opacity: 1; visibility: visible; }
+  /* Override the legacy data-right-pane display toggle: the tune panel is now
+     a persistent slide-over, shown/hidden via transform + visibility. */
+  .cur-workbench[data-right-pane="chat"] .ctrl-tower,
+  .cur-workbench .ctrl-tower{ display: flex; flex-direction: column; }
+  .ctrl-tower{
+    position: fixed; top: calc(var(--cur-header-h) + 10px); right: 10px; bottom: 10px;
+    width: min(360px, calc(100vw - 20px)); height: auto;
+    background: #fff;
+    border: 1px solid var(--hair); border-radius: 18px;
+    box-shadow: 0 24px 60px -18px rgba(13,11,30,0.28);
+    z-index: 45; transform: translateX(calc(100% + 24px)); visibility: hidden;
+    transition: transform .45s var(--ease-out), visibility .45s;
+  }
+  .cur-workbench[data-tuning] .ctrl-tower{ transform: none; visibility: visible; }
+}
+
+/* ── tune panel header close (all sizes) ── */
+.ctrl-header{ position: relative; }
+.ctrl-close{
+  width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+  display: grid; place-items: center; color: var(--ink-3);
+  border: none; background: none; cursor: pointer; margin-left: 4px;
+}
+.ctrl-close:hover{ background: rgba(13,11,30,0.05); color: var(--ink); }
+
+/* ── MOBILE tweaks ── */
+@media (max-width: 767px){
+  /* The SAME floating capsule as desktop — input-only, types in place. It
+     floats above the feed (and above the on-screen keyboard via the
+     visualViewport-driven --cap-kb-offset). Tapping the expand chevron opens
+     the conversation sheet; typing never reveals it. */
+  .capsule{
+    display: block;
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(12px + env(safe-area-inset-bottom) + var(--cap-kb-offset, 0px));
+    width: min(560px, calc(100vw - 24px)); height: 58px; z-index: 55;
+    transition:
+      width .4s cubic-bezier(0.4, 0, 0.2, 1),
+      height .4s cubic-bezier(0.4, 0, 0.2, 1),
+      border-radius .4s cubic-bezier(0.4, 0, 0.2, 1),
+      background .3s, box-shadow .3s, border-color .3s,
+      bottom .25s var(--ease-out);
+  }
+  /* Hide the floating capsule whenever a full-screen layer owns the input:
+     the conversation sheet (which carries its own composer) or the tune sheet. */
+  .cur-main[data-mobile-tab="chat"] .capsule,
+  .cur-workbench[data-tuning] .capsule{ display: none; }
+
+  /* The conversation composer only exists inside the sheet now — hidden on the
+     feed tab (the floating capsule replaces the old pinned-pill impersonation). */
+  .cur-main[data-mobile-tab="feed"] .cur-chat-pane .cur-input-bar{ display: none; }
+  .cur-input-bar{
+    background: transparent; border-top: none;
+    padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
+  }
+  /* Solid (not frosted) input surfaces on mobile — the chat sheet behind them
+     is opaque now, so the composer + options card read as solid white. */
+  .cur-input-wrap{
+    max-width: none; margin: 0;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(13,11,30,0.05), 0 14px 36px -12px rgba(13,11,30,0.28);
+  }
+  .cur-opts-card{ background: #fff; }
+
+  /* the desktop-only thread-head is hidden in favour of the down-arrow. */
+  .thread-head{ display: none; }
+
+  /* Tune = right slide-over (same as desktop, just sized for the phone) — a
+     white rounded panel that slides in from the right over a dim scrim, NOT a
+     full-screen sheet. */
+  .tune-scrim{
+    display: block; position: fixed; inset: 0; z-index: 79;
+    background: rgba(13,11,30,0.28);
+    opacity: 0; visibility: hidden;
+    transition: opacity .35s var(--ease-out), visibility .35s;
+  }
+  .cur-workbench[data-tuning] .tune-scrim{ opacity: 1; visibility: visible; }
+  .ctrl-tower{
+    display: flex; flex-direction: column;
+    position: fixed; left: auto;
+    top: calc(var(--cur-header-h) + 8px); right: 8px; bottom: 8px;
+    width: min(360px, calc(100vw - 16px)); height: auto;
+    background: #fff;
+    border: 1px solid var(--hair); border-radius: 18px;
+    box-shadow: 0 24px 60px -18px rgba(13,11,30,0.3);
+    z-index: 80; overflow: hidden;
+    padding-top: 0;
+    transform: translateX(calc(100% + 20px)); visibility: hidden;
+    transition: transform .4s var(--ease-out), visibility .4s;
+  }
+  .cur-workbench[data-tuning] .ctrl-tower{ transform: none; visibility: visible; }
+}
+
+/* ── Bluesky-style placeholder skeletons while the feed is curating ── */
+.cur-skel-wrap{ max-width: 560px; margin: 0 auto; }
+.cur-skel-note{
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--ink-4);
+  display: flex; align-items: center; gap: 9px; margin: 4px 0 16px;
+}
+.cur-skel-dot{
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--aurora-deep); animation: cur-blink 1.2s ease-in-out infinite;
+}
+.cur-skel-card{
+  background: #fff; border: 1px solid var(--hair-2); border-radius: 14px;
+  padding: 16px 18px; margin-bottom: 12px;
+  opacity: 0; animation: cur-rise .5s var(--ease-out) forwards;
+}
+.cur-skel-card:nth-child(3){ animation-delay: .08s; }
+.cur-skel-card:nth-child(4){ animation-delay: .16s; }
+.cur-skel-head{ display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
+.cur-skel-av{
+  width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+  background: linear-gradient(90deg, var(--paper-3) 25%, var(--paper-2) 45%, var(--paper-3) 65%);
+  background-size: 220% 100%; animation: cur-shimmer 1.4s linear infinite;
+}
+.cur-skel-line{
+  height: 11px; border-radius: 6px; margin-bottom: 9px;
+  background: linear-gradient(90deg, var(--paper-3) 25%, var(--paper-2) 45%, var(--paper-3) 65%);
+  background-size: 220% 100%; animation: cur-shimmer 1.4s linear infinite;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   COMPOSER PILL — the expanded conversation's composer (side chat on
+   desktop, full-screen sheet on mobile) keeps the capsule oval shape, and
+   collapses to a metaballs goo pill while a turn is in flight (no input box).
+   ════════════════════════════════════════════════════════════════════ */
+.cur-input-wrap{
+  position: relative;
+  max-width: 640px; margin: 0 auto;
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.96);
+  border: 1px solid rgba(13,11,30,0.10); border-radius: 26px;
+  box-shadow: 0 2px 6px rgba(13,11,30,0.05);
+  padding: 6px 8px 6px 14px;
+  transition: width .4s var(--ease-out), background .3s, border-color .3s, box-shadow .25s;
+}
+.cur-input-wrap:focus-within{
+  border-color: rgba(85,88,184,0.45);
+  box-shadow: 0 0 0 4px rgba(136,144,216,0.16);
+}
+/* the capsule glyph (ring + dot), drawn with a single pseudo-element */
+.cur-input-wrap::before{
+  content: ''; flex-shrink: 0; align-self: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 1.5px solid var(--aurora-deep);
+  background: radial-gradient(circle at center, var(--aurora-deep) 0 4px, transparent 4.5px);
+}
+.cur-input{
+  background: transparent; border: none; border-radius: 0;
+  padding: 8px 2px; min-height: 36px;
+}
+.cur-input:focus{ border: none; box-shadow: none; }
+
+/* loading → show metaballs, hide the input box + send + glyph */
+.cur-input-wrap .cap-meta{ border-radius: inherit; }
+.cur-input-wrap.loading{ overflow: hidden; }
+.cur-input-wrap.loading .cap-meta{ opacity: .92; }
+.cur-input-wrap.loading .cur-input,
+.cur-input-wrap.loading .send-btn,
+.cur-input-wrap.loading::before{ opacity: 0; pointer-events: none; }
+
+/* ════════════════════════════════════════════════════════════════════
+   OPTIONS CARD — when the agent asks a question, its choices render as a
+   structured card pinned at the bottom of the conversation: a numbered,
+   multi-select list (rows grow to fit multi-line labels, dividers between)
+   plus an answer field. Replaces the old chip list + plain composer.
+   ════════════════════════════════════════════════════════════════════ */
+.cur-opts-card{
+  max-width: 640px; margin: 0 auto;
+  background: rgba(255,255,255,0.97);
+  border: 1px solid var(--hair);
+  border-radius: 18px;
+  box-shadow: 0 2px 6px rgba(13,11,30,0.05), 0 16px 40px -16px rgba(13,11,30,0.2);
+  overflow: hidden;
+  animation: cur-rise .32s var(--ease-out);
+}
+.cur-opts-card-head{
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 12px 10px 18px;
+}
+.cur-opts-card-lbl{
+  font-family: var(--rf-mono); font-size: 10px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ink-4);
+}
+.cur-opts-card-x{
+  width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+  display: grid; place-items: center; color: var(--ink-3);
+  border: none; background: none; cursor: pointer; transition: all .15s;
+}
+.cur-opts-card-x:hover{ background: rgba(13,11,30,0.05); color: var(--ink); }
+
+.cur-opts-rows{
+  display: flex; flex-direction: column;
+  max-height: min(46vh, 360px); overflow-y: auto;
+  scrollbar-width: thin;
+}
+.cur-opts-row{
+  display: flex; align-items: center; gap: 13px;
+  width: 100%; text-align: left;
+  padding: 12px 18px;
+  border: none; background: none; cursor: pointer;
+  border-top: 1px solid var(--hair-2);
+  font-family: var(--body); font-size: 14.5px; line-height: 1.4; color: var(--ink);
+  transition: background .15s;
+}
+.cur-opts-row:first-child{ border-top: none; }
+.cur-opts-row:hover:not(:disabled){ background: rgba(13,11,30,0.03); }
+.cur-opts-row:disabled{ cursor: default; opacity: .6; }
+.cur-opts-row[data-selected="true"]{ background: rgba(136,144,216,0.10); }
+.cur-opts-num{
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--paper-2); color: var(--ink-3);
+  font-family: var(--rf-mono); font-size: 12px;
+  transition: background .15s, color .15s;
+}
+.cur-opts-row[data-selected="true"] .cur-opts-num{ background: var(--aurora-deep); color: #fff; }
+.cur-opts-label{ flex: 1; min-width: 0; }
+
+.cur-opts-answer{
+  display: flex; align-items: center; gap: 11px;
+  padding: 8px 10px 8px 18px;
+  border-top: 1px solid var(--hair);
+}
+.cur-opts-pencil{ flex-shrink: 0; color: var(--ink-4); display: grid; place-items: center; }
+.cur-opts-input{
+  flex: 1; min-width: 0; resize: none;
+  border: none; outline: none; background: transparent;
+  font-family: var(--body); font-size: 14.5px; line-height: 1.45; color: var(--ink);
+  padding: 8px 0; max-height: 104px;
+}
+.cur-opts-input::placeholder{ color: var(--ink-4); }
+@media (max-width: 767px){
+  .cur-opts-input{ font-size: 16px; }  /* avoid iOS zoom-on-focus */
 }

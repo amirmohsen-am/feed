@@ -37,6 +37,7 @@ interface FilterPanelProps {
   postCount: number;
   rightPane?: "chat" | "tune";
   onRightPaneChange?: (pane: "chat" | "tune") => void;
+  onClose?: () => void;
   style?: React.CSSProperties;
 }
 
@@ -91,6 +92,7 @@ export default function FilterPanel({
   postCount,
   rightPane,
   onRightPaneChange,
+  onClose,
   style,
 }: FilterPanelProps) {
   const [mech, setMech] = useState<MechanicalFilters>({
@@ -211,16 +213,20 @@ export default function FilterPanel({
       )}
       <div className="ctrl-header">
         <div className="ctrl-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" />
           </svg>
-          Feed Controls
+          Tune feed
         </div>
         <div className="ctrl-stat">
           <span className="ctrl-stat-num">{postCount}</span>
           <span className="ctrl-stat-label">posts matched</span>
         </div>
+        {onClose && (
+          <button type="button" className="ctrl-close" onClick={onClose} aria-label="Close tune panel">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        )}
       </div>
 
       <div className="ctrl-body">
@@ -796,13 +802,13 @@ function Toggle({
 }) {
   return (
     <label className="ctrl-toggle-row">
+      <span className="ctrl-toggle-label">{label}</span>
       <span
         className={`ctrl-switch ${checked ? "on" : ""}`}
         onClick={() => onChange(!checked)}
       >
         <span className="ctrl-switch-thumb" />
       </span>
-      {label}
     </label>
   );
 }

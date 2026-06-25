@@ -51,8 +51,8 @@
   border-radius: 999px;
 }
 .cur-swipe-card-tag-approve {
-  background: rgba(62, 138, 108, 0.14);
-  color: #3e8a6c;
+  background: rgba(85, 88, 184, 0.14);
+  color: var(--aurora-deep);
 }
 .cur-swipe-card-tag-reject {
   background: rgba(216, 133, 117, 0.18);
@@ -78,8 +78,8 @@
 .cur-swipe-tint-keep {
   background: linear-gradient(
     180deg,
-    rgba(125, 203, 165, 0.55),
-    rgba(62, 138, 108, 0.35)
+    rgba(136, 144, 216, 0.55),
+    rgba(85, 88, 184, 0.35)
   );
 }
 .cur-swipe-tint-nope {
@@ -108,7 +108,7 @@
 }
 .cur-swipe-keep {
   left: 18px;
-  color: #3e8a6c;
+  color: var(--aurora-deep);
   transform: rotate(-12deg);
 }
 .cur-swipe-nope {
@@ -121,9 +121,9 @@
 .cur-swipe-followup{
   position: relative;
   padding: 14px 16px 14px;
-  background: rgba(62, 138, 108, 0.08);
-  border-top: 1px solid rgba(62, 138, 108, 0.18);
-  border-bottom: 1px solid rgba(62, 138, 108, 0.18);
+  background: rgba(85, 88, 184, 0.08);
+  border-top: 1px solid rgba(85, 88, 184, 0.18);
+  border-bottom: 1px solid rgba(85, 88, 184, 0.18);
 }
 .cur-swipe-followup-out{
   animation: cur-followup-fall 0.18s ease-in both;
