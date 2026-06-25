@@ -106,6 +106,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // full side-chat input bar.
   const [capInput, setCapInput] = useState("");
   const capInputRef = useRef<HTMLInputElement | null>(null);
+  // True while the on-screen keyboard is animating open/closed. The keyboard
+  // resizes the visual viewport rather than scrolling content, but iOS Safari
+  // emits a spurious `scroll` alongside it — we suppress collapse during this
+  // window so opening the keyboard doesn't tuck the capsule back to the pill.
+  const kbSettlingRef = useRef(false);
   // The structured options card can be dismissed (the X) to type free-form for
   // this turn; reset whenever a new turn lands so the next question's card shows.
   const [optionsDismissed, setOptionsDismissed] = useState(false);
@@ -663,6 +668,8 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       const delta = top - lastTop;
       lastTop = top;
       if (expanded || tuning || capState !== "idle") return;
+      // Ignore the spurious scroll the keyboard fires as it animates open/closed.
+      if (kbSettlingRef.current) return;
       if (Math.abs(delta) > 4 && top > 60) {
         capInputRef.current?.blur();
         setScrollCollapsed(true);
@@ -682,6 +689,8 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       const delta = y - last;
       last = y;
       if (capState !== "idle") return;
+      // Ignore the spurious scroll the keyboard fires as it animates open/closed.
+      if (kbSettlingRef.current) return;
       if (Math.abs(delta) > 4 && y > 60) {
         capInputRef.current?.blur();
         setScrollCollapsed(true);
@@ -690,6 +699,26 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, [capState, tuning, mobileTab]);
+
+  // Flag the visual-viewport resize the on-screen keyboard causes. Each resize
+  // re-arms a short timer; while it's live the scroll-collapse handlers above
+  // ignore the keyboard's accompanying spurious scroll. A genuine finger-scroll
+  // (no recent viewport change) still collapses, even while the input is focused.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onResize = () => {
+      kbSettlingRef.current = true;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { kbSettlingRef.current = false; }, 350);
+    };
+    vv.addEventListener("resize", onResize);
+    return () => {
+      vv.removeEventListener("resize", onResize);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   function finalizeNow() {
     if (loading) return;
@@ -841,7 +870,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
             onToggleExpand={toggleConversation}
             onReopen={() => {
               setScrollCollapsed(false);
-              setTimeout(() => capInputRef.current?.focus(), 320);
+              // Focus synchronously inside the tap so iOS opens the keyboard —
+              // Safari ignores a focus() deferred outside the user gesture. The
+              // field is opacity:0 mid-animation but already focusable.
+              capInputRef.current?.focus();
             }}
             onUpdatedOpen={openConversation}
             inputRef={capInputRef}

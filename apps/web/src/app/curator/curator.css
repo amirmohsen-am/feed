@@ -3982,7 +3982,7 @@
      lifted ink is lighter than the resting dark chip. */
   .capsule.c-shrink{
     width: 112px; height: 42px; border-radius: 21px; cursor: pointer;
-    background: rgba(54,47,96,0.93);
+    background: rgb(54,47,96);
     border-color: rgba(255,255,255,0.18);
     box-shadow: 0 2px 6px rgba(13,11,30,0.12), 0 16px 38px -14px rgba(13,11,30,0.4);
   }

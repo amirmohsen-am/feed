@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,15 @@ const spaceGrotesk = Space_Grotesk({subsets:['latin'],variable:'--font-display'}
 export const metadata: Metadata = {
   title: "amadi — A quieter, more intentional feed.",
   description: "Curate your Bluesky feed with AI. In the same way you curate what you eat, now curate what you read.",
+};
+
+// Disable the iOS focus auto-zoom (Safari zooms any input with font-size < 16px).
+// maximumScale=1 + userScalable=false also disables pinch-zoom site-wide.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({
