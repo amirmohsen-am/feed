@@ -17,6 +17,7 @@ import BranchTopicsHeader from "@/components/BranchTopicsHeader";
 import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
 import { FeedSkeleton } from "@/components/FeedSkeleton";
 import PostCard, { EngageFooter } from "@/components/PostCard";
+import SwipeDemo from "./SwipeDemo";
 import { BlueskyEmbed } from "@/components/postCardUtils";
 import { authedFetch } from "@/lib/authed-fetch";
 import type { MechanicalFilters } from "@/lib/types";
@@ -964,6 +965,8 @@ function FeedViewImpl(
             );
           })
       )}
+
+      {isRoot && <SwipeDemo postsLoaded={posts.length > 0 && !postsLoading} />}
 
       {posts.length > 0 && !postsLoading && !committedBranchUri && (
         <div className="cur-feed-end-prompt">
