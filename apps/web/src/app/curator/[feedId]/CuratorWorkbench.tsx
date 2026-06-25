@@ -23,6 +23,7 @@ import SendButton from "@/components/SendButton";
 import Capsule from "./Capsule";
 import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
 import { authedFetch } from "@/lib/authed-fetch";
+import { useSeenTracker } from "./useSeenTracker";
 import type { MechanicalFilters } from "@/lib/types";
 import {
   DEFAULT_CANDIDATE_BUDGET,
@@ -45,7 +46,7 @@ interface ChatSourcePost {
   author_handle: string | null;
   author_display_name: string | null;
 }
-interface Post {
+export interface Post {
   uri: string;
   author_did: string;
   text: string;
@@ -264,6 +265,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     viewMode,
     showDebug,
     hideUnavailable,
+    hideSeen,
     setUnavailableCount,
     openPublish,
     registerOpenTune,
@@ -408,6 +410,18 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const ptrSpinnerRef = useRef<HTMLDivElement | null>(null);
   const ptrRefreshingRef = useRef(false);
   const [ptrRefreshing, setPtrRefreshing] = useState(false);
+  // Track the mobile breakpoint reactively so pull-to-refresh wiring attaches
+  // when the viewport crosses into mobile width — including when Chrome
+  // DevTools device mode resizes after mount (a one-shot matchMedia check at
+  // mount would miss it and never wire up the gesture).
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobileViewport(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   // Register the openTune callback so the top-bar tune icon can switch to the
   // tune pane from outside the workbench (especially on mobile).
@@ -443,10 +457,13 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // (keep). A swiped card is hidden and its context is pulled straight into the
   // main chat (the same one that opens from "Describe your ideal feed").
   const [swipedUris, setSwipedUris] = useState<Set<string>>(() => new Set());
-  // Keyed by post URI: null = loading, array = done.
+  // Keyed by post URI: array = done (no null/loading state — writing null triggers
+  // a full workbench re-render right at drag-start, causing a visible frame drop).
   const [followupTopics, setFollowupTopics] = useState<
-    Map<string, BranchOption[] | null>
+    Map<string, BranchOption[]>
   >(() => new Map());
+  // Tracks in-flight followup fetches so we don't duplicate requests while waiting.
+  const fetchingFollowupRef = useRef(new Set<string>());
   // Right-swipe branch options (prefetched on first rightward drag).
   const [swipeRightTopics, setSwipeRightTopics] = useState<
     Map<string, BranchOption[] | null>
@@ -466,6 +483,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     branchFeedId?: number;
     branchFeedName?: string;
   } | null>(null);
+  // Posts streamed into the branch overlay. Lifted here (reported up from
+  // MockBranchOverlay) so the same quoted-post + AI-label fetch effects that
+  // hydrate the main feed also cover the branch preview's cards.
+  const [branchPreviewPosts, setBranchPreviewPosts] = useState<Post[]>([]);
   // Ref to the rising panel so onRightProgress can drive it imperatively.
   const risingPanelRef = useRef<HTMLDivElement>(null);
   // Feed pane rect captured at first rightward drag; used to position the
@@ -630,12 +651,14 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   function fetchFollowupTopics(post: Post) {
     // Kick off once on the first leftward drag for this card.
     if (followupTopics.has(post.uri)) return;
-    setFollowupTopics((prev) => { const next = new Map(prev); next.set(post.uri, null); return next; });
+    if (fetchingFollowupRef.current.has(post.uri)) return;
+    fetchingFollowupRef.current.add(post.uri);
     void authedFetch("/api/branch/options", {
       method: "POST",
       body: JSON.stringify({ feedId, postUri: post.uri }),
     })
       .then(async (res) => {
+        fetchingFollowupRef.current.delete(post.uri);
         const d = await res.json();
         const topics: BranchOption[] = Array.isArray(d.options)
           ? (d.options as BranchOption[]).filter((o) => o.kind === "deeper")
@@ -643,6 +666,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         setFollowupTopics((prev) => { const next = new Map(prev); next.set(post.uri, topics); return next; });
       })
       .catch(() => {
+        fetchingFollowupRef.current.delete(post.uri);
         setFollowupTopics((prev) => { const next = new Map(prev); next.set(post.uri, []); return next; });
       });
   }
@@ -690,8 +714,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   // Fetch AI-generated labels for posts with images or video
   useEffect(() => {
-    if (posts.length === 0) return;
-    const mediaPosts = posts.filter(
+    const mediaPosts = [...posts, ...branchPreviewPosts].filter(
       (p) => (p.has_images && p.image_urls.length > 0) || (p.has_video && p.video_thumbnail)
     );
     if (mediaPosts.length === 0) return;
@@ -724,7 +747,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       setAiLabels(next);
     })();
     return () => { cancelled = true; };
-  }, [posts]);
+  }, [posts, branchPreviewPosts]);
 
   // Bluesky like state: uri → { liked, likeUri, pending }
   const [likeState, setLikeState] = useState<Record<string, { liked: boolean; likeUri?: string; pending: boolean }>>({});
@@ -966,7 +989,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const [engagementWeight, setEngagementWeight] = useState<number>(DEFAULT_ENGAGEMENT_WEIGHT);
   const [recencyWeight, setRecencyWeight] = useState<number>(DEFAULT_RECENCY_WEIGHT);
   const [recencyHalflifeH, setRecencyHalflifeH] = useState<number>(DEFAULT_RECENCY_HALFLIFE_H);
-  const [seenFilterEnabled, setSeenFilterEnabled] = useState<boolean>(false);
+  // Client-side seen tracking: records real on-screen impressions (like the
+  // Bluesky app) so the next load filters out posts the curator actually saw.
+  // Gated on the per-user "hide seen" preference (Display settings).
+  const seenTracker = useSeenTracker(feedId, hideSeen);
 
   // Branch flow. sourcePost is set when this feed was branched off a post (it
   // renders an embedded card atop the chat). The auto-fired branch-init turn
@@ -1028,7 +1054,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     engagement_weight?: number;
     recency_weight?: number;
     recency_halflife_h?: number;
-    seen_filter_enabled?: boolean;
   }) {
     if (patch.mechanical_filters) setMechanicalFilters(patch.mechanical_filters);
     if (patch.subqueries) setSubqueries(patch.subqueries);
@@ -1038,7 +1063,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     if (patch.engagement_weight !== undefined) setEngagementWeight(patch.engagement_weight);
     if (patch.recency_weight !== undefined) setRecencyWeight(patch.recency_weight);
     if (patch.recency_halflife_h !== undefined) setRecencyHalflifeH(patch.recency_halflife_h);
-    if (patch.seen_filter_enabled !== undefined) setSeenFilterEnabled(patch.seen_filter_enabled);
     feedSignatureRef.current = feedSignature({
       subqueries: patch.subqueries ?? subqueries,
       mechanical_filters: patch.mechanical_filters ?? mechanicalFilters ?? undefined,
@@ -1066,7 +1090,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const saveEngagementWeight = (n: number) => patchFeed({ engagement_weight: n });
   const saveRecencyWeight = (n: number) => patchFeed({ recency_weight: n });
   const saveRecencyHalflife = (n: number) => patchFeed({ recency_halflife_h: n });
-  const saveSeenFilterEnabled = (v: boolean) => patchFeed({ seen_filter_enabled: v });
 
 
   const loadChat = useCallback(async (id: number): Promise<{
@@ -1095,7 +1118,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         if (typeof f.engagement_weight === "number") setEngagementWeight(f.engagement_weight);
         if (typeof f.recency_weight === "number") setRecencyWeight(f.recency_weight);
         if (typeof f.recency_halflife_h === "number") setRecencyHalflifeH(f.recency_halflife_h);
-        if (typeof f.seen_filter_enabled === "boolean") setSeenFilterEnabled(f.seen_filter_enabled);
         feedSignatureRef.current = feedSignature(f);
       }
       setMessages(msgs);
@@ -1108,6 +1130,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   }, []);
 
   const loadPosts = useCallback(async (id: number, opts?: { force?: boolean }) => {
+    // Record impressions seen so far BEFORE reloading, so the server-side seen
+    // filter on this fetch excludes posts the curator already viewed (esp. on
+    // Refresh). Then start a fresh dedup generation for the incoming posts.
+    await seenTracker.flushNow();
+    seenTracker.reset();
     setPostsLoading(true);
     setPipelineStage("searching");
     setPipelineCandidates(undefined);
@@ -1224,7 +1251,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       setPostsLoading(false);
       setFeedRefreshing(false);
     }
-  }, [setActivePostCount]);
+  }, [setActivePostCount, seenTracker]);
 
   // On mount (i.e. on feed switch via URL change), hydrate chat + posts.
   // Deferred a tick so the fetch kickoff (which flips loading flags) runs
@@ -1318,7 +1345,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     const pane = feedPaneRef.current;
     const spin = ptrSpinnerRef.current;
     if (!pane || !spin) return;
-    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    if (!isMobileViewport) return;
 
     const THRESHOLD = 58; // post-resistance px needed to trigger
     const MAX = 110;
@@ -1413,7 +1440,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       pane.style.transform = "";
       pane.style.transition = "";
     };
-  }, [feedId, loadPosts]);
+  }, [feedId, loadPosts, isMobileViewport]);
 
   // When the forced reload finishes, spring the pane + spinner back.
   useEffect(() => {
@@ -1450,10 +1477,15 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     Record<string, { text: string; handle: string | null; displayName: string | null; avatar: string | null } | null>
   >({});
   useEffect(() => {
-    if (viewMode !== "card") return;
+    // Branch-overlay cards always render in card view, so hydrate their quotes
+    // regardless of the feed's current view mode.
+    const quoteSources = [
+      ...(viewMode === "card" ? posts : []),
+      ...branchPreviewPosts,
+    ];
     const missing = [
       ...new Set(
-        posts
+        quoteSources
           .map((p) => p.quote_uri)
           .filter((u): u is string => !!u && quotedPosts[u] === undefined)
       ),
@@ -1500,7 +1532,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       }
     })();
     return () => ac.abort();
-  }, [viewMode, posts, quotedPosts]);
+  }, [viewMode, posts, branchPreviewPosts, quotedPosts]);
 
   // Detect unavailable posts via the public AT Proto API.
   useEffect(() => {
@@ -1953,6 +1985,237 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, [capState, tuning, mobileTab]);
+  // The card-view post UI, shared by the main feed and the branch overlay so a
+  // branch preview renders identical cards (avatar, embeds, images, engagement)
+  // — not a stripped-down mockup.
+  function renderPostCard(post: Post) {
+    const bskyUrl = (() => {
+      const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+      return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
+    })();
+    const profileUrl = post.author_handle
+      ? `https://bsky.app/profile/${post.author_handle}`
+      : `https://bsky.app/profile/${post.author_did}`;
+    const avatar = avatarUrl(post.author_did, post.author_avatar_cid);
+    const displayName =
+      post.author_display_name?.trim() ||
+      post.author_handle ||
+      post.author_did.slice(0, 16) + "…";
+    const handleLabel = post.author_handle
+      ? `@${post.author_handle}`
+      : post.author_did.slice(0, 20) + "…";
+    const extHost = externalHost(post.external_uri);
+    const replyParentUrl = (() => {
+      if (!post.reply_parent_uri) return null;
+      const m = post.reply_parent_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+      return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
+    })();
+    return (
+      <article className="cur-post-card">
+        {post.is_reply && (
+          <div className="cur-post-reply-banner">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <polyline points="9 17 4 12 9 7" />
+              <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+            </svg>
+            {replyParentUrl ? (
+              <a href={replyParentUrl} target="_blank" rel="noopener noreferrer">
+                Replying to a post
+              </a>
+            ) : (
+              <span>Reply</span>
+            )}
+          </div>
+        )}
+        <header className="cur-post-card-head">
+          <a
+            href={profileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="cur-post-avatar"
+            aria-label={`Open ${displayName} on Bluesky`}
+          >
+            {avatar ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={avatar}
+                alt=""
+                referrerPolicy="no-referrer"
+                loading="lazy"
+              />
+            ) : (
+              <span className="cur-post-avatar-fallback" aria-hidden>
+                {(displayName[0] || "?").toUpperCase()}
+              </span>
+            )}
+          </a>
+          <div className="cur-post-author">
+            <a
+              href={profileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="cur-post-name"
+            >
+              {displayName}
+            </a>
+            <span className="cur-post-meta">
+              <a
+                href={profileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="cur-post-handle"
+              >
+                {handleLabel}
+              </a>
+              <span className="cur-post-meta-sep" aria-hidden>·</span>
+              <time
+                className="cur-post-time"
+                dateTime={post.indexed_at}
+                title={formatAbsoluteTime(post.indexed_at)}
+              >
+                {formatRelativeTime(post.indexed_at)}
+              </time>
+            </span>
+          </div>
+        </header>
+
+        <div className="cur-post-card-body">{renderPostText(post.text)}</div>
+
+        {post.external_uri && (
+          <a
+            className={`cur-post-embed${post.external_thumb ? " has-thumb" : ""}`}
+            href={post.external_uri}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <div className="cur-post-embed-body">
+              <div className="cur-post-embed-host">{extHost || "link"}</div>
+              {post.external_title && (
+                <div className="cur-post-embed-title">{post.external_title}</div>
+              )}
+              {post.external_desc && (
+                <div className="cur-post-embed-desc">{post.external_desc}</div>
+              )}
+            </div>
+            {post.external_thumb && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={post.external_thumb}
+                alt=""
+                className="cur-post-embed-thumb"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+            )}
+          </a>
+        )}
+
+        {post.quote_uri && !post.external_uri && (() => {
+          const q = quotedPosts[post.quote_uri];
+          const m = post.quote_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
+          const qUrl = m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : "#";
+          return (
+            <a
+              className="cur-post-embed quote"
+              href={qUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {q ? (
+                <>
+                  <div className="cur-post-quote-author">
+                    {q.avatar && (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={q.avatar}
+                        alt=""
+                        className="cur-post-quote-avatar"
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                      />
+                    )}
+                    <span className="cur-post-quote-name">
+                      {q.displayName?.trim() || (q.handle ? `@${q.handle}` : "Quoted post")}
+                    </span>
+                    {q.handle && q.displayName?.trim() && (
+                      <span className="cur-post-quote-handle">@{q.handle}</span>
+                    )}
+                  </div>
+                  {q.text && (
+                    <div className="cur-post-quote-text">{q.text}</div>
+                  )}
+                </>
+              ) : q === null ? (
+                <>
+                  <div className="cur-post-embed-host">↳ quoted post</div>
+                  <div className="cur-post-embed-desc">
+                    Quoted post unavailable — open on Bluesky.
+                  </div>
+                </>
+              ) : (
+                <div className="cur-post-embed-host">↳ quoted post…</div>
+              )}
+            </a>
+          );
+        })()}
+
+        {post.has_images && post.image_urls.length > 0 && (
+          <div className="cur-post-images-wrap">
+            {aiLabels[post.uri]?.ai_generated && (
+              <span className="cur-ai-label">AI Generated</span>
+            )}
+            <div className={`cur-post-images cur-post-images-${Math.min(post.image_urls.length, 4)}`}>
+              {post.image_urls.slice(0, 4).map((url, i) => (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  key={i}
+                  src={url}
+                  alt={post.image_alts[i] || ""}
+                  className="cur-post-img"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onClick={() => setLightbox({ urls: post.image_urls, index: i })}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        {post.has_images && post.image_urls.length === 0 && post.image_count > 0 && (
+          <div className="cur-post-images-note">
+            {post.image_count} image{post.image_count === 1 ? "" : "s"}
+          </div>
+        )}
+
+        {/* AI label for video-only posts (image posts show it in the images-wrap above) */}
+        {!post.has_images && post.has_video && aiLabels[post.uri]?.ai_generated && (
+          <span className="cur-ai-label">AI Generated</span>
+        )}
+
+        {showDebug && (
+          <div className="cur-post-debug cur-post-debug-card">
+            <span className="cur-post-debug-row">
+              <span className="cur-post-debug-label">vec</span>
+              <span>{(post.score * 100).toFixed(1)}%</span>
+              {typeof post.rerank_score === "number" && (
+                <>
+                  <span className="cur-post-debug-label">rr</span>
+                  <span>{post.rerank_score}</span>
+                </>
+              )}
+            </span>
+            {post.rerank_reason && (
+              <span className="cur-post-debug-reason">
+                &ldquo;{post.rerank_reason}&rdquo;
+              </span>
+            )}
+          </div>
+        )}
+
+        {renderEngageFooter(post, bskyUrl)}
+        {branchZone(post.uri)}
+      </article>
+    );
+  }
 
   const hasCriteria = subqueries.length > 0;
 
@@ -2040,7 +2303,25 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
             {branchHeaderOptions && (
               <BranchTopicsHeader options={branchHeaderOptions} />
             )}
-            <FeedPipelineLoader />
+            <div className="cur-feed-pl-row">
+              <FeedPipelineLoader />
+              {posts.length > 0 && (
+                <button
+                  type="button"
+                  className={`cur-feed-refresh${postsLoading ? " busy" : ""}`}
+                  onClick={() => loadPosts(feedId, { force: true })}
+                  disabled={postsLoading}
+                  title="Refresh this feed"
+                  aria-label="Refresh this feed"
+                >
+                  <svg className="cur-feed-refresh-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <polyline points="23 4 23 10 17 10" />
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                  </svg>
+                  <span>Refresh</span>
+                </button>
+              )}
+            </div>
             {posts.length === 0 && postsLoading ? (
               // Bluesky-style placeholder cards while the feed is being curated.
               <div className="cur-skel-wrap" aria-hidden>
@@ -2086,7 +2367,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                   return null;
                 }
                 return (
-                  <div key={post.uri} className="cur-post-item cur-post-item-embed">
+                  <div
+                    key={post.uri}
+                    ref={seenTracker.register(post.uri)}
+                    className="cur-post-item cur-post-item-embed"
+                  >
                   <div
                     className="cur-post-embed-wrap"
                     data-bsky-uri={post.uri}
@@ -2152,29 +2437,12 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               })
             ) : (
               posts.filter(post => !swipedUris.has(post.uri)).map((post) => {
-                const bskyUrl = (() => {
-                  const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
-                  return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
-                })();
-                const profileUrl = post.author_handle
-                  ? `https://bsky.app/profile/${post.author_handle}`
-                  : `https://bsky.app/profile/${post.author_did}`;
-                const avatar = avatarUrl(post.author_did, post.author_avatar_cid);
-                const displayName =
-                  post.author_display_name?.trim() ||
-                  post.author_handle ||
-                  post.author_did.slice(0, 16) + "…";
-                const handleLabel = post.author_handle
-                  ? `@${post.author_handle}`
-                  : post.author_did.slice(0, 20) + "…";
-                const extHost = externalHost(post.external_uri);
-                const replyParentUrl = (() => {
-                  if (!post.reply_parent_uri) return null;
-                  const m = post.reply_parent_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
-                  return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
-                })();
                 return (
-                  <div key={post.uri} className="cur-post-item">
+                  <div
+                    key={post.uri}
+                    ref={seenTracker.register(post.uri)}
+                    className="cur-post-item"
+                  >
                   <SwipeableCard
                     key={`${post.uri}-${branchReturnKeys.get(post.uri) ?? 0}`}
                     onSwipe={(v) => handleCardSwipe(post, v)}
@@ -2197,209 +2465,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                       />
                     }
                   >
-                  <article className="cur-post-card">
-                    {post.is_reply && (
-                      <div className="cur-post-reply-banner">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                          <polyline points="9 17 4 12 9 7" />
-                          <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
-                        </svg>
-                        {replyParentUrl ? (
-                          <a href={replyParentUrl} target="_blank" rel="noopener noreferrer">
-                            Replying to a post
-                          </a>
-                        ) : (
-                          <span>Reply</span>
-                        )}
-                      </div>
-                    )}
-                    <header className="cur-post-card-head">
-                      <a
-                        href={profileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="cur-post-avatar"
-                        aria-label={`Open ${displayName} on Bluesky`}
-                      >
-                        {avatar ? (
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          <img
-                            src={avatar}
-                            alt=""
-                            referrerPolicy="no-referrer"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <span className="cur-post-avatar-fallback" aria-hidden>
-                            {(displayName[0] || "?").toUpperCase()}
-                          </span>
-                        )}
-                      </a>
-                      <div className="cur-post-author">
-                        <a
-                          href={profileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="cur-post-name"
-                        >
-                          {displayName}
-                        </a>
-                        <span className="cur-post-meta">
-                          <a
-                            href={profileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="cur-post-handle"
-                          >
-                            {handleLabel}
-                          </a>
-                          <span className="cur-post-meta-sep" aria-hidden>·</span>
-                          <time
-                            className="cur-post-time"
-                            dateTime={post.indexed_at}
-                            title={formatAbsoluteTime(post.indexed_at)}
-                          >
-                            {formatRelativeTime(post.indexed_at)}
-                          </time>
-                        </span>
-                      </div>
-                    </header>
-
-                    <div className="cur-post-card-body">{renderPostText(post.text)}</div>
-
-                    {post.external_uri && (
-                      <a
-                        className={`cur-post-embed${post.external_thumb ? " has-thumb" : ""}`}
-                        href={post.external_uri}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <div className="cur-post-embed-body">
-                          <div className="cur-post-embed-host">{extHost || "link"}</div>
-                          {post.external_title && (
-                            <div className="cur-post-embed-title">{post.external_title}</div>
-                          )}
-                          {post.external_desc && (
-                            <div className="cur-post-embed-desc">{post.external_desc}</div>
-                          )}
-                        </div>
-                        {post.external_thumb && (
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          <img
-                            src={post.external_thumb}
-                            alt=""
-                            className="cur-post-embed-thumb"
-                            loading="lazy"
-                            referrerPolicy="no-referrer"
-                          />
-                        )}
-                      </a>
-                    )}
-
-                    {post.quote_uri && !post.external_uri && (() => {
-                      const q = quotedPosts[post.quote_uri];
-                      const m = post.quote_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
-                      const qUrl = m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : "#";
-                      return (
-                        <a
-                          className="cur-post-embed quote"
-                          href={qUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          {q ? (
-                            <>
-                              <div className="cur-post-quote-author">
-                                {q.avatar && (
-                                  /* eslint-disable-next-line @next/next/no-img-element */
-                                  <img
-                                    src={q.avatar}
-                                    alt=""
-                                    className="cur-post-quote-avatar"
-                                    loading="lazy"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                )}
-                                <span className="cur-post-quote-name">
-                                  {q.displayName?.trim() || (q.handle ? `@${q.handle}` : "Quoted post")}
-                                </span>
-                                {q.handle && q.displayName?.trim() && (
-                                  <span className="cur-post-quote-handle">@{q.handle}</span>
-                                )}
-                              </div>
-                              {q.text && (
-                                <div className="cur-post-quote-text">{q.text}</div>
-                              )}
-                            </>
-                          ) : q === null ? (
-                            <>
-                              <div className="cur-post-embed-host">↳ quoted post</div>
-                              <div className="cur-post-embed-desc">
-                                Quoted post unavailable — open on Bluesky.
-                              </div>
-                            </>
-                          ) : (
-                            <div className="cur-post-embed-host">↳ quoted post…</div>
-                          )}
-                        </a>
-                      );
-                    })()}
-
-                    {post.has_images && post.image_urls.length > 0 && (
-                      <div className="cur-post-images-wrap">
-                        {aiLabels[post.uri]?.ai_generated && (
-                          <span className="cur-ai-label">AI Generated</span>
-                        )}
-                        <div className={`cur-post-images cur-post-images-${Math.min(post.image_urls.length, 4)}`}>
-                          {post.image_urls.slice(0, 4).map((url, i) => (
-                            /* eslint-disable-next-line @next/next/no-img-element */
-                            <img
-                              key={i}
-                              src={url}
-                              alt={post.image_alts[i] || ""}
-                              className="cur-post-img"
-                              loading="lazy"
-                              referrerPolicy="no-referrer"
-                              onClick={() => setLightbox({ urls: post.image_urls, index: i })}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {post.has_images && post.image_urls.length === 0 && post.image_count > 0 && (
-                      <div className="cur-post-images-note">
-                        {post.image_count} image{post.image_count === 1 ? "" : "s"}
-                      </div>
-                    )}
-
-                    {/* AI label for video-only posts (image posts show it in the images-wrap above) */}
-                    {!post.has_images && post.has_video && aiLabels[post.uri]?.ai_generated && (
-                      <span className="cur-ai-label">AI Generated</span>
-                    )}
-
-                    {showDebug && (
-                      <div className="cur-post-debug cur-post-debug-card">
-                        <span className="cur-post-debug-row">
-                          <span className="cur-post-debug-label">vec</span>
-                          <span>{(post.score * 100).toFixed(1)}%</span>
-                          {typeof post.rerank_score === "number" && (
-                            <>
-                              <span className="cur-post-debug-label">rr</span>
-                              <span>{post.rerank_score}</span>
-                            </>
-                          )}
-                        </span>
-                        {post.rerank_reason && (
-                          <span className="cur-post-debug-reason">
-                            &ldquo;{post.rerank_reason}&rdquo;
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    {renderEngageFooter(post, bskyUrl)}
-                    {branchZone(post.uri)}
-                  </article>
+                  {renderPostCard(post)}
                   </SwipeableCard>
                   </div>
                 );
@@ -2449,12 +2515,15 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 branchFeedId={pendingBranch.branchFeedId}
                 feedName={pendingBranch.branchFeedName}
                 panelRef={risingPanelRef}
+                renderPost={renderPostCard}
+                onPostsLoaded={setBranchPreviewPosts}
                 onBack={() => {
                   branchCommittedRef.current = false;
                   branchPanelRectRef.current = null;
                   const el = risingPanelRef.current;
                   if (el) { el.style.left = ""; el.style.right = ""; el.style.top = ""; el.style.bottom = ""; }
                   setPendingBranch(null);
+                  setBranchPreviewPosts([]);
                   setBranchOverlayName(null);
                   setPipelineStage("idle");
                   setActivePostCount(postCount);
@@ -2796,7 +2865,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           engagementWeight={engagementWeight}
           recencyWeight={recencyWeight}
           recencyHalflifeH={recencyHalflifeH}
-          seenFilterEnabled={seenFilterEnabled}
           onMechanicalChange={saveMechanicalFilters}
           onSubqueriesChange={saveSubqueries}
           onCandidateBudgetChange={saveCandidateBudget}
@@ -2805,7 +2873,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           onEngagementWeightChange={saveEngagementWeight}
           onRecencyWeightChange={saveRecencyWeight}
           onRecencyHalflifeChange={saveRecencyHalflife}
-          onSeenFilterChange={saveSeenFilterEnabled}
           postCount={postCount}
           onClose={() => setTuning(false)}
         />

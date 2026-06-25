@@ -1470,24 +1470,14 @@
   color: var(--ink-3);
   font-family: var(--rf-mono);
 }
-.cur-mock-branch-posts{
-  padding: 0 0 40px;
-}
-.cur-mock-branch-post{
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--hair);
-}
-.cur-mock-branch-author{
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink-2);
-  margin: 0 0 4px;
-}
-.cur-mock-branch-text{
-  font-size: 14px;
-  color: var(--ink);
-  margin: 0;
-  line-height: 1.5;
+/* Branch preview posts reuse the main feed's .cur-feed-posts-inner +
+   .cur-post-card styling so the overlay matches a real feed. The real feed
+   gets its side gutters from .cur-feed-posts (the scroll wrapper); the overlay
+   has no such wrapper, so mirror those gutters here — otherwise cards run
+   edge-to-edge on mobile/narrow panels. */
+.cur-mock-branch-overlay .cur-feed-posts-inner{
+  box-sizing: border-box;
+  padding: 0 32px 40px;
 }
 
 /* Back button on branch feeds */
@@ -1924,10 +1914,8 @@
   z-index: 9999;
 }
 .cur-boot-mark{
-  font-family: 'Instrument Serif', serif;
-  font-size: 40px;
-  letter-spacing: -0.02em;
-  color: #0d0b1e;
+  width: 56px;
+  height: auto;
   animation: cur-boot-breathe 1.8s ease-in-out infinite;
 }
 .cur-boot-dots{ display: inline-flex; gap: 6px; }
@@ -1948,6 +1936,45 @@
 /* Pipeline loader placed inside the feed column (and branch overlay) rather
    than pinned to the topbar. Scrolls with the feed content. */
 .cur-feed-pl{ padding: 2px 0 14px; }
+/* Row that holds the pipeline loader on the left and the Refresh button on the
+   right. When the loader is idle it renders nothing, so the row carries the
+   bottom spacing and the Refresh button sits alone, still right-aligned. */
+.cur-feed-pl-row{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0 14px;
+}
+.cur-feed-pl-row .cur-feed-pl{ padding: 0; flex: 1 1 auto; min-width: 0; }
+.cur-feed-refresh{
+  margin-left: auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--hair-strong);
+  background: transparent;
+  color: var(--ink-3);
+  font-family: var(--rf-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+.cur-feed-refresh:hover{ border-color: var(--ink); color: var(--ink); }
+.cur-feed-refresh:disabled{ cursor: default; opacity: 0.55; }
+.cur-feed-refresh-icon{ flex-shrink: 0; }
+.cur-feed-refresh.busy .cur-feed-refresh-icon{
+  animation: cur-ptr-spin 0.8s linear infinite;
+  transform-origin: center;
+}
+/* Desktop only — on mobile the pull-to-refresh gesture replaces this button. */
+@media (max-width: 767px){
+  .cur-feed-refresh{ display: none; }
+}
 /* In the branch overlay, match the 20px horizontal padding of its other rows. */
 .cur-mock-branch-overlay .cur-feed-pl{ padding: 12px 20px 14px; }
 
@@ -3292,6 +3319,12 @@
   }
   .cur-feed-posts-inner{
     overflow-x: clip;
+  }
+  /* Match the mobile feed's 12px side gutter (the overlay has no padded
+     .cur-feed-posts wrapper of its own). */
+  .cur-mock-branch-overlay .cur-feed-posts-inner{
+    padding-left: 12px;
+    padding-right: 12px;
   }
   .cur-feed-posts-header{
     padding: 4px 0 8px;

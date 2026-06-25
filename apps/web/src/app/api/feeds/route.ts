@@ -12,18 +12,8 @@ import type { MechanicalFilters } from "@/lib/types";
 import {
   MIN_CANDIDATE_BUDGET,
   MAX_CANDIDATE_BUDGET,
-  MIN_RANKING_WEIGHT,
-  MAX_RANKING_WEIGHT,
-  MAX_BIAS_WEIGHT_SUM,
-  MIN_RECENCY_HALFLIFE_H,
-  MAX_RECENCY_HALFLIFE_H,
+  normalizeRankingBias,
 } from "@/lib/defaults";
-
-function clampNum(v: unknown, lo: number, hi: number): number | undefined {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return undefined;
-  return Math.max(lo, Math.min(hi, n));
-}
 
 export async function GET(req: NextRequest) {
   const t0 = performance.now();
@@ -66,7 +56,6 @@ export async function PATCH(req: NextRequest) {
     engagement_weight,
     recency_weight,
     recency_halflife_h,
-    seen_filter_enabled,
   } = body as {
     id?: number;
     name?: string;
@@ -79,7 +68,6 @@ export async function PATCH(req: NextRequest) {
     engagement_weight?: number;
     recency_weight?: number;
     recency_halflife_h?: number;
-    seen_filter_enabled?: boolean;
   };
 
   if (!id)
@@ -118,43 +106,17 @@ export async function PATCH(req: NextRequest) {
     subqueries: cleanSubs,
     candidate_budget: budget,
   };
-  if (engagement_weight !== undefined) {
-    updates.engagement_weight = clampNum(
-      engagement_weight,
-      MIN_RANKING_WEIGHT,
-      MAX_RANKING_WEIGHT
-    );
-  }
-  if (recency_weight !== undefined) {
-    updates.recency_weight = clampNum(
-      recency_weight,
-      MIN_RANKING_WEIGHT,
-      MAX_RANKING_WEIGHT
-    );
-  }
-  // Joint cap: keep a relevance floor so the blend nudges rather than overrides
-  // the reranker. If the effective engagement + recency weights exceed
-  // MAX_BIAS_WEIGHT_SUM, scale both down proportionally (preserving their
-  // ratio). Uses the merged values so a single-weight PATCH still respects the
-  // other stored weight.
-  const effEng = updates.engagement_weight ?? feed.engagement_weight;
-  const effRec = updates.recency_weight ?? feed.recency_weight;
-  const biasSum = effEng + effRec;
-  if (biasSum > MAX_BIAS_WEIGHT_SUM) {
-    const scale = MAX_BIAS_WEIGHT_SUM / biasSum;
-    updates.engagement_weight = effEng * scale;
-    updates.recency_weight = effRec * scale;
-  }
-  if (recency_halflife_h !== undefined) {
-    updates.recency_halflife_h = clampNum(
-      recency_halflife_h,
-      MIN_RECENCY_HALFLIFE_H,
-      MAX_RECENCY_HALFLIFE_H
-    );
-  }
-  if (typeof seen_filter_enabled === "boolean") {
-    updates.seen_filter_enabled = seen_filter_enabled;
-  }
+  // Clamp + joint relevance-floor cap, shared with the curator agent path.
+  const bias = normalizeRankingBias(
+    { engagement_weight, recency_weight, recency_halflife_h },
+    feed
+  );
+  if (bias.engagement_weight !== undefined)
+    updates.engagement_weight = bias.engagement_weight;
+  if (bias.recency_weight !== undefined)
+    updates.recency_weight = bias.recency_weight;
+  if (bias.recency_halflife_h !== undefined)
+    updates.recency_halflife_h = bias.recency_halflife_h;
   if (typeof name === "string") {
     const trimmed = name.trim();
     if (!trimmed) {

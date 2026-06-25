@@ -24,7 +24,6 @@ interface FilterPanelProps {
   engagementWeight: number;
   recencyWeight: number;
   recencyHalflifeH: number;
-  seenFilterEnabled: boolean;
   onMechanicalChange: (filters: MechanicalFilters) => void;
   onSubqueriesChange: (subs: string[]) => void;
   onCandidateBudgetChange: (n: number) => void;
@@ -33,7 +32,6 @@ interface FilterPanelProps {
   onEngagementWeightChange: (n: number) => void;
   onRecencyWeightChange: (n: number) => void;
   onRecencyHalflifeChange: (n: number) => void;
-  onSeenFilterChange: (enabled: boolean) => void;
   postCount: number;
   rightPane?: "chat" | "tune";
   onRightPaneChange?: (pane: "chat" | "tune") => void;
@@ -79,7 +77,6 @@ export default function FilterPanel({
   engagementWeight,
   recencyWeight,
   recencyHalflifeH,
-  seenFilterEnabled,
   onMechanicalChange,
   onSubqueriesChange,
   onCandidateBudgetChange,
@@ -88,7 +85,6 @@ export default function FilterPanel({
   onEngagementWeightChange,
   onRecencyWeightChange,
   onRecencyHalflifeChange,
-  onSeenFilterChange,
   postCount,
   rightPane,
   onRightPaneChange,
@@ -459,23 +455,6 @@ export default function FilterPanel({
             <p className="ctrl-hint">
               How long until a post counts for half as much. Short for breaking
               news, long for evergreen. Relevance weight: {Math.round(relevanceWeight * 100)}%.
-            </p>
-          </div>
-
-          {/* SEEN FILTERING — per-viewer, serve-time */}
-          <div className="ctrl-section">
-            <label className="ctrl-label">
-              Seen filtering
-              <span className="ctrl-label-value">{seenFilterEnabled ? "on" : "off"}</span>
-            </label>
-            <Toggle
-              label="Hide posts you've already seen"
-              checked={seenFilterEnabled}
-              onChange={onSeenFilterChange}
-            />
-            <p className="ctrl-hint">
-              Drops posts already shown to you, so refreshing surfaces new ones.
-              Applied per viewer when the feed is read.
             </p>
           </div>
 

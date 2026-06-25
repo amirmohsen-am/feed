@@ -31,9 +31,16 @@ function idResolver(): IdResolver {
   return _idResolver;
 }
 
-/** Returns the requester's DID, or null when there is no valid token. */
+/**
+ * Returns the requester's DID, or null when there is no valid token.
+ *
+ * `lxm` is the lexicon method the token must be bound to. Defaults to
+ * getFeedSkeleton; the sendInteractions receiver passes its own NSID so the
+ * AppView's method-scoped service tokens verify against the right binding.
+ */
 export async function verifyFeedRequesterDid(
-  authorizationHeader: string | null
+  authorizationHeader: string | null,
+  lxm: string = GET_FEED_SKELETON_NSID
 ): Promise<string | null> {
   if (!authorizationHeader?.startsWith("Bearer ")) return null;
   const jwt = authorizationHeader.slice("Bearer ".length).trim();
@@ -43,7 +50,7 @@ export async function verifyFeedRequesterDid(
     const payload = await verifyJwt(
       jwt,
       getFeedgenServiceDid(),
-      GET_FEED_SKELETON_NSID,
+      lxm,
       async (did, forceRefresh) =>
         idResolver().did.resolveAtprotoKey(did, forceRefresh)
     );

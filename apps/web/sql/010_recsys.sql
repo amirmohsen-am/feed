@@ -24,9 +24,11 @@ ALTER TABLE feeds
 ALTER TABLE feeds ALTER COLUMN candidate_budget SET DEFAULT 200;
 
 -- 2. Per-user, per-feed "seen" set. Scoped per feed so a post seen in one feed
---    does not suppress it in another. "served = seen" on the published path;
---    real on-screen impressions on the owner/preview path. Pruned to the post
---    retention window (see lib/db/seen.ts pruneSeen / the refresh cron).
+--    does not suppress it in another. Recorded from real on-screen impressions
+--    (viewport + dwell), matching the Bluesky client: the curator preview posts
+--    to /api/seen, the published feed reports app.bsky.feed.sendInteractions
+--    #interactionSeen events. Pruned to the post retention window (see
+--    lib/db/seen.ts pruneSeen / the refresh cron).
 --
 --    feed_id is bigint to match the existing convention in 003_feedback.sql
 --    (feeds.id is SERIAL/int4; Postgres allows the wider FK type).

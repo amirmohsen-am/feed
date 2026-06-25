@@ -82,6 +82,74 @@ export const MAX_BIAS_WEIGHT_SUM = 1 - MIN_RELEVANCE_WEIGHT;
 export const MIN_RECENCY_HALFLIFE_H = 1;
 export const MAX_RECENCY_HALFLIFE_H = 24 * 30;
 
+function clampNum(v: unknown, lo: number, hi: number): number | undefined {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.max(lo, Math.min(hi, n));
+}
+
+/**
+ * Normalize ranking-bias weight updates against the feed's current weights.
+ * Clamps each weight to [MIN_RANKING_WEIGHT, MAX_RANKING_WEIGHT] and the
+ * half-life to its hour range, then enforces the joint relevance floor: if the
+ * effective engagement + recency weights exceed MAX_BIAS_WEIGHT_SUM they are
+ * scaled down proportionally (ratio preserved) so the reranker's relevance term
+ * can never collapse to 0. Uses the merged values so a single-weight update
+ * still respects the other stored weight.
+ *
+ * Shared by every write boundary that touches these knobs — the Tune-panel
+ * PATCH (api/feeds) and the curator agent's update_feed_config tool — so both
+ * paths persist identically clamped values.
+ */
+export function normalizeRankingBias(
+  input: {
+    engagement_weight?: unknown;
+    recency_weight?: unknown;
+    recency_halflife_h?: unknown;
+  },
+  current: { engagement_weight: number; recency_weight: number }
+): {
+  engagement_weight?: number;
+  recency_weight?: number;
+  recency_halflife_h?: number;
+} {
+  const out: {
+    engagement_weight?: number;
+    recency_weight?: number;
+    recency_halflife_h?: number;
+  } = {};
+  if (input.engagement_weight !== undefined) {
+    out.engagement_weight = clampNum(
+      input.engagement_weight,
+      MIN_RANKING_WEIGHT,
+      MAX_RANKING_WEIGHT
+    );
+  }
+  if (input.recency_weight !== undefined) {
+    out.recency_weight = clampNum(
+      input.recency_weight,
+      MIN_RANKING_WEIGHT,
+      MAX_RANKING_WEIGHT
+    );
+  }
+  const effEng = out.engagement_weight ?? current.engagement_weight;
+  const effRec = out.recency_weight ?? current.recency_weight;
+  const biasSum = effEng + effRec;
+  if (biasSum > MAX_BIAS_WEIGHT_SUM) {
+    const scale = MAX_BIAS_WEIGHT_SUM / biasSum;
+    out.engagement_weight = effEng * scale;
+    out.recency_weight = effRec * scale;
+  }
+  if (input.recency_halflife_h !== undefined) {
+    out.recency_halflife_h = clampNum(
+      input.recency_halflife_h,
+      MIN_RECENCY_HALFLIFE_H,
+      MAX_RECENCY_HALFLIFE_H
+    );
+  }
+  return out;
+}
+
 // Reference engagement for log-normalization: the engagement score saturates
 // toward 1 as a post's weighted interaction count approaches this. Set near a
 // "strong but not viral" post so the score discriminates across the body of

@@ -13,6 +13,7 @@ import {
 import { ensureEnvFromSecret } from "@/lib/secrets";
 import { logLlmCall } from "@/lib/llm-log";
 import { hydratePostByUri, type VectorHit } from "@/lib/vector-search";
+import { normalizeRankingBias } from "@/lib/defaults";
 import type { MechanicalFilters } from "@/lib/types";
 
 let _client: Anthropic | null = null;
@@ -37,6 +38,8 @@ You translate the user's interests into 1-4 SUBQUERIES — short topical queries
 A RERANK PROMPT is an optional 3-6 sentence editorial filter applied after vector search. Use it to capture what to favor / drop / the vibe, not the topic. Skip it (empty string) when you don't have enough signal yet.
 
 STRUCTURAL FILTERS (post_type, lang_allow, require_media, time_window, min_like_count, etc.) — only set when the user volunteers a preference. Don't probe for them. If the user contradicts an earlier preference, flip it.
+
+RANKING BIAS (engagement_weight, recency_weight, recency_halflife_h) — deterministic nudges layered on the editorial rerank to re-sort the feed by post popularity and freshness; relevance always leads. You can change these when the user signals they want more or less popularity or freshness, but don't probe for them.
 
 Tools:
 - update_feed_config: call with just the fields that changed; the server merges with existing state.
@@ -102,6 +105,21 @@ const TOOLS: Anthropic.Tool[] = [
             "3-6 sentence editorial filter applied after vector search. Empty string disables rerank.",
         },
         mechanical_filters: MECHANICAL_FILTERS_SCHEMA,
+        engagement_weight: {
+          type: "number",
+          description:
+            "0–0.9. How much post popularity (likes/reposts/replies) nudges ordering AFTER the editorial rerank. 0 = ignore engagement; higher surfaces more popular posts. Default 0.2.",
+        },
+        recency_weight: {
+          type: "number",
+          description:
+            "0–0.9. How much freshness nudges ordering after the rerank. 0 = ignore age; higher favors newer posts. Default 0.1. engagement_weight + recency_weight is capped so relevance always leads.",
+        },
+        recency_halflife_h: {
+          type: "number",
+          description:
+            "1–720 hours. Only matters when recency_weight > 0: a post this old counts as half as fresh as a brand-new one. A few hours = breaking-news feel; days/weeks = age barely matters. Default 24.",
+        },
       },
     },
   },
@@ -137,6 +155,9 @@ interface UpdateFeedConfigArgs {
   subqueries?: string[];
   rerank_prompt?: string;
   mechanical_filters?: Partial<MechanicalFilters>;
+  engagement_weight?: number;
+  recency_weight?: number;
+  recency_halflife_h?: number;
 }
 
 // Compact source-post payload for the chat UI's embedded card on a branched
@@ -217,10 +238,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ messages: history, feed, sourcePost });
     }
 
+    const biasBlock = `\nRanking bias: engagement_weight=${feed.engagement_weight}, recency_weight=${feed.recency_weight}, recency_halflife_h=${feed.recency_halflife_h}`;
     const stateBlock =
       feed.subqueries.length > 0
-        ? `Subqueries: ${JSON.stringify(feed.subqueries)}\nRerank prompt: ${JSON.stringify(feed.rerank_prompt)}\nMechanical filters: ${JSON.stringify(feed.mechanical_filters)}`
-        : "No preferences set yet — this is a fresh start.";
+        ? `Subqueries: ${JSON.stringify(feed.subqueries)}\nRerank prompt: ${JSON.stringify(feed.rerank_prompt)}\nMechanical filters: ${JSON.stringify(feed.mechanical_filters)}${biasBlock}`
+        : `No preferences set yet — this is a fresh start.${biasBlock}`;
 
     const systemPrompt =
       SYSTEM_PROMPT + stateBlock + (interview === true ? INTERVIEW_PROMPT : "");
@@ -301,6 +323,19 @@ export async function POST(req: NextRequest) {
               ...feed.mechanical_filters,
               ...args.mechanical_filters,
             };
+          }
+          // Ranking-bias knobs: clamp + joint relevance-floor cap via the same
+          // helper the Tune-panel PATCH uses, so the agent can't push the blend
+          // past the bounds the UI enforces.
+          const bias = normalizeRankingBias(args, feed);
+          if (bias.engagement_weight !== undefined) {
+            updates.engagement_weight = bias.engagement_weight;
+          }
+          if (bias.recency_weight !== undefined) {
+            updates.recency_weight = bias.recency_weight;
+          }
+          if (bias.recency_halflife_h !== undefined) {
+            updates.recency_halflife_h = bias.recency_halflife_h;
           }
         } else if (block.name === "present_options") {
           const args = block.input as { options?: unknown };
