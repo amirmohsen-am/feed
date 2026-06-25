@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import "./curator.css";
 import "./tour.css";
 import CuratorTour from "./CuratorTour";
+import CuratorMobileTour from "./CuratorMobileTour";
 import {
   Dialog,
   DialogContent,
@@ -546,6 +547,8 @@ function CuratorShell({
         setHideSeen,
         unavailableCount,
         setUnavailableCount,
+        sidebarOpen,
+        setSidebarOpen,
         openPublish: () => setShowPublish(true),
         openTune: () => openTuneRef.current?.(),
         registerOpenTune: (fn: () => void) => { openTuneRef.current = fn; },
@@ -1193,6 +1196,7 @@ function CuratorShell({
         />
 
         <CuratorTour />
+        <CuratorMobileTour />
       </div>
     </CuratorProvider>
   );

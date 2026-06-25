@@ -54,6 +54,14 @@ function parseMessage(content: string) {
   return { text: textLines.join("\n").trim(), options };
 }
 
+// The agent is asking a follow-up (vs. just acting/acknowledging) when it
+// presents multiple-choice options, or its text ends with a question mark.
+// We pop the conversation open in that case so the user can answer.
+function isFollowUpQuestion(parsed: { text: string; options: { key: string; label: string }[] }) {
+  if (parsed.options.length > 0) return true;
+  return /\?\s*$/.test(parsed.text.trim());
+}
+
 // A swipe sends a user message prefixed with ⟦swipe:<verdict>:<uri>⟧ so the
 // chat can render the reacted-to post as a card (instead of the raw text the
 // agent reads). Author + snippet are parsed from the body as a reload-safe
@@ -514,6 +522,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     setLoading(true);
     setFeedRefreshing(true);
     let willReload = false;
+    feedChangedRef.current = false;
     const interview = interviewModeRef.current;
     interviewModeRef.current = false;
     try {
@@ -545,14 +554,24 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           willReload = true;
         }
       }
-      const last = msgs[msgs.length - 1];
-      if (last?.role === "assistant" && parseMessage(last.content).options.length > 0) {
-        if (mobileTab !== "chat") setOptionsUnread(true);
-      }
       if (d.done) {
         rootFeedRef.current?.reload();
         reloadFeeds();
         willReload = true;
+      }
+      // The feed config actually changed this turn (signature change or
+      // finalize) → let the capsule flash "Feed updated".
+      feedChangedRef.current = willReload;
+      // Auto pop out the conversation (desktop right sidebar / mobile full-screen
+      // sheet) when the user needs to see the agent's reply: either it's asking a
+      // follow-up question, or the feed didn't change (otherwise the reply is
+      // invisible behind the collapsed capsule and the user is left confused).
+      const last = msgs[msgs.length - 1];
+      const followUp = last?.role === "assistant" && isFollowUpQuestion(parseMessage(last.content));
+      if (followUp || !willReload) {
+        const alreadyOpen = isMobile ? mobileTab === "chat" : expanded;
+        if (alreadyOpen) setOptionsUnread(false);
+        else openConversation();
       }
     } catch {
       setMessages(prev => [...prev, { role: "assistant", content: "Something went wrong." }]);
@@ -632,6 +651,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const wasBusyRef = useRef(false);
   const updatedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sawMessageRef = useRef(false);
+  // Set by send() when a turn actually changed the feed config; consumed once by
+  // the capState effect so "Feed updated" only flashes on a real change.
+  const feedChangedRef = useRef(false);
   useEffect(() => { if (messages.length > 0) sawMessageRef.current = true; }, [messages.length]);
   useEffect(() => {
     if (busy) {
@@ -643,7 +665,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     }
     if (wasBusyRef.current) {
       wasBusyRef.current = false;
-      if (sawMessageRef.current) {
+      // Only flash "Feed updated" when the turn actually changed the feed
+      // config; a pure acknowledgment (no change) just returns to idle.
+      if (sawMessageRef.current && feedChangedRef.current) {
         setCapState("updated");
         updatedTimerRef.current = setTimeout(() => {
           setCapState("idle");
@@ -652,6 +676,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       } else {
         setCapState("idle");
       }
+      feedChangedRef.current = false;
     }
   }, [busy]);
   useEffect(() => () => { if (updatedTimerRef.current) clearTimeout(updatedTimerRef.current); }, []);

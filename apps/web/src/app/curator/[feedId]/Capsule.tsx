@@ -62,7 +62,10 @@ export default function Capsule({
         onSend();
       }}
       onClick={() => {
-        if (state === "updated") {
+        // While a turn is in flight (goo metaballs) or just after it ("Feed
+        // updated"), tapping the pill opens the conversation. Works on tap too,
+        // so mobile gets the same behaviour.
+        if (state === "thinking" || state === "updated") {
           onUpdatedOpen();
           return;
         }
