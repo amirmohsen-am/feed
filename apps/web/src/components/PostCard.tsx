@@ -90,15 +90,17 @@ export function EngageFooter({ post, bskyUrl }: { post: Post; bskyUrl: string | 
 // a swipe) doesn't re-render every card's subtree — keeps the gesture smooth.
 function PostCard({
   post,
-  pinned = false,
-  collapsed = false,
-  onToggleCollapse,
+  branchBanner = false,
+  branchLeaving = false,
 }: {
   post: Post;
-  // Pinned source post (branched from): accent ring + manual fade-collapse.
-  pinned?: boolean;
-  collapsed?: boolean;
-  onToggleCollapse?: () => void;
+  // The source post a branch is being / was made from: rendered as a normal full
+  // post, marked by a "Branched from" banner at the top. The banner grows out of
+  // the post in lockstep with the swipe-right drag (driven by --branch-progress in
+  // CSS) and stays once the branch commits.
+  branchBanner?: boolean;
+  // True while returning (Back): the banner shrinks back out.
+  branchLeaving?: boolean;
 }) {
   const { showDebug } = useCurator();
   const { quotedPosts, aiLabels, openLightbox } = useFeedActions();
@@ -126,7 +128,18 @@ function PostCard({
   })();
 
   return (
-    <article className={`cur-post-card${pinned ? " cur-post-card-pinned" : ""}${pinned && collapsed ? " cur-post-collapsed" : ""}`}>
+    <article className="cur-post-card">
+      {branchBanner && (
+        <div className={`cur-post-branch-banner${branchLeaving ? " cur-post-branch-banner-leaving" : ""}`}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="6" cy="6" r="2.4" />
+            <circle cx="6" cy="18" r="2.4" />
+            <circle cx="18" cy="9" r="2.4" />
+            <path d="M6 8.4v7.2M8.2 7 16 8.6M8 17l8-6.6" />
+          </svg>
+          Branched from this post
+        </div>
+      )}
       {post.is_reply && (
         <div className="cur-post-reply-banner">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -331,16 +344,6 @@ function PostCard({
 
         <EngageFooter post={post} bskyUrl={bskyUrl} />
       </div>
-      {pinned && (
-        <button
-          type="button"
-          className="cur-post-expand"
-          onClick={onToggleCollapse}
-          aria-expanded={!collapsed}
-        >
-          {collapsed ? "Show more ▾" : "Show less ▴"}
-        </button>
-      )}
     </article>
   );
 }

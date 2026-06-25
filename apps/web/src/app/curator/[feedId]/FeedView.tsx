@@ -4,6 +4,7 @@ import {
   forwardRef,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useImperativeHandle,
   useRef,
   useState,
@@ -37,6 +38,55 @@ export interface StreamedConfig {
 export interface FeedViewHandle {
   reload: (force?: boolean) => void;
   setPosts: (posts: Post[]) => void;
+}
+
+// useLayoutEffect on the client, useEffect on the server — so the FLIP measure +
+// invert runs after DOM mutation but before paint (no flash) without the SSR
+// "useLayoutEffect does nothing on the server" warning.
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+// The scroll container the feed lives in: the curator pane when it scrolls,
+// otherwise the window (mobile / short panes).
+function activeScroller(): HTMLElement | Window {
+  const pane = document.querySelector(".cur-feed-posts") as HTMLElement | null;
+  if (pane && pane.scrollHeight > pane.clientHeight + 4) return pane;
+  return window;
+}
+
+function scrollTopOf(scroller: HTMLElement | Window): number {
+  return scroller instanceof Window ? window.scrollY : scroller.scrollTop;
+}
+
+// Set scroll position instantly (no smooth) — used to anchor the source in place
+// across a DOM re-insertion before the eased scroll takes over.
+function setScrollTop(scroller: HTMLElement | Window, v: number) {
+  const top = Math.max(0, v);
+  if (scroller instanceof Window) window.scrollTo(0, top);
+  else scroller.scrollTop = top;
+}
+
+// The source's top relative to the scroller's top edge (viewport px).
+function topWithinScroller(el: HTMLElement, scroller: HTMLElement | Window): number {
+  const refTop = scroller instanceof Window ? 0 : scroller.getBoundingClientRect().top;
+  return el.getBoundingClientRect().top - refTop;
+}
+
+// Ease a scroller's scrollTop to `to` over `dur` ms (ease-out cubic). The source
+// moves via scroll — not a transform — so every other post stays in real layout
+// and nothing overlaps or leaves a blank gap as it travels.
+function easeScrollTop(scroller: HTMLElement | Window, to: number, dur = 460) {
+  const from = scrollTopOf(scroller);
+  const target = Math.max(0, to);
+  if (Math.abs(target - from) < 1) { setScrollTop(scroller, target); return; }
+  const start = performance.now();
+  const ease = (p: number) => 1 - Math.pow(1 - p, 3); // easeOutCubic
+
+  function step(now: number) {
+    const p = Math.min(1, (now - start) / dur);
+    setScrollTop(scroller, from + (target - from) * ease(p));
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
 }
 
 interface FeedViewProps {
@@ -107,10 +157,6 @@ function FeedViewImpl(
     branchFeedName?: string;
   } | null>(null);
   const [committedBranchUri, setCommittedBranchUri] = useState<string | null>(null);
-  // The pinned source post opens collapsed (A1 fade); user expands/collapses it.
-  const [pinnedExpanded, setPinnedExpanded] = useState(false);
-  // Stable so memoized PostCards keep skipping re-renders during a swipe.
-  const togglePinned = useCallback(() => setPinnedExpanded((v) => !v), []);
   const [othersCleared, setOthersCleared] = useState(false);
   const [branchDragging, setBranchDragging] = useState(false);
   const branchDraggingRef = useRef(false);
@@ -118,9 +164,19 @@ function FeedViewImpl(
   const [returningSourceUri, setReturningSourceUri] = useState<string | null>(null);
   const branchCommittedRef = useRef(false);
   const feedInnerRef = useRef<HTMLDivElement | null>(null);
-  // Scroll position captured at commit so Back can animate the source back to
-  // where it was when branched from mid-page.
-  const savedScrollRef = useRef<{ pane: number; win: number }>({ pane: 0, win: 0 });
+  // The source's viewport top, captured at Back (before it un-pins) so the scroll
+  // can be anchored to keep it visually still across the other posts re-inserting.
+  const backAnchorTopRef = useRef<number | null>(null);
+  // Same idea for the moment the receded posts are removed from the DOM (480ms
+  // after commit): their removal shrinks the content above the source and the
+  // browser yanks the scroll to compensate ("then it goes down"). Capture the
+  // source's spot just before removal so we can pin it across the removal. We
+  // store the SCROLLER too, not just the top: at capture the full feed makes the
+  // pane scrollable (activeScroller → pane), but once the other posts are gone the
+  // pane may be shorter than its viewport (activeScroller → window). Re-resolving
+  // the scroller in the restore would then pin the wrong element while the pane's
+  // own scrollTop clamps and snaps. Same scroller in, same scroller out.
+  const clearAnchorRef = useRef<{ scroller: HTMLElement | Window; top: number } | null>(null);
 
   const postsRef = useRef<Post[]>([]);
   useEffect(() => {
@@ -291,21 +347,27 @@ function FeedViewImpl(
     } catch { /* panel still shows topics; can retry */ }
   }
 
+  const sourceItemEl = () =>
+    (feedInnerRef.current?.querySelector(".cur-post-item-source") as HTMLElement | null) ?? null;
+
   function handleCardSwipe(post: Post, verdict: SwipeVerdict) {
     if (verdict === "reject") return;
     branchCommittedRef.current = true;
     branchDraggingRef.current = false;
     setBranchDragging(false);
     feedInnerRef.current?.style.removeProperty("--branch-progress");
-    // Remember where we were so Back can animate the source back to its spot.
-    const pane = document.querySelector(".cur-feed-posts") as HTMLElement | null;
-    savedScrollRef.current = { pane: pane?.scrollTop ?? 0, win: window.scrollY };
     setCommittedBranchUri(post.uri);
-    setPinnedExpanded(false);
     setOthersCleared(false);
-    // Drop the receded posts once they've slid out (scrolled off-screen above);
-    // bringing the source to the top is handled by the committedBranchUri effect.
-    setTimeout(() => { setOthersCleared(true); }, 480);
+    // Drop the receded posts once they've slid out. Capture the source's spot first
+    // so the clearAnchor effect can pin it across the removal (removing the
+    // full-height posts above it would otherwise yank the scroll — "then it goes
+    // down").
+    setTimeout(() => {
+      const scroller = activeScroller();
+      const el = sourceItemEl();
+      clearAnchorRef.current = el ? { scroller, top: topWithinScroller(el, scroller) } : null;
+      setOthersCleared(true);
+    }, 480);
     const options = swipeRightTopics.get(post.uri);
     if (Array.isArray(options) && options.length > 0) {
       void createBranchForOverlay(post, options);
@@ -314,43 +376,71 @@ function FeedViewImpl(
     }
   }
 
-  function resetBranch() {
-    const sourceUri = committedBranchUri;
+  const resetBranch = useCallback(() => {
+    // Capture the source's viewport top (before it un-pins) so the Back effect can
+    // anchor the scroll there as the other posts re-insert, then glide it down.
+    const scroller = activeScroller();
+    const el = sourceItemEl();
+    backAnchorTopRef.current = el ? topWithinScroller(el, scroller) : null;
     branchCommittedRef.current = false;
     branchDraggingRef.current = false;
     setBranchDragging(false);
+    setReturningSourceUri(committedBranchUri);
     setCommittedBranchUri(null);
-    setPinnedExpanded(false);
     setOthersCleared(false);
     setPendingBranch(null);
     if (isRoot) setActivePostCount(postCount);
     feedInnerRef.current?.style.removeProperty("--branch-progress");
-    setReturningSourceUri(sourceUri);
     setBranchReturning(true);
     setTimeout(() => { setBranchReturning(false); setReturningSourceUri(null); }, 520);
-  }
+  }, [committedBranchUri, isRoot, postCount, setActivePostCount]);
 
-  // On commit, smoothly bring the pinned source (and its Back button) to the
-  // top of the pane; the receding posts scroll out of view above and are then
-  // removed. Works whether the branched post was at the top or mid-page.
-  useEffect(() => {
+  // On commit: the Back button + banner are full height from the start (they only
+  // fade in), so the Back button is at the top and VISIBLE immediately. We do NOT
+  // anchor the scroll — anchoring shoved the Back button above the viewport edge,
+  // and the ease-out lift only brought it back into view at the very end (it
+  // "appeared late"). Instead just ease the Back button to the top: for a top post
+  // it's already there (no-op); for a mid-page post it (and the source) ride up.
+  // Nothing above the source changes height during the lift, so the motion stays
+  // monotonic. The only cost is a small instant shift as the button takes its space.
+  useIsoLayoutEffect(() => {
     if (!committedBranchUri) return;
-    const root = feedInnerRef.current;
-    const target =
-      root?.querySelector(".cur-branch-back-pinned") ||
-      root?.querySelector(".cur-post-item-source");
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const el = sourceItemEl();
+    if (!el) return;
+    const scroller = activeScroller();
+    const topEl = (feedInnerRef.current?.querySelector(".cur-branch-back-pinned") as HTMLElement | null) ?? el;
+    easeScrollTop(scroller, scrollTopOf(scroller) + topWithinScroller(topEl, scroller) - 8, 460);
   }, [committedBranchUri]);
 
-  // On Back, animate the scroll position back to where the source was.
-  useEffect(() => {
+  // When the receded posts are removed (othersCleared), pin the source where it
+  // was a moment earlier — removing the full-height posts above it shrinks the
+  // content and the browser would otherwise jump the scroll to compensate.
+  useIsoLayoutEffect(() => {
+    if (!othersCleared) return;
+    const anchor = clearAnchorRef.current;
+    clearAnchorRef.current = null;
+    const el = sourceItemEl();
+    if (el && anchor != null) {
+      const { scroller } = anchor;
+      setScrollTop(scroller, scrollTopOf(scroller) + (topWithinScroller(el, scroller) - anchor.top));
+    }
+  }, [othersCleared]);
+
+  // On Back, the source stays at the top (we do NOT restore the pre-branch scroll).
+  // The other posts re-insert at full height — shoving the source down — so anchor
+  // the scroll to hold the source exactly where it sat (just under the Back button),
+  // cancelling that jump. The Back button + banner then shrink out (reverse of the
+  // commit grow), and the source rises to the very top via reflow as they collapse,
+  // while the other cards slide back in (cur-post-return). One motion, the mirror
+  // of the commit.
+  useIsoLayoutEffect(() => {
     if (!branchReturning) return;
-    const saved = savedScrollRef.current;
-    const pane = document.querySelector(".cur-feed-posts") as HTMLElement | null;
-    if (pane && pane.scrollHeight > pane.clientHeight) {
-      pane.scrollTo({ top: saved.pane, behavior: "smooth" });
-    } else {
-      window.scrollTo({ top: saved.win, behavior: "smooth" });
+    const scroller = activeScroller();
+    const el = sourceItemEl();
+    const anchor = backAnchorTopRef.current;
+    backAnchorTopRef.current = null;
+    if (el && anchor != null) {
+      setScrollTop(scroller, scrollTopOf(scroller) + (topWithinScroller(el, scroller) - anchor));
     }
   }, [branchReturning]);
 
@@ -614,13 +704,20 @@ function FeedViewImpl(
             const sourceUri = committedBranchUri ?? pendingBranch?.post?.uri ?? returningSourceUri ?? null;
             const isBranchSource = post.uri === sourceUri;
             const isCommittedSource = committedBranchUri === post.uri;
+            const isReturningSource = branchReturning && returningSourceUri === post.uri;
+            // Keep the Back button + banner mounted through the return so they can
+            // animate OUT (shrink), the reverse of the commit grow.
+            const branchHeaderLeaving = isReturningSource;
+            const showBackButton = isCommittedSource || isReturningSource;
+            const showBranchBanner = isCommittedSource || pendingBranch?.post?.uri === post.uri || isReturningSource;
             return (
               <Fragment key={post.uri}>
-                {isCommittedSource && (
+                {showBackButton && (
                   <button
                     type="button"
-                    className="cur-branch-back cur-branch-back-pinned"
+                    className={`cur-branch-back cur-branch-back-pinned${branchHeaderLeaving ? " cur-branch-back-leaving" : ""}`}
                     onClick={resetBranch}
+                    disabled={branchHeaderLeaving}
                     aria-label="Back to feed"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -654,12 +751,7 @@ function FeedViewImpl(
                       />
                     }
                   >
-                    <PostCard
-                      post={post}
-                      pinned={isCommittedSource}
-                      collapsed={isCommittedSource && !pinnedExpanded}
-                      onToggleCollapse={togglePinned}
-                    />
+                    <PostCard post={post} branchBanner={showBranchBanner} branchLeaving={branchHeaderLeaving} />
                   </SwipeableCard>
                 </div>
                 {isCommittedSource && (

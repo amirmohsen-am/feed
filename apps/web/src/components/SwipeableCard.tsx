@@ -10,7 +10,6 @@ const COLLAPSE_DISTANCE = 260;     // left collapse range
 const BRANCH_COLLAPSE_DISTANCE = 210; // right fold range (prototype COLLAPSE_DIST)
 const BRANCH_COMMIT = 0.5;         // fraction of the fold at which a release branches
 const TX_MAX = 132;                // rubber-band asymptote for the rightward ride
-const FOLD_LINE = 22;              // collapsed height of the foldable region (~one body line)
 
 const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
 const cl01 = (v: number) => Math.max(0, Math.min(1, v));
@@ -65,77 +64,15 @@ export default function SwipeableCard({
 
   const branchActionRef = useRef<HTMLDivElement>(null);
 
-  // ── Branch fold targets (measured lazily on first rightward drag) ──
+  // Set true once a swipe-right has committed; lets the Back-driven re-arm
+  // (disabled → false) know to reset the gesture latches.
   const branchCommittedRef = useRef(false);
-  const foldMeasured = useRef(false);
-  const foldableElRef = useRef<HTMLElement | null>(null);
-  const avatarElRef = useRef<HTMLElement | null>(null);
-  const naturalFoldableH = useRef(0);
 
-  const measureFold = useCallback(() => {
-    const wrap = wrapperRef.current;
-    if (!wrap) return;
-    const foldable = wrap.querySelector<HTMLElement>(".cur-post-foldable");
-    if (!foldable) return;
-    foldableElRef.current = foldable;
-    avatarElRef.current = wrap.querySelector<HTMLElement>(".cur-post-avatar");
-    const prevMax = foldable.style.maxHeight;
-    foldable.style.maxHeight = "none";
-    naturalFoldableH.current = foldable.offsetHeight;
-    foldable.style.maxHeight = prevMax;
-    foldMeasured.current = true;
-  }, []);
-
-  const applyFold = useCallback((t: number) => {
-    const foldable = foldableElRef.current;
-    if (!foldable) return;
-    const avatar = avatarElRef.current;
-    const av = cl01((t - 0.15) / 0.7);
-    foldable.style.overflow = "hidden";
-    foldable.style.maxHeight = `${lerp(naturalFoldableH.current, FOLD_LINE, t)}px`;
-    if (avatar) {
-      avatar.style.width = avatar.style.height = `${lerp(40, 30, av)}px`;
-      avatar.style.fontSize = `${lerp(16, 12, av)}px`;
-    }
-  }, []);
-
-  const setFoldTransition = useCallback((on: boolean) => {
-    const trans = on
-      ? "max-height 0.44s cubic-bezier(0.34,0,0.2,1), width 0.32s, height 0.32s, font-size 0.32s, opacity 0.32s"
-      : "none";
-    [foldableElRef.current, avatarElRef.current].forEach((el) => {
-      if (el) el.style.transition = trans;
-    });
-  }, []);
-
-  // Expand the card back to full (used on Back). Animates the foldable open,
-  // then clears the inline styles so it returns to natural flow.
-  const expandFold = useCallback(() => {
-    setFoldTransition(true);
-    const foldable = foldableElRef.current;
-    const avatar = avatarElRef.current;
-    if (foldable && naturalFoldableH.current) {
-      foldable.style.maxHeight = `${naturalFoldableH.current}px`;
-      window.setTimeout(() => {
-        if (foldable) { foldable.style.maxHeight = ""; foldable.style.overflow = ""; foldable.style.transition = ""; }
-      }, 460);
-    } else if (foldable) {
-      foldable.style.maxHeight = ""; foldable.style.overflow = "";
-    }
-    if (avatar) { avatar.style.width = avatar.style.height = ""; avatar.style.fontSize = ""; }
+  // Clear the "release to branch" affordance (used on cancel / Back).
+  const clearBranchAction = useCallback(() => {
     const action = branchActionRef.current;
     if (action) { action.style.opacity = "0"; action.classList.remove("ready"); }
-  }, [setFoldTransition]);
-
-  const resetFold = useCallback((animated: boolean) => {
-    setFoldTransition(animated);
-    const foldable = foldableElRef.current;
-    const avatar = avatarElRef.current;
-    if (foldable) { foldable.style.maxHeight = ""; foldable.style.overflow = ""; }
-    if (avatar) { avatar.style.width = avatar.style.height = ""; avatar.style.fontSize = ""; }
-    const action = branchActionRef.current;
-    if (action) { action.style.opacity = "0"; action.classList.remove("ready"); }
-  }, [setFoldTransition]);
+  }, []);
 
   const setLeftCollapse = useCallback((dx: number) => {
     const card = wrapperRef.current;
@@ -183,17 +120,20 @@ export default function SwipeableCard({
     decidedRef.current = true;
     branchCommittedRef.current = true;
     swallowNextClick();
-    // Hand the collapsed presentation to the parent: the pinned source renders
-    // in its A1 (fade + "Show more") state, driven by React/CSS. Clear our
-    // imperative drag-fold so it doesn't fight that, settle the card back to
-    // x=0, and unlock content so the Show more toggle + links are clickable.
-    resetFold(false);
+    // The source post renders as a normal full post in the parent (marked by the
+    // "Branched from" banner) — no fold to undo. Just unlock content so its links
+    // stay clickable and settle the card back to x=0.
     setLocked(false);
     const action = branchActionRef.current;
     if (action) { action.style.transition = "opacity 0.2s"; action.style.opacity = "0"; }
-    animate(xv, 0, { type: "spring", stiffness: 240, damping: 20 });
+    // Settle the rubber-banded ride back to x=0 quickly and decisively — a lazy
+    // spring leaves the card visibly drifting rightward while the parent is
+    // already lifting it to the top, which reads as a two-step "right, then up".
+    // A short ease-out gets the horizontal out of the way so the vertical lift
+    // is the only motion the eye tracks.
+    animate(xv, 0, { duration: 0.2, ease: [0.4, 0, 0.2, 1] });
     onSwipe("approve");
-  }, [xv, onSwipe, swallowNextClick, resetFold]);
+  }, [xv, onSwipe, swallowNextClick]);
 
   const commitReject = useCallback(() => {
     if (decidedRef.current) return;
@@ -203,18 +143,18 @@ export default function SwipeableCard({
     onSwipe("reject");
   }, [xv, onSwipe, swallowNextClick]);
 
-  // On Back the parent flips `disabled` false again — expand the card open and
-  // re-arm the gesture so the post is fully interactive once more.
+  // On Back the parent flips `disabled` false again — re-arm the gesture so the
+  // post is fully interactive once more.
   useEffect(() => {
     if (!disabled && branchCommittedRef.current) {
       branchCommittedRef.current = false;
       decidedRef.current = false;
       firstRightFired.current = false;
       firstLeftFired.current = false;
-      expandFold();
+      clearBranchAction();
       setLocked(false);
     }
-  }, [disabled, expandFold]);
+  }, [disabled, clearBranchAction]);
 
   function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
     if (disabled || decidedRef.current) return;
@@ -232,7 +172,6 @@ export default function SwipeableCard({
     lastXRef.current = e.clientX;
     lastTRef.current = e.timeStamp;
     velRef.current = 0;
-    setFoldTransition(false);
   }
 
   function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
@@ -256,12 +195,11 @@ export default function SwipeableCard({
     dxRef.current = dx;
 
     if (dx > 0) {
+      // The card just rides right (rubber-banded) while the other posts recede;
+      // no fold/collapse of its own content.
       if (!firstRightFired.current) { firstRightFired.current = true; onFirstRightDrag?.(); }
-      if (!foldMeasured.current) measureFold();
-      setFoldTransition(false);
       xv.set(rubber(dx));
       const t = Math.min(1, dx / BRANCH_COLLAPSE_DISTANCE);
-      applyFold(t);
       onRightProgress?.(t);
       const action = branchActionRef.current;
       if (action) {
@@ -275,7 +213,6 @@ export default function SwipeableCard({
       if (!firstLeftFired.current) { firstLeftFired.current = true; onFirstLeftDrag?.(); }
       xv.set(dx);
       onRightProgress?.(0);
-      if (foldMeasured.current) resetFold(false);
       setLeftCollapse(dx);
     }
   }
@@ -297,11 +234,11 @@ export default function SwipeableCard({
       commitReject();
       return;
     }
-    // Cancel — un-fold and settle back to rest. Also tell the parent the
-    // rightward progress is back to 0 so the *other* posts (which receded via
-    // --branch-progress) animate back in; without this they stay stuck mid-recede.
+    // Cancel — settle back to rest. Also tell the parent the rightward progress
+    // is back to 0 so the *other* posts (which receded via --branch-progress)
+    // animate back in; without this they stay stuck mid-recede.
     onRightProgress?.(0);
-    if (foldMeasured.current) resetFold(true);
+    clearBranchAction();
     animate(xv, 0, { type: "spring", stiffness: 340, damping: 32 });
     if (wrapperRef.current) { wrapperRef.current.style.position = ""; wrapperRef.current.style.zIndex = ""; }
     unlockTimer.current = setTimeout(() => setLocked(false), 350);

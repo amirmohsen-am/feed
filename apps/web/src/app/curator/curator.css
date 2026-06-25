@@ -863,38 +863,52 @@
   box-shadow: 0 4px 16px rgba(13,11,30,0.05);
 }
 
-/* Pinned source post (the post a branch was made from). B4: an accent ring +
-   soft halo set it apart from the branch results below. A1: it opens collapsed
-   — the body clamps under a fade with a manual Show more / Show less toggle. */
-.cur-post-card-pinned,
-.cur-post-card-pinned:hover{
-  border: 1.5px solid var(--aurora-deep);
-  box-shadow: 0 0 0 4px rgba(85,88,184,0.10);
-}
-.cur-post-card-pinned .cur-post-foldable{
-  max-height: 60em;
+/* Source post (the post a branch is being / was made from). No border, no
+   collapse — it renders as a normal full post, marked by a "Branched from" banner
+   at its top (mirrors the reply banner). The banner grows out of the post in
+   lockstep with the swipe-right drag (--branch-progress, set on the container), so
+   the mark previews itself as you swipe and completes when the branch commits. */
+.cur-post-branch-banner{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--rf-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--aurora-deep);
+  margin: -4px 0 -2px;
+  padding-bottom: 9px;
+  border-bottom: 1px dotted var(--hair);
   overflow: hidden;
-  transition: max-height 0.36s cubic-bezier(0.34,0,0.2,1);
+  opacity: 1;
+  max-height: 3em;
+  /* commit completion: ease from the drag-progress size up to full */
+  transition: max-height 0.3s cubic-bezier(0.3,0.8,0.3,1), opacity 0.3s ease, padding 0.3s;
 }
-.cur-post-collapsed .cur-post-foldable{
-  position: relative;
-  max-height: 4.6em;
+.cur-post-branch-banner svg{ color: var(--aurora-deep); flex-shrink: 0; }
+/* While dragging right, the source's banner grows with the gesture — but it
+   reaches FULL height at the commit threshold (--branch-progress = 0.5, the point
+   past which a release branches; the 2 below is 1 / 0.5). So by the time you
+   release it is already full: the post lands at its final position in one motion
+   instead of lifting to the top and then having the banner finish growing and
+   shove the content down. */
+.cur-branch-dragging .cur-post-item-source .cur-post-branch-banner{
+  max-height: calc(min(var(--branch-progress, 0) * 2, 1) * 3em);
+  opacity: min(var(--branch-progress, 0) * 2, 1);
+  padding-bottom: calc(min(var(--branch-progress, 0) * 2, 1) * 9px);
+  transition: none;
 }
-.cur-post-collapsed .cur-post-foldable::after{
-  content: "";
-  position: absolute; left: 0; right: 0; bottom: 0; height: 2.6em;
-  background: linear-gradient(rgba(255,255,255,0), #fff);
-  pointer-events: none;
+/* Back (return): the banner shrinks back out — reverse of the grow. */
+.cur-post-branch-banner-leaving{
+  animation: cur-branch-banner-shrink 0.46s cubic-bezier(0.3,0.8,0.3,1) forwards;
 }
-.cur-post-expand{
-  align-self: flex-start;
-  border: none; background: none; cursor: pointer;
-  font-family: var(--rf-mono); font-size: 11px; letter-spacing: 0.04em;
-  color: var(--aurora-deep); padding: 2px 0;
+@keyframes cur-branch-banner-shrink{
+  from{ max-height: 3em; opacity: 1; padding-bottom: 9px; transform: translateY(0); }
+  to{ max-height: 0; opacity: 0; padding-bottom: 0; margin-bottom: 0; transform: translateY(-6px); }
 }
-.cur-post-expand:hover{ text-decoration: underline; }
 @media (prefers-reduced-motion: reduce){
-  .cur-post-card-pinned .cur-post-foldable{ transition: none; }
+  .cur-post-branch-banner{ transition: none; }
+  .cur-post-branch-banner-leaving{ animation: none; }
 }
 .cur-post-card-head{
   display: flex;
@@ -1512,12 +1526,13 @@
   padding: 0 32px 40px;
 }
 
-/* ── Fold model: swipe-to-branch recede → exit-left ──────────
+/* ── Swipe-to-branch recede → exit-left ──────────
    On a rightward drag the OTHER posts recede (scale down + drift left + dim),
    driven by --branch-progress (0→1) set imperatively on .cur-feed-posts-inner.
-   On commit they slide all the way out to the left; the dragged source folds
-   into a compact "branched from" header with the branch view inline beneath
-   it. The dragged card is .cur-post-item-source and is excluded from both. */
+   On commit they slide all the way out to the left; the dragged source lifts to
+   the top as a normal full post (marked by its "Branched from" banner) with the
+   branch view inline beneath it. The source is .cur-post-item-source and is
+   excluded from both. */
 .cur-post-item-other{
   transition: transform 0.28s cubic-bezier(0.3, 0.8, 0.3, 1), opacity 0.28s ease;
 }
@@ -1539,9 +1554,9 @@
   pointer-events: none;
   transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.42s ease;
 }
-/* Returning from a branch (Back): the exact reverse of the pin. The other posts
-   come back in from where they exited (off-screen left, scaled down) and settle,
-   while the pinned card expands in place. */
+/* Returning from a branch (Back): the exact reverse of the recede. The other
+   posts come back in from where they exited (off-screen left, scaled down) and
+   settle, while the source's "Branched from" banner clears. */
 .cur-branch-returning > .cur-post-item-other{
   animation: cur-post-return 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
@@ -1556,10 +1571,8 @@
   .cur-branch-returning > .cur-post-item-other{ animation: none; }
 }
 
-/* Everything below the header is wrapped in .cur-post-foldable so the fold can
-   collapse it as one unit (to a single body line) while the card keeps its own
-   padding — the collapsed text never sits on the bottom border. Mirrors the
-   card's own flex-column gap so normal (unfolded) cards look unchanged. */
+/* Everything below the header is wrapped in .cur-post-foldable, a flex column
+   that mirrors the card's own gap so the body, embeds, and footer space evenly. */
 .cur-post-foldable{
   display: flex;
   flex-direction: column;
@@ -1608,28 +1621,52 @@
   transition: color 0.15s;
 }
 .cur-branch-back:hover{ color: var(--ink); }
-/* When the Back button sits directly above the pinned/folded source post
-   (inline branch), drop the full-width divider — it reads as a compact action
-   hugging the pinned card rather than a feed-wide header. */
+@keyframes cur-branch-back-in{
+  from{ opacity:0; transform:translateX(-6px); }
+  to{ opacity:1; transform:translateX(0); }
+}
+/* The Back button sitting directly above the source post (inline branch): a
+   compact action hugging the post, not a full-width feed header. It grows in
+   (height 0 → full) on commit rather than inserting at full height, so it never
+   shoves the source down — the source's lift and this grow share a timeline, so
+   the post settles below it in one motion. */
 .cur-branch-back-pinned{
   width: auto;
   border-bottom: none;
   padding: 4px 8px 8px;
   font-size: 12px;
+  overflow: hidden;
+  /* Full height immediately — it just fades in (fast). It must NOT change height
+     during the commit lift: it sits ABOVE the post, so any height change would
+     shove the post mid-lift (the "up then down"). With its height constant, the
+     post's only motion is the scroll lift, which is monotonic by construction. */
+  animation: cur-branch-back-in 0.24s ease-out both;
 }
-@keyframes cur-branch-back-in{
-  from{ opacity:0; transform:translateX(-6px); }
-  to{ opacity:1; transform:translateX(0); }
+/* Back (return): the Back button shrinks out so the source rises to the very top
+   as it collapses — on Back the scroll isn't lifting, so this is the only motion. */
+.cur-branch-back-pinned.cur-branch-back-leaving{
+  animation: cur-branch-back-shrink 0.42s cubic-bezier(0.33,1,0.68,1) forwards;
+}
+@keyframes cur-branch-back-shrink{
+  from{ max-height: 2.5em; opacity: 1; padding-top: 4px; padding-bottom: 8px; transform: translateY(0); }
+  to{ max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; transform: translateY(-4px); }
+}
+@media (prefers-reduced-motion: reduce){
+  .cur-branch-back-pinned{ animation: none; }
 }
 
-/* Branch topics header — shown at top of a swipe-branched feed */
+/* Branch topics header — atop a branched feed. Two lanes split by kind
+   (deeper / adjacent), distinguished by color alone; each lane scrolls
+   horizontally and never wraps or truncates. Not sticky — scrolls away with
+   the feed. A lane with no topics is omitted by the component. */
 .cur-branch-header{
-  padding: 18px 20px 16px;
+  padding: 13px 0 14px;
+  border-top: 1px solid var(--hair);
   border-bottom: 1px solid var(--hair);
-  background: var(--paper);
+  background: #fff;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 .cur-branch-header-animate{
   animation: cur-branch-header-in 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) both;
@@ -1638,37 +1675,49 @@
   from{ opacity:0; transform:translateY(-8px); }
   to{ opacity:1; transform:translateY(0); }
 }
+
+/* Quiet section heading above the lanes. */
 .cur-branch-header-label{
   font-family: var(--rf-mono);
   font-size: 9.5px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-3);
+  padding: 0 20px;
 }
-.cur-branch-header-group{
+
+/* One scrolling lane per kind. The right-edge fade signals more topics
+   off-screen; once scrolled to the end the trailing padding slides under it
+   so the fade falls on empty space and reads as "no more". */
+.cur-branch-row{
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.cur-branch-header-kind{
-  font-family: var(--rf-mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--aurora-deep);
-  white-space: nowrap;
-}
-.cur-branch-header-chips{
-  display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
+  overflow-x: auto;
+  padding: 1px 20px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
 }
-/* Reuse the existing .cur-branch-chip.selected style for header chips,
-   but make them non-interactive (cursor default) */
-.cur-branch-header .cur-branch-chip{
-  cursor: default;
+.cur-branch-row::-webkit-scrollbar{ display: none; }
+
+/* Full label on a single line; the lane scrolls to reach it (no truncation). */
+.cur-branch-tag{
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 4px 11px;
+  border-radius: 8px;
   font-size: 12.5px;
-  padding: 5px 11px;
+  line-height: 1.35;
+}
+.cur-branch-row-deeper .cur-branch-tag{
+  background: rgba(85, 88, 184, 0.12);
+  color: var(--aurora-deep);
+}
+.cur-branch-row-adjacent .cur-branch-tag{
+  background: rgba(62, 138, 108, 0.12);
+  color: #3e8a6c;
 }
 
 /* "Creating your feed…" placeholder shown while waiting for branch options */
