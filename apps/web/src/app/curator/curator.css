@@ -151,6 +151,34 @@
   border-color: var(--hair);
   box-shadow: 0 1px 0 rgba(13,11,30,0.04);
 }
+
+/* ── Lineage tree (Variant A) ──────────────────────────────
+   Home is the trunk; topics branch off it. The nesting carries the
+   relationship — no per-row jargon. Each level of children sits inside a
+   .cur-tree-children container whose left border draws the continuous branch
+   line; each row gets a short horizontal twig connecting it to that line. */
+.cur-tree-root{
+  /* Home as the trunk: no longer a separated "chrome" row, just the root. */
+  margin-bottom: 4px;
+  border-radius: 8px;
+  border-bottom: none;
+  padding-bottom: 11px;
+}
+.cur-tree-children{
+  margin-left: 16px;
+  padding-left: 10px;
+  border-left: 1.5px solid var(--hair-strong);
+}
+.cur-tree-node{ position: relative; }
+.cur-tree-twig{
+  position: absolute;
+  left: -10px;
+  top: 23px;
+  width: 10px;
+  height: 1.5px;
+  background: var(--hair-strong);
+  pointer-events: none;
+}
 .cur-feed-item.drafting .fi-name{
   font-style: normal;
   color: var(--ink-2);
@@ -506,6 +534,13 @@
   .cur-workbench[data-right-pane="chat"] .ctrl-tower{ display: none; }
   .cur-workbench[data-right-pane="tune"] .cur-chat-pane{ display: none; }
 
+  /* Branch topics header: a bordered rectangle on desktop (square corners set
+     it apart from the rounded post cards), instead of the mobile full-width band. */
+  .cur-branch-header{
+    border: 1px solid var(--hair);
+    border-radius: 0;
+    margin: 8px 0;
+  }
 }
 
 /* ── SEGMENTED CHAT ↔ TUNE TOGGLE ───────────── */
@@ -848,6 +883,54 @@
   border-color: var(--hair-strong);
   box-shadow: 0 4px 16px rgba(13,11,30,0.05);
 }
+
+/* Source post (the post a branch is being / was made from). No border, no
+   collapse — it renders as a normal full post, marked by a "Branched from" banner
+   at its top (mirrors the reply banner). The banner grows out of the post in
+   lockstep with the swipe-right drag (--branch-progress, set on the container), so
+   the mark previews itself as you swipe and completes when the branch commits. */
+.cur-post-branch-banner{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--rf-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--aurora-deep);
+  margin: -4px 0 -2px;
+  padding-bottom: 9px;
+  border-bottom: 1px dotted var(--hair);
+  overflow: hidden;
+  opacity: 1;
+  max-height: 3em;
+  /* commit completion: ease from the drag-progress size up to full */
+  transition: max-height 0.3s cubic-bezier(0.3,0.8,0.3,1), opacity 0.3s ease, padding 0.3s;
+}
+.cur-post-branch-banner svg{ color: var(--aurora-deep); flex-shrink: 0; }
+/* While dragging right, the source's banner grows with the gesture — but it
+   reaches FULL height at the commit threshold (--branch-progress = 0.5, the point
+   past which a release branches; the 2 below is 1 / 0.5). So by the time you
+   release it is already full: the post lands at its final position in one motion
+   instead of lifting to the top and then having the banner finish growing and
+   shove the content down. */
+.cur-branch-dragging .cur-post-item-source .cur-post-branch-banner{
+  max-height: calc(min(var(--branch-progress, 0) * 2, 1) * 3em);
+  opacity: min(var(--branch-progress, 0) * 2, 1);
+  padding-bottom: calc(min(var(--branch-progress, 0) * 2, 1) * 9px);
+  transition: none;
+}
+/* Back (return): the banner shrinks back out — reverse of the grow. */
+.cur-post-branch-banner-leaving{
+  animation: cur-branch-banner-shrink 0.46s cubic-bezier(0.3,0.8,0.3,1) forwards;
+}
+@keyframes cur-branch-banner-shrink{
+  from{ max-height: 3em; opacity: 1; padding-bottom: 9px; transform: translateY(0); }
+  to{ max-height: 0; opacity: 0; padding-bottom: 0; margin-bottom: 0; transform: translateY(-6px); }
+}
+@media (prefers-reduced-motion: reduce){
+  .cur-post-branch-banner{ transition: none; }
+  .cur-post-branch-banner-leaving{ animation: none; }
+}
 .cur-post-card-head{
   display: flex;
   align-items: flex-start;
@@ -1166,12 +1249,14 @@
   align-items: center;
   gap: 5px;
   font-family: var(--rf-mono);
-  font-size: 11.5px;
+  font-size: 10px;
   color: var(--ink-3);
   padding-top: 8px;
 }
 .cur-post-stat svg{
   opacity: 0.7;
+  width: 12px;
+  height: 12px;
 }
 .cur-post-like-btn{
   background: none;
@@ -1411,24 +1496,6 @@
   animation: cur-back-page-in 0.3s cubic-bezier(0,0,0.2,1) both;
 }
 
-/* Rising branch panel — fixed so its position is always relative to the
-   viewport, never to the scroll container. Sitting outside cur-feed-posts
-   means the panel is unaffected by that container's scroll height or any
-   transform applied during pull-to-refresh. translateY(100vh) keeps it one
-   screen-height below the visible area at all scroll positions. */
-.cur-branch-rising-panel{
-  /* position:fixed; exact coordinates set by JS from the feed pane's
-     getBoundingClientRect() so the panel covers only the feed column.
-     display:none by default; JS sets display:block only during an active swipe. */
-  position: fixed;
-  /* left/right/top/bottom set imperatively — no defaults needed */
-  z-index: 50;
-  will-change: transform;
-  background: var(--paper);
-  overflow-y: auto;
-  display: none;
-}
-
 /* Inner overlay content — fills the fixed panel. */
 .cur-mock-branch-overlay{
   position: absolute;
@@ -1480,6 +1547,82 @@
   padding: 0 32px 40px;
 }
 
+/* ── Swipe-to-branch recede → exit-left ──────────
+   On a rightward drag the OTHER posts recede (scale down + drift left + dim),
+   driven by --branch-progress (0→1) set imperatively on .cur-feed-posts-inner.
+   On commit they slide all the way out to the left; the dragged source lifts to
+   the top as a normal full post (marked by its "Branched from" banner) with the
+   branch view inline beneath it. The source is .cur-post-item-source and is
+   excluded from both. */
+.cur-post-item-other{
+  transition: transform 0.28s cubic-bezier(0.3, 0.8, 0.3, 1), opacity 0.28s ease;
+}
+/* Direct-child scope (`>`) is load-bearing: a nested branch feed is itself a
+   .cur-feed-posts-inner whose posts are all .cur-post-item-other. Without `>`,
+   a parent feed's .cur-branching would cascade into the nested feed and shove
+   every branch post off-screen (opacity:0). Each feed recedes only its own
+   direct posts; the rule then works recursively at any depth. */
+.cur-branch-dragging > .cur-post-item-other{
+  transform-origin: center top;
+  transform: translateX(calc(var(--branch-progress, 0) * -160px))
+             scale(calc(1 - var(--branch-progress, 0) * 0.12));
+  opacity: calc(1 - var(--branch-progress, 0) * 0.7);
+  transition: none; /* follow the finger 1:1 while dragging */
+}
+.cur-branching > .cur-post-item-other{
+  transform: translateX(-150%) scale(0.85);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.42s ease;
+}
+/* Returning from a branch (Back): the exact reverse of the recede. The other
+   posts come back in from where they exited (off-screen left, scaled down) and
+   settle, while the source's "Branched from" banner clears. */
+.cur-branch-returning > .cur-post-item-other{
+  animation: cur-post-return 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+@keyframes cur-post-return{
+  from{ opacity: 0; transform: translateX(-150%) scale(0.85); }
+  to{ opacity: 1; transform: translateX(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce){
+  .cur-post-item-other,
+  .cur-branch-dragging > .cur-post-item-other,
+  .cur-branching > .cur-post-item-other{ transition: none; }
+  .cur-branch-returning > .cur-post-item-other{ animation: none; }
+}
+
+/* Everything below the header is wrapped in .cur-post-foldable, a flex column
+   that mirrors the card's own gap so the body, embeds, and footer space evenly. */
+.cur-post-foldable{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* The inline branch view that drops in beneath the folded source card. It
+   enters from the right (the "recede → page to the right" metaphor). */
+.cur-branch-inline-host{
+  animation: cur-branch-inline-in 0.42s cubic-bezier(0.3, 0.8, 0.3, 1) both;
+  max-width: calc(600px * 0.85);
+  width: 100%;
+  margin: 0 auto;
+}
+@keyframes cur-branch-inline-in{
+  from{ opacity: 0; transform: translateX(46px); }
+  to{ opacity: 1; transform: translateX(0); }
+}
+
+/* Inline mode: render the branch overlay in normal flow, not a fixed panel. */
+.cur-mock-branch-inline{
+  position: static;
+  inset: auto;
+  background: transparent;
+}
+@media (prefers-reduced-motion: reduce){
+  .cur-branch-inline-host{ animation: none; }
+}
+
 /* Back button on branch feeds */
 .cur-branch-back{
   display: flex;
@@ -1503,15 +1646,49 @@
   from{ opacity:0; transform:translateX(-6px); }
   to{ opacity:1; transform:translateX(0); }
 }
+/* The Back button sitting directly above the source post (inline branch): a
+   compact action hugging the post, not a full-width feed header. It grows in
+   (height 0 → full) on commit rather than inserting at full height, so it never
+   shoves the source down — the source's lift and this grow share a timeline, so
+   the post settles below it in one motion. */
+.cur-branch-back-pinned{
+  width: auto;
+  border-bottom: none;
+  padding: 4px 8px 8px;
+  font-size: 12px;
+  overflow: hidden;
+  /* Full height immediately — it just fades in (fast). It must NOT change height
+     during the commit lift: it sits ABOVE the post, so any height change would
+     shove the post mid-lift (the "up then down"). With its height constant, the
+     post's only motion is the scroll lift, which is monotonic by construction. */
+  animation: cur-branch-back-in 0.24s ease-out both;
+}
+/* Back (return): the Back button shrinks out so the source rises to the very top
+   as it collapses — on Back the scroll isn't lifting, so this is the only motion. */
+.cur-branch-back-pinned.cur-branch-back-leaving{
+  animation: cur-branch-back-shrink 0.42s cubic-bezier(0.33,1,0.68,1) forwards;
+}
+@keyframes cur-branch-back-shrink{
+  from{ max-height: 2.5em; opacity: 1; padding-top: 4px; padding-bottom: 8px; transform: translateY(0); }
+  to{ max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; transform: translateY(-4px); }
+}
+@media (prefers-reduced-motion: reduce){
+  .cur-branch-back-pinned{ animation: none; }
+}
 
-/* Branch topics header — shown at top of a swipe-branched feed */
+/* Branch topics header — atop a branched feed. A "Topics" heading over two
+   kind-split rows (deeper / adjacent), distinguished by color alone. Both rows
+   share ONE horizontal scroll. White, never sticky.
+   Mobile (base): a full-width band, bordered top + bottom.
+   Desktop (>=768px): a bordered rectangle, set apart from the rounded posts. */
 .cur-branch-header{
-  padding: 18px 20px 16px;
+  padding: 12px 0 13px;
+  border-top: 1px solid var(--hair);
   border-bottom: 1px solid var(--hair);
-  background: var(--paper);
+  background: #fff;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 .cur-branch-header-animate{
   animation: cur-branch-header-in 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) both;
@@ -1520,37 +1697,59 @@
   from{ opacity:0; transform:translateY(-8px); }
   to{ opacity:1; transform:translateY(0); }
 }
+
+/* Quiet section heading above the rows. */
 .cur-branch-header-label{
   font-family: var(--rf-mono);
   font-size: 9.5px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-3);
+  padding-left: 18px;
 }
-.cur-branch-header-group{
+
+/* Single scroll container for both rows. The track is sized to the longer row
+   (width:max-content), so one drag moves deeper + adjacent together and the
+   shorter row runs empty on the right. A right-edge fade hints at more; with
+   the track's matching trailing padding it falls on empty space at the end. */
+.cur-branch-scroll{
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent);
+}
+.cur-branch-scroll::-webkit-scrollbar{ display: none; }
+.cur-branch-track{
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 7px;
+  width: max-content;
+  min-width: 100%;
+  padding: 0 22px 0 18px;
 }
-.cur-branch-header-kind{
-  font-family: var(--rf-mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--aurora-deep);
-  white-space: nowrap;
-}
-.cur-branch-header-chips{
+.cur-branch-row{
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
 }
-/* Reuse the existing .cur-branch-chip.selected style for header chips,
-   but make them non-interactive (cursor default) */
-.cur-branch-header .cur-branch-chip{
-  cursor: default;
+
+/* Full label on a single line; the row scrolls to reach it (no truncation). */
+.cur-branch-tag{
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 4px 11px;
+  border-radius: 8px;
   font-size: 12.5px;
-  padding: 5px 11px;
+  line-height: 1.35;
+}
+.cur-branch-row-deeper .cur-branch-tag{
+  background: rgba(85, 88, 184, 0.12);
+  color: var(--aurora-deep);
+}
+.cur-branch-row-adjacent .cur-branch-tag{
+  background: rgba(62, 138, 108, 0.12);
+  color: #3e8a6c;
 }
 
 /* "Creating your feed…" placeholder shown while waiting for branch options */
@@ -3319,6 +3518,17 @@
   }
   .cur-feed-posts-inner{
     overflow-x: clip;
+    /* Let a child bleed up to 12px past the column edge (the feed's side
+       gutter) without being clipped — used by the full-width topics band.
+       Flung/receding swipe cards travel far past 12px, so they still clip. */
+    overflow-clip-margin: 12px;
+  }
+  /* Topics band goes edge to edge on mobile: cancel the feed pane's 12px side
+     gutter so the white band touches the screen (its label/chips keep their own
+     inset). The clip-margin above keeps this from being clipped by the column. */
+  .cur-branch-header{
+    margin-left: -12px;
+    margin-right: -12px;
   }
   /* Match the mobile feed's 12px side gutter (the overlay has no padded
      .cur-feed-posts wrapper of its own). */

@@ -1,23 +1,21 @@
 "use client";
 
-import { useCallback, useRef, useState, type ReactNode } from "react";
-import {
-  motion,
-  useMotionValue,
-  useTransform,
-  useMotionValueEvent,
-  animate,
-  type PanInfo,
-} from "framer-motion";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
+import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 
 export type SwipeVerdict = "approve" | "reject";
 
-const SWIPE_THRESHOLD = 120;
-const COLLAPSE_DISTANCE = 260;
-// How far the card must travel for onRightProgress to reach t=1.
-// Larger than SWIPE_THRESHOLD so the panel is still rising at release — the
-// CSS spring then finishes the job after the card is let go.
-const RIGHT_PROGRESS_DISTANCE = 400;
+const SWIPE_THRESHOLD = 120;       // left (skip) commit distance
+const COLLAPSE_DISTANCE = 260;     // left collapse range
+const BRANCH_COLLAPSE_DISTANCE = 210; // right fold range (prototype COLLAPSE_DIST)
+const BRANCH_COMMIT = 0.5;         // fraction of the fold at which a release branches
+const TX_MAX = 132;                // rubber-band asymptote for the rightward ride
+
+const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
+const cl01 = (v: number) => Math.max(0, Math.min(1, v));
+// iOS-style rubber band: rides the finger, then resists toward an asymptote so
+// the card never travels more than ~TX_MAX no matter how far you drag.
+const rubber = (d: number) => TX_MAX * (1 - Math.exp(-d / TX_MAX));
 
 export default function SwipeableCard({
   children,
@@ -33,166 +31,78 @@ export default function SwipeableCard({
   onSwipe: (v: SwipeVerdict) => void;
   onFirstLeftDrag?: () => void;
   onFirstRightDrag?: () => void;
-  /** Called on every right-drag frame with t ∈ [0,1] (0 = at rest, 1 = at threshold). */
+  /** Called on every right-drag frame with t ∈ [0,1] (0 = at rest, 1 = fully folded). */
   onRightProgress?: (t: number) => void;
   disabled?: boolean;
 }) {
-  const x = useMotionValue(0);
-  const scale = useTransform(x, [-260, 0, 260], [0.82, 1, 1.08]);
+  // Visual transform we own directly (so the rightward ride can be rubber-banded
+  // independently of the raw pointer distance that drives the fold).
+  const xv = useMotionValue(0);
+  const scale = useTransform(xv, [-260, 0], [0.82, 1]);
+
   const decidedRef = useRef(false);
   const firstLeftFired = useRef(false);
   const firstRightFired = useRef(false);
   const unlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [locked, setLocked] = useState(false);
 
-  // containerRef wraps card + followup and is pinned to its exact rendered
-  // height for the entire duration of a drag. The card below is a sibling of
-  // containerRef in the DOM, so it never sees a layout shift regardless of
-  // how the card and followup heights change inside the container.
-  const containerRef = useRef<HTMLDivElement>(null);
+  // Pointer-drag bookkeeping.
+  const draggingRef = useRef(false);
+  const engagedRef = useRef(false);      // horizontal intent confirmed
+  const startXRef = useRef(0);
+  const startYRef = useRef(0);
+  const dxRef = useRef(0);
+  const lastXRef = useRef(0);
+  const lastTRef = useRef(0);
+  const velRef = useRef(0);
+
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const naturalH = useRef(0);      // card's content height for collapse math
+  const naturalH = useRef(0);
+
   const followupRef = useRef<HTMLDivElement>(null);
-  const followupNaturalH = useRef(0); // measured lazily on first left drag
+  const followupNaturalH = useRef(0);
 
-  // Tint overlay that appears inside the card when dragging right.
-  const branchTintRef = useRef<HTMLDivElement>(null);
+  const branchActionRef = useRef<HTMLDivElement>(null);
 
-  // Snap-back state — set on release, cleared on next drag-start.
-  const isSpringBackRef = useRef(false);
-  const snapBackNegRef = useRef(false);   // release was from negative x (left drag)
-  const heightsLockedRef = useRef(false); // x has crossed zero; styles pinned
+  // Set true once a swipe-right has committed; lets the Back-driven re-arm
+  // (disabled → false) know to reset the gesture latches.
+  const branchCommittedRef = useRef(false);
 
-  // Gesture direction lock: determined from raw pointer movement so that a
-  // mostly-vertical scroll never accidentally activates the horizontal drag.
-  const pointerStartRef = useRef({ x: 0, y: 0 });
-  const gestureDirRef = useRef<"unknown" | "h" | "v">("unknown");
+  // Clear the "release to branch" affordance (used on cancel / Back).
+  const clearBranchAction = useCallback(() => {
+    const action = branchActionRef.current;
+    if (action) { action.style.opacity = "0"; action.classList.remove("ready"); }
+  }, []);
 
-  const logNextCardTop = (label: string) => {
-    const container = containerRef.current;
-    const nextItem = container?.parentElement?.nextElementSibling;
-    const top = nextItem?.getBoundingClientRect().top ?? null;
-    const cH = container ? getComputedStyle(container).height : "?";
-    const wH = wrapperRef.current ? getComputedStyle(wrapperRef.current).height : "?";
-    const fH = followupRef.current ? getComputedStyle(followupRef.current).height : "?";
-    console.log(`[SwipeCard] ${label} | next.top=${top?.toFixed(1)} scrollY=${window.scrollY.toFixed(1)} | c=${cH} w=${wH} f=${fH}`);
-  };
-
-  useMotionValueEvent(x, "change", (latest) => {
-    // If the gesture is predominantly vertical, keep x at zero and bail.
-    // This prevents vertical scrolling from accidentally drifting the card.
-    if (gestureDirRef.current === "v") {
-      if (x.get() !== 0) x.set(0);
-      return;
-    }
-
-    if (latest < 0 && !firstLeftFired.current && onFirstLeftDrag) {
-      firstLeftFired.current = true;
-      logNextCardTop(`onFirstLeftDrag x=${latest.toFixed(1)}`);
-      onFirstLeftDrag();
-    }
-    if (latest > 0 && !firstRightFired.current && onFirstRightDrag) {
-      firstRightFired.current = true;
-      onFirstRightDrag();
-    }
-    if (onRightProgress) {
-      onRightProgress(latest > 0 ? Math.min(1, latest / RIGHT_PROGRESS_DISTANCE) : 0);
-    }
-
-    // Aurora tint always tracks x so it fades smoothly during snap-back too.
-    const tint = branchTintRef.current;
-    if (tint) {
-      tint.style.opacity = latest > 0 ? String(Math.min(1, latest / SWIPE_THRESHOLD)) : "0";
-    }
-
-    if (isSpringBackRef.current) {
-      if (!heightsLockedRef.current) {
-        // x has crossed zero back toward rest — pin everything at neutral and
-        // release the container so it returns to its natural auto height.
-        const settled = snapBackNegRef.current ? latest >= 0 : latest <= 0;
-        if (settled) {
-          heightsLockedRef.current = true;
-          logNextCardTop(`lock-before x=${latest.toFixed(1)}`);
-          const card = wrapperRef.current;
-          if (card) { card.style.height = ""; card.style.overflow = ""; }
-          const followup = followupRef.current;
-          if (followup) { followup.style.height = ""; followup.style.opacity = ""; }
-          const container = containerRef.current;
-          if (container) { container.style.height = ""; container.style.overflow = ""; container.style.overflowClipMargin = ""; }
-          naturalH.current = 0;
-          followupNaturalH.current = 0;
-          logNextCardTop(`lock-after x=${latest.toFixed(1)}`);
-        } else if (snapBackNegRef.current) {
-          // Left-drag snap-back in progress — mirror the same formula used
-          // during active drag so the two heights always move in sync.
-          const t = Math.min(1, -latest / COLLAPSE_DISTANCE);
-          const card = wrapperRef.current;
-          if (card && naturalH.current > 0) {
-            card.style.height = `${naturalH.current * (1 - t)}px`;
-          }
-          const followup = followupRef.current;
-          if (followup && followupNaturalH.current > 0) {
-            followup.style.height = `${followupNaturalH.current * t}px`;
-            followup.style.opacity = String(t);
-          }
-        }
-      }
-      return;
-    }
-
-    // ── Active drag ──────────────────────────────────────────────────────────
+  const setLeftCollapse = useCallback((dx: number) => {
     const card = wrapperRef.current;
     if (card) {
-      if (latest >= 0) {
-        card.style.height = "";
-        card.style.overflow = "";
-      } else {
-        // On the very first drag ever, Framer Motion fires motion events before
-        // onDragStart (motion value updates as soon as the pointer moves; the
-        // drag-start callback fires only after the threshold is crossed).
-        // Lazily initialize here so naturalH is valid before we use it.
-        if (!naturalH.current) {
-          naturalH.current = card.scrollHeight;
-          const container = containerRef.current;
-          if (container && !container.style.height) {
-            const h = container.getBoundingClientRect().height;
-            container.style.height = `${h}px`;
-            container.style.overflow = "clip";
-          }
-        }
-        const firstOverflow = !card.style.overflow;
-        const t = Math.min(1, -latest / COLLAPSE_DISTANCE);
+      if (dx >= 0) { card.style.height = ""; card.style.overflow = ""; }
+      else {
+        if (!naturalH.current) naturalH.current = card.scrollHeight;
+        const t = Math.min(1, -dx / COLLAPSE_DISTANCE);
         card.style.height = `${naturalH.current * (1 - t)}px`;
-        // overflow:clip clips the collapsing card content visually without
-        // creating a BFC. overflow:hidden would create a BFC, which stops the
-        // wrapperRef's margin-top from collapsing through to cur-post-item —
-        // shifting every card below by 8px the moment a left drag begins.
-        card.style.overflow = "clip";
-        if (firstOverflow) logNextCardTop(`card-overflow-set x=${latest.toFixed(1)} t=${t.toFixed(3)}`);
+        card.style.overflow = "hidden";
       }
     }
-
     const followup = followupRef.current;
     if (followup) {
-      if (latest >= 0) {
-        followup.style.height = "0";
-        followup.style.opacity = "";
-      } else {
-        // Measure natural height once, lazily, on first left-drag frame.
-        const firstMeasure = !followupNaturalH.current;
-        if (firstMeasure) {
+      if (dx >= 0) { followup.style.height = "0"; followup.style.overflow = "hidden"; followup.style.opacity = "0"; }
+      else {
+        if (!followupNaturalH.current) {
           const prev = followup.style.height;
           followup.style.height = "auto";
-          followupNaturalH.current = followup.scrollHeight || 120;
+          followupNaturalH.current = followup.scrollHeight;
           followup.style.height = prev;
         }
-        const t = Math.min(1, -latest / COLLAPSE_DISTANCE);
-        followup.style.height = `${followupNaturalH.current * t}px`;
+        const t = Math.min(1, -dx / COLLAPSE_DISTANCE);
+        const h = followupNaturalH.current || 120;
+        followup.style.height = `${h * t}px`;
+        followup.style.overflow = "hidden";
         followup.style.opacity = String(t);
-        if (firstMeasure) logNextCardTop(`followup-height-set x=${latest.toFixed(1)} natH=${followupNaturalH.current} h=${(followupNaturalH.current * t).toFixed(2)}`);
       }
     }
-  });
+  }, []);
 
   const swallowNextClick = useCallback(() => {
     const swallow = (e: MouseEvent) => {
@@ -202,171 +112,171 @@ export default function SwipeableCard({
       e.preventDefault();
     };
     window.addEventListener("click", swallow, { capture: true });
-    window.setTimeout(
-      () => window.removeEventListener("click", swallow, { capture: true }),
-      400
-    );
+    window.setTimeout(() => window.removeEventListener("click", swallow, { capture: true }), 400);
   }, []);
 
-  const fling = useCallback(
-    (v: SwipeVerdict) => {
-      if (decidedRef.current) return;
-      decidedRef.current = true;
-      swallowNextClick();
-      animate(x, v === "approve" ? 1200 : -1200, {
-        type: "spring",
-        stiffness: 190,
-        damping: 28,
-      });
+  const commitApprove = useCallback(() => {
+    if (decidedRef.current) return;
+    decidedRef.current = true;
+    branchCommittedRef.current = true;
+    swallowNextClick();
+    // The source post renders as a normal full post in the parent (marked by the
+    // "Branched from" banner) — no fold to undo. Just unlock content so its links
+    // stay clickable and settle the card back to x=0.
+    setLocked(false);
+    const action = branchActionRef.current;
+    if (action) { action.style.transition = "opacity 0.2s"; action.style.opacity = "0"; }
+    // Settle the rubber-banded ride back to x=0 quickly and decisively — a lazy
+    // spring leaves the card visibly drifting rightward while the parent is
+    // already lifting it to the top, which reads as a two-step "right, then up".
+    // A short ease-out gets the horizontal out of the way so the vertical lift
+    // is the only motion the eye tracks.
+    animate(xv, 0, { duration: 0.2, ease: [0.4, 0, 0.2, 1] });
+    onSwipe("approve");
+  }, [xv, onSwipe, swallowNextClick]);
 
-      if (v === "reject") {
-        // The card flies off left; the followup card stays in the feed as the
-        // replacement. Collapse the card's layout height to 0, expand the followup
-        // to its natural height, and release the container so the feed item shrinks
-        // to the followup's size rather than leaving a gap.
-        const card = wrapperRef.current;
-        if (card) {
-          card.style.height = "0";
-          card.style.overflow = "clip";
-          card.style.position = "";
-          card.style.zIndex = "";
-        }
-        const followup = followupRef.current;
-        if (followup) {
-          followup.style.height = "auto";
-          followup.style.opacity = "1";
-        }
-        const container = containerRef.current;
-        if (container) {
-          container.style.height = "";
-          container.style.overflow = "";
-        }
-      }
+  const commitReject = useCallback(() => {
+    if (decidedRef.current) return;
+    decidedRef.current = true;
+    swallowNextClick();
+    animate(xv, -1200, { type: "spring", stiffness: 190, damping: 28 });
+    onSwipe("reject");
+  }, [xv, onSwipe, swallowNextClick]);
 
-      onSwipe(v);
-    },
-    [x, onSwipe, swallowNextClick]
-  );
-
-  function handleDragStart(_: unknown, info: PanInfo) {
-    // At the moment Framer Motion recognizes the drag, info.offset holds the
-    // total displacement since touch-down. If the finger has moved more
-    // vertically than horizontally this is a scroll/pull-to-refresh gesture —
-    // lock it to vertical and bail before any card state is touched.
-    if (Math.abs(info.offset.y) >= Math.abs(info.offset.x)) {
-      gestureDirRef.current = "v";
-      return;
+  // On Back the parent flips `disabled` false again — re-arm the gesture so the
+  // post is fully interactive once more.
+  useEffect(() => {
+    if (!disabled && branchCommittedRef.current) {
+      branchCommittedRef.current = false;
+      decidedRef.current = false;
+      firstRightFired.current = false;
+      firstLeftFired.current = false;
+      clearBranchAction();
+      setLocked(false);
     }
-    gestureDirRef.current = "h";
-    isSpringBackRef.current = false;
-    snapBackNegRef.current = false;
-    heightsLockedRef.current = false;
-    followupNaturalH.current = 0;
-    // naturalH is NOT reset to 0 here. On the very first drag ever, Framer
-    // Motion fires motion events before this callback (motion value updates on
-    // pointer-move; onDragStart fires only after the threshold is crossed). The
-    // lazy-init inside the motion event handler may have already set naturalH
-    // and pinned the container correctly. Resetting and re-measuring here would
-    // read a partially-collapsed card and pin the container to the wrong height.
+  }, [disabled, clearBranchAction]);
 
-    const card = wrapperRef.current;
-    const container = containerRef.current;
-    if (card && container) {
-      if (!naturalH.current) {
-        // Normal path: this callback fired before any motion events.
-        naturalH.current = card.scrollHeight;
-        const containerH = container.getBoundingClientRect().height;
-        logNextCardTop(`dragStart-before cardH=${naturalH.current} containerH=${containerH.toFixed(2)}`);
-        container.style.height = `${containerH}px`;
-        // overflow:clip clips content visually without creating a Block Formatting
-        // Context. overflow:hidden would create a BFC, which stops the wrapperRef's
-        // top margin from collapsing through to cur-post-item — shifting cur-post-item
-        // and every card below it by 8px. overflow:clip has no such side effect.
-        container.style.overflow = "clip";
-        logNextCardTop(`dragStart-after`);
-      } else {
-        // First-drag race: motion events already lazily initialized naturalH
-        // and pinned the container — nothing more needed here.
-        logNextCardTop(`dragStart (lazy-init already ran, naturalH=${naturalH.current})`);
-      }
-      card.style.position = "relative";
-      card.style.zIndex = "10";
-    }
-
-    if (unlockTimer.current) clearTimeout(unlockTimer.current);
-    setLocked(true);
+  function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    if (disabled || decidedRef.current) return;
+    draggingRef.current = true;
+    engagedRef.current = false;
+    // Re-arm the first-drag latches each gesture. Otherwise a cancelled right
+    // drag leaves firstRightFired=true, so a second right drag never re-fires
+    // onFirstRightDrag → the card isn't re-marked the branch source → it recedes
+    // (slides left + fades) along with the others. (Fetches are idempotent.)
+    firstLeftFired.current = false;
+    firstRightFired.current = false;
+    startXRef.current = e.clientX;
+    startYRef.current = e.clientY;
+    dxRef.current = 0;
+    lastXRef.current = e.clientX;
+    lastTRef.current = e.timeStamp;
+    velRef.current = 0;
   }
 
-  function handleDragEnd(_: unknown, info: PanInfo) {
-    const power = info.offset.x + info.velocity.x * 0.25;
-    if (power > SWIPE_THRESHOLD) {
-      fling("approve");
+  function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    if (!draggingRef.current) return;
+    const dx = e.clientX - startXRef.current;
+    const dy = e.clientY - startYRef.current;
+
+    if (!engagedRef.current) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      if (Math.abs(dy) > Math.abs(dx)) { draggingRef.current = false; return; } // vertical scroll
+      engagedRef.current = true;
+      setLocked(true);
+      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      if (wrapperRef.current) { wrapperRef.current.style.position = "relative"; wrapperRef.current.style.zIndex = "10"; }
+    }
+
+    const dt = e.timeStamp - lastTRef.current;
+    if (dt > 0) velRef.current = (e.clientX - lastXRef.current) / dt;
+    lastXRef.current = e.clientX;
+    lastTRef.current = e.timeStamp;
+    dxRef.current = dx;
+
+    if (dx > 0) {
+      // The card just rides right (rubber-banded) while the other posts recede;
+      // no fold/collapse of its own content.
+      if (!firstRightFired.current) { firstRightFired.current = true; onFirstRightDrag?.(); }
+      xv.set(rubber(dx));
+      const t = Math.min(1, dx / BRANCH_COLLAPSE_DISTANCE);
+      onRightProgress?.(t);
+      const action = branchActionRef.current;
+      if (action) {
+        const reveal = cl01(dx / 70);
+        action.style.opacity = String(reveal);
+        action.style.transform = `translateY(-50%) translateX(${lerp(-12, 0, reveal)}px)`;
+        action.classList.toggle("ready", t >= BRANCH_COMMIT);
+      }
+      setLeftCollapse(0);
+    } else {
+      if (!firstLeftFired.current) { firstLeftFired.current = true; onFirstLeftDrag?.(); }
+      xv.set(dx);
+      onRightProgress?.(0);
+      setLeftCollapse(dx);
+    }
+  }
+
+  function endDrag() {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    const dx = dxRef.current;
+    if (!engagedRef.current) { setLocked(false); return; }
+
+    const power = dx + velRef.current * 90; // velocity is px/ms → weight a flick
+    const t = Math.max(0, dx) / BRANCH_COLLAPSE_DISTANCE;
+
+    if (dx > 0 && (t >= BRANCH_COMMIT || power > SWIPE_THRESHOLD)) {
+      commitApprove();
       return;
     }
     if (power < -SWIPE_THRESHOLD) {
-      fling("reject");
+      commitReject();
       return;
     }
-
-    const curX = x.get();
-    logNextCardTop(`dragEnd x=${curX.toFixed(1)} power=${power.toFixed(1)}`);
-    isSpringBackRef.current = true;
-    snapBackNegRef.current = curX < 0;
-    heightsLockedRef.current = false;
-
-    const card = wrapperRef.current;
-    if (card) {
-      card.style.position = "";
-      card.style.zIndex = "";
-    }
-
-    // velocity: 0 ensures the spring always starts moving toward 0 immediately
-    // rather than inheriting the gesture's final velocity, which could briefly
-    // push the card further collapsed before reversing (a visible re-bounce).
-    animate(x, 0, { type: "spring", stiffness: 340, damping: 32, velocity: 0 });
+    // Cancel — settle back to rest. Also tell the parent the rightward progress
+    // is back to 0 so the *other* posts (which receded via --branch-progress)
+    // animate back in; without this they stay stuck mid-recede.
+    onRightProgress?.(0);
+    clearBranchAction();
+    animate(xv, 0, { type: "spring", stiffness: 340, damping: 32 });
+    if (wrapperRef.current) { wrapperRef.current.style.position = ""; wrapperRef.current.style.zIndex = ""; }
     unlockTimer.current = setTimeout(() => setLocked(false), 350);
   }
 
   return (
-    <div ref={containerRef}>
-      <div ref={wrapperRef}>
+    <>
+      <div ref={wrapperRef} style={{ position: "relative" }}>
+        {/* Branch affordance revealed on the left as the card rides right. */}
+        <div ref={branchActionRef} className="cur-swipe-branch-action" style={{ opacity: 0 }} aria-hidden>
+          <span className="cur-swipe-branch-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="6" cy="6" r="2.4" />
+              <circle cx="6" cy="18" r="2.4" />
+              <circle cx="18" cy="9" r="2.4" />
+              <path d="M6 8.4v7.2M8.2 7 16 8.6M8 17l8-6.6" />
+            </svg>
+          </span>
+          <span className="cur-swipe-branch-label">release to branch</span>
+        </div>
         <motion.div
           className="cur-swipe-wrap"
-          style={{ x, scale }}
-          drag={disabled ? false : "x"}
-          dragMomentum={false}
-          onPointerDown={(e) => {
-            pointerStartRef.current = { x: e.clientX, y: e.clientY };
-            gestureDirRef.current = "unknown";
-          }}
-          onPointerMove={(e) => {
-            if (!e.buttons || gestureDirRef.current !== "unknown") return;
-            const dx = Math.abs(e.clientX - pointerStartRef.current.x);
-            const dy = Math.abs(e.clientY - pointerStartRef.current.y);
-            if (dx + dy < 6) return; // wait for enough movement to judge direction
-            // Require clearly horizontal movement: dx must exceed dy.
-            // A diagonal or mostly-vertical touch stays as scroll.
-            gestureDirRef.current = dx > dy ? "h" : "v";
-          }}
-          onDragStart={disabled ? undefined : handleDragStart}
-          onDragEnd={disabled ? undefined : handleDragEnd}
-          whileTap={disabled ? undefined : { cursor: "grabbing" }}
+          style={{ x: xv, scale, position: "relative", zIndex: 1 }}
+          onPointerDown={disabled ? undefined : onPointerDown}
+          onPointerMove={disabled ? undefined : onPointerMove}
+          onPointerUp={disabled ? undefined : endDrag}
+          onPointerCancel={disabled ? undefined : endDrag}
         >
-          {/* Branch tint: aurora wash that builds as you drag right */}
-          <div ref={branchTintRef} className="cur-swipe-branch-tint" style={{ opacity: 0 }} aria-hidden />
-          <div
-            className="cur-swipe-content"
-            style={{ pointerEvents: locked ? "none" : undefined }}
-          >
+          <div className="cur-swipe-content" style={{ pointerEvents: locked ? "none" : undefined }}>
             {children}
           </div>
         </motion.div>
       </div>
       {followupContent != null && (
-        <div ref={followupRef} className="cur-swipe-followup-wrap">
+        <div ref={followupRef} style={{ height: 0, overflow: "hidden", opacity: 0 }}>
           {followupContent}
         </div>
       )}
-    </div>
+    </>
   );
 }
