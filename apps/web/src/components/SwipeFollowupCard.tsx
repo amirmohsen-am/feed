@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type KeyboardEvent } from "react";
-import SendButton from "@/components/SendButton";
 import type { BranchOption } from "@/lib/branch";
 
 interface PostSummary {
@@ -91,12 +90,14 @@ export default function SwipeFollowupCard({
 
       <p className="cur-swipe-followup-label">what you&rsquo;ll see less of</p>
 
+      {/* Reasons fit on one row when they can, wrapping to a second only if needed. */}
       <div className="cur-swipe-followup-topics">
         {topics?.map((t, i) => (
           <button
             key={i}
             type="button"
             className="cur-swipe-followup-chip"
+            title={t.subquery}
             onClick={() => chipSend(t)}
           >
             {t.label}
@@ -105,7 +106,7 @@ export default function SwipeFollowupCard({
       </div>
 
       <form
-        className="cur-swipe-followup-input-row"
+        className="cur-swipe-followup-composer"
         onSubmit={(e) => { e.preventDefault(); textSend(); }}
       >
         <textarea
@@ -116,7 +117,17 @@ export default function SwipeFollowupCard({
           placeholder="or say it in your own words…"
           rows={1}
         />
-        <SendButton disabled={!text.trim()} />
+        <button
+          type="submit"
+          className="cur-swipe-followup-send"
+          disabled={!text.trim()}
+          aria-label="Send"
+          title="Send"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+        </button>
       </form>
     </div>
   );

@@ -5,11 +5,16 @@ import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 
 export type SwipeVerdict = "approve" | "reject";
 
-const SWIPE_THRESHOLD = 120;       // left (skip) commit distance
-const COLLAPSE_DISTANCE = 260;     // left collapse range
+const SWIPE_THRESHOLD = 120;       // right (branch) flick commit power
 const BRANCH_COLLAPSE_DISTANCE = 210; // right fold range (prototype COLLAPSE_DIST)
 const BRANCH_COMMIT = 0.5;         // fraction of the fold at which a release branches
 const TX_MAX = 132;                // rubber-band asymptote for the rightward ride
+// Left "less like this" reveal-and-confirm (iMessage style): the card parks open
+// to a red pill; tap the pill or slide all the way to commit.
+const LESS_OPEN = 175;             // parked-open distance — independent of the capsule width
+const LESS_FULL = 250;             // slide-all-the-way commit distance
+const LESS_BASEW = 140;            // capsule width at rest / parked
+const LESS_CAPW = 320;             // max capsule width once stretched to fill the row
 
 const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
 const cl01 = (v: number) => Math.max(0, Math.min(1, v));
@@ -38,7 +43,7 @@ export default function SwipeableCard({
   // Visual transform we own directly (so the rightward ride can be rubber-banded
   // independently of the raw pointer distance that drives the fold).
   const xv = useMotionValue(0);
-  const scale = useTransform(xv, [-260, 0], [0.82, 1]);
+  const scale = useTransform(xv, [-400, 0], [0.92, 1]);
 
   const decidedRef = useRef(false);
   const firstLeftFired = useRef(false);
@@ -57,12 +62,16 @@ export default function SwipeableCard({
   const velRef = useRef(0);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const naturalH = useRef(0);
-
   const followupRef = useRef<HTMLDivElement>(null);
-  const followupNaturalH = useRef(0);
-
   const branchActionRef = useRef<HTMLDivElement>(null);
+  const lessActionRef = useRef<HTMLDivElement>(null);
+  const lessPillRef = useRef<HTMLButtonElement>(null);
+
+  // Left "less like this" gesture: whether the card is parked open (iMessage
+  // style), and the resting x the next drag builds on (0 normally, -LESS_OPEN
+  // when parked).
+  const leftOpenRef = useRef(false);
+  const baseXRef = useRef(0);
 
   // Set true once a swipe-right has committed; lets the Back-driven re-arm
   // (disabled → false) know to reset the gesture latches.
@@ -74,33 +83,33 @@ export default function SwipeableCard({
     if (action) { action.style.opacity = "0"; action.classList.remove("ready"); }
   }, []);
 
-  const setLeftCollapse = useCallback((dx: number) => {
-    const card = wrapperRef.current;
-    if (card) {
-      if (dx >= 0) { card.style.height = ""; card.style.overflow = ""; }
-      else {
-        if (!naturalH.current) naturalH.current = card.scrollHeight;
-        const t = Math.min(1, -dx / COLLAPSE_DISTANCE);
-        card.style.height = `${naturalH.current * (1 - t)}px`;
-        card.style.overflow = "hidden";
-      }
+  // Imperatively drive the red "less of this" pill from the card's x: it pops
+  // small→full as the card parks, then stretches circle→oval the further you pull.
+  // One constant red — no color transition.
+  const paintLessPill = useCallback((x: number) => {
+    const wrap = lessActionRef.current;
+    const pill = lessPillRef.current;
+    if (!wrap || !pill) return;
+    const gap = Math.max(0, -x);
+    const grow = Math.min(gap / LESS_OPEN, 1);
+    wrap.style.opacity = String(Math.min(gap / (LESS_OPEN * 0.4), 1));
+    pill.style.transform = `scale(${0.7 + grow * 0.3})`;
+    // capsule rests at LESS_BASEW, then its left edge tracks the card's trailing
+    // edge as you pull on — extending to fill the row when sliding all the way.
+    pill.style.width = `${Math.min(LESS_CAPW, Math.max(LESS_BASEW, gap - 28))}px`;
+  }, []);
+
+  const settleLessPill = useCallback((open: boolean) => {
+    const wrap = lessActionRef.current;
+    const pill = lessPillRef.current;
+    if (wrap) {
+      wrap.style.transition = "opacity 0.2s";
+      wrap.style.opacity = open ? "1" : "0";
     }
-    const followup = followupRef.current;
-    if (followup) {
-      if (dx >= 0) { followup.style.height = "0"; followup.style.overflow = "hidden"; followup.style.opacity = "0"; }
-      else {
-        if (!followupNaturalH.current) {
-          const prev = followup.style.height;
-          followup.style.height = "auto";
-          followupNaturalH.current = followup.scrollHeight;
-          followup.style.height = prev;
-        }
-        const t = Math.min(1, -dx / COLLAPSE_DISTANCE);
-        const h = followupNaturalH.current || 120;
-        followup.style.height = `${h * t}px`;
-        followup.style.overflow = "hidden";
-        followup.style.opacity = String(t);
-      }
+    if (pill) {
+      pill.style.transition = "width 0.26s cubic-bezier(0.2,0.8,0.3,1), transform 0.26s";
+      pill.style.transform = open ? "scale(1)" : "scale(0.7)";
+      pill.style.width = `${LESS_BASEW}px`;
     }
   }, []);
 
@@ -135,13 +144,58 @@ export default function SwipeableCard({
     onSwipe("approve");
   }, [xv, onSwipe, swallowNextClick]);
 
-  const commitReject = useCallback(() => {
+  // Release below the park threshold — snap shut and re-arm.
+  const closeLess = useCallback(() => {
+    leftOpenRef.current = false;
+    baseXRef.current = 0;
+    settleLessPill(false);
+    animate(xv, 0, { type: "spring", stiffness: 340, damping: 32 });
+    if (wrapperRef.current) { wrapperRef.current.style.position = ""; wrapperRef.current.style.zIndex = ""; }
+    unlockTimer.current = setTimeout(() => setLocked(false), 300);
+  }, [xv, settleLessPill]);
+
+  // Release in the middle — park open showing the red circle (iMessage rest).
+  const parkLess = useCallback(() => {
+    leftOpenRef.current = true;
+    baseXRef.current = -LESS_OPEN;
+    settleLessPill(true);
+    animate(xv, -LESS_OPEN, { type: "spring", stiffness: 320, damping: 32 });
+  }, [xv, settleLessPill]);
+
+  // Commit: lift the post away (collapse its height so the posts below rise up),
+  // then reveal the follow-up panel in its place.
+  const commitLess = useCallback(() => {
     if (decidedRef.current) return;
     decidedRef.current = true;
+    leftOpenRef.current = false;
     swallowNextClick();
-    animate(xv, -1200, { type: "spring", stiffness: 190, damping: 28 });
+    settleLessPill(false);
+    const card = wrapperRef.current;
+    if (card) {
+      const h = card.scrollHeight;
+      card.style.height = `${h}px`;
+      card.style.overflow = "hidden";
+      void card.offsetHeight; // reflow so the height transition runs from the measured value
+      card.style.transition = "height 0.34s cubic-bezier(0.4,0,0.2,1), opacity 0.26s, transform 0.34s";
+      card.style.height = "0px";
+      card.style.opacity = "0";
+      card.style.transform = "translateY(-6px)";
+    }
+    const f = followupRef.current;
+    if (f) {
+      f.style.height = "auto";
+      const target = f.scrollHeight;
+      f.style.height = "0px";
+      f.style.opacity = "0";
+      f.style.overflow = "hidden";
+      void f.offsetHeight;
+      f.style.transition = "height 0.4s cubic-bezier(0.2,0.7,0.3,1), opacity 0.3s";
+      f.style.height = `${target}px`;
+      f.style.opacity = "1";
+      window.setTimeout(() => { const ff = followupRef.current; if (ff) ff.style.height = "auto"; }, 420);
+    }
     onSwipe("reject");
-  }, [xv, onSwipe, swallowNextClick]);
+  }, [onSwipe, swallowNextClick, settleLessPill]);
 
   // On Back the parent flips `disabled` false again — re-arm the gesture so the
   // post is fully interactive once more.
@@ -172,6 +226,11 @@ export default function SwipeableCard({
     lastXRef.current = e.clientX;
     lastTRef.current = e.timeStamp;
     velRef.current = 0;
+    // Build this drag on top of the resting offset (parked-open or closed) and
+    // let the pill ride the finger without easing until release.
+    baseXRef.current = leftOpenRef.current ? -LESS_OPEN : 0;
+    if (lessActionRef.current) lessActionRef.current.style.transition = "none";
+    if (lessPillRef.current) lessPillRef.current.style.transition = "none";
   }
 
   function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
@@ -194,7 +253,8 @@ export default function SwipeableCard({
     lastTRef.current = e.timeStamp;
     dxRef.current = dx;
 
-    if (dx > 0) {
+    const baseX = baseXRef.current;
+    if (baseX === 0 && dx > 0) {
       // The card just rides right (rubber-banded) while the other posts recede;
       // no fold/collapse of its own content.
       if (!firstRightFired.current) { firstRightFired.current = true; onFirstRightDrag?.(); }
@@ -208,12 +268,16 @@ export default function SwipeableCard({
         action.style.transform = `translateY(-50%) translateX(${lerp(-12, 0, reveal)}px)`;
         action.classList.toggle("ready", t >= BRANCH_COMMIT);
       }
-      setLeftCollapse(0);
     } else {
+      // Leftward "less of this" reveal — also handles dragging from the parked
+      // state. The card rides the finger; past LESS_FULL it resists.
       if (!firstLeftFired.current) { firstLeftFired.current = true; onFirstLeftDrag?.(); }
-      xv.set(dx);
+      let x = Math.min(0, baseX + dx);
+      const over = -x - LESS_FULL;
+      if (over > 0) x = -(LESS_FULL + 60 * (1 - Math.exp(-over / 60)));
+      xv.set(x);
       onRightProgress?.(0);
-      setLeftCollapse(dx);
+      paintLessPill(x);
     }
   }
 
@@ -221,27 +285,38 @@ export default function SwipeableCard({
     if (!draggingRef.current) return;
     draggingRef.current = false;
     const dx = dxRef.current;
-    if (!engagedRef.current) { setLocked(false); return; }
-
-    const power = dx + velRef.current * 90; // velocity is px/ms → weight a flick
-    const t = Math.max(0, dx) / BRANCH_COLLAPSE_DISTANCE;
-
-    if (dx > 0 && (t >= BRANCH_COMMIT || power > SWIPE_THRESHOLD)) {
-      commitApprove();
+    if (!engagedRef.current) {
+      // A tap with no horizontal intent: if parked open, a tap anywhere closes it.
+      if (leftOpenRef.current) closeLess();
+      else setLocked(false);
       return;
     }
-    if (power < -SWIPE_THRESHOLD) {
-      commitReject();
+
+    const baseX = baseXRef.current;
+
+    // Rightward branch (unchanged).
+    if (baseX === 0 && dx > 0) {
+      const power = dx + velRef.current * 90; // velocity is px/ms → weight a flick
+      const t = dx / BRANCH_COLLAPSE_DISTANCE;
+      if (t >= BRANCH_COMMIT || power > SWIPE_THRESHOLD) { commitApprove(); return; }
+      // Cancel — settle back to rest. Also tell the parent the rightward progress
+      // is back to 0 so the *other* posts (which receded via --branch-progress)
+      // animate back in; without this they stay stuck mid-recede.
+      onRightProgress?.(0);
+      clearBranchAction();
+      animate(xv, 0, { type: "spring", stiffness: 340, damping: 32 });
+      if (wrapperRef.current) { wrapperRef.current.style.position = ""; wrapperRef.current.style.zIndex = ""; }
+      unlockTimer.current = setTimeout(() => setLocked(false), 350);
       return;
     }
-    // Cancel — settle back to rest. Also tell the parent the rightward progress
-    // is back to 0 so the *other* posts (which receded via --branch-progress)
-    // animate back in; without this they stay stuck mid-recede.
-    onRightProgress?.(0);
-    clearBranchAction();
-    animate(xv, 0, { type: "spring", stiffness: 340, damping: 32 });
-    if (wrapperRef.current) { wrapperRef.current.style.position = ""; wrapperRef.current.style.zIndex = ""; }
-    unlockTimer.current = setTimeout(() => setLocked(false), 350);
+
+    // Leftward "less of this": slide all the way (or flick hard) commits; a
+    // medium pull parks open; anything shorter snaps shut.
+    const gap = -(baseX + dx);
+    const leftFlick = -(dx + velRef.current * 90);
+    if (gap >= LESS_FULL || (gap >= 40 && leftFlick > LESS_OPEN + 120)) { commitLess(); return; }
+    if (gap >= LESS_OPEN * 0.55) { parkLess(); return; }
+    closeLess();
   }
 
   return (
@@ -258,6 +333,21 @@ export default function SwipeableCard({
             </svg>
           </span>
           <span className="cur-swipe-branch-label">release to branch</span>
+        </div>
+        {/* "less of this" affordance revealed on the right as the card rides left,
+            sitting behind the card in the space it vacates. The pill stays one
+            constant red; tapping it commits. */}
+        <div ref={lessActionRef} className="cur-swipe-less-action" style={{ opacity: 0 }}>
+          <button
+            ref={lessPillRef}
+            type="button"
+            className="cur-swipe-less-icon"
+            aria-label="See less like this"
+            style={{ width: LESS_BASEW }}
+            onClick={(e) => { e.stopPropagation(); commitLess(); }}
+          >
+            Less of this
+          </button>
         </div>
         <motion.div
           className="cur-swipe-wrap"
