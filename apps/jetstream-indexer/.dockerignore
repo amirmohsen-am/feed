@@ -1,0 +1,10 @@
+node_modules
+.git
+.gitignore
+Dockerfile
+.dockerignore
+cloudbuild.yaml
+npm-debug.log
+*.log
+.env*
+.DS_Store

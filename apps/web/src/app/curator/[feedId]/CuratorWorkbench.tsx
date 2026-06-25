@@ -6,6 +6,7 @@ import Script from "next/script";
 import BranchTopicsHeader from "@/components/BranchTopicsHeader";
 import FilterPanel from "@/components/FilterPanel";
 import SendButton from "@/components/SendButton";
+import Capsule from "./Capsule";
 import { authedFetch } from "@/lib/authed-fetch";
 import type { MechanicalFilters } from "@/lib/types";
 import {
@@ -93,6 +94,32 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     RIGHT_W_KEY, 560, RIGHT_MIN, RIGHT_MAX, "right"
   );
 
+  // ── Design E ("Capsule"): a floating input-only composer; the conversation is
+  //    hidden behind it. `expanded` opens the side conversation (desktop) / sheet
+  //    (mobile), `tuning` opens the Tune slide-over, `capState` drives the pill,
+  //    `scrollCollapsed` tucks the capsule into the Refine pill on scroll. ──
+  const [expanded, setExpanded] = useState(false);
+  const [tuning, setTuning] = useState(false);
+  const [capState, setCapState] = useState<"idle" | "thinking" | "updated">("idle");
+  const [scrollCollapsed, setScrollCollapsed] = useState(false);
+  // The capsule has its own draft field so it can send without mounting the
+  // full side-chat input bar.
+  const [capInput, setCapInput] = useState("");
+  const capInputRef = useRef<HTMLInputElement | null>(null);
+  // The structured options card can be dismissed (the X) to type free-form for
+  // this turn; reset whenever a new turn lands so the next question's card shows.
+  const [optionsDismissed, setOptionsDismissed] = useState(false);
+  // The capsule composes inline on both breakpoints; `isMobile` only decides
+  // where the conversation opens (desktop sidebar vs mobile full-screen sheet).
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -125,12 +152,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const [ptrRefreshing, setPtrRefreshing] = useState(false);
 
   useEffect(() => {
-    registerOpenTune(() => {
-      setRightPane("tune");
-      setMobileTab("chat");
-    });
+    registerOpenTune(() => setTuning(true));
     return () => registerOpenTune(() => {});
-  }, [registerOpenTune, setMobileTab]);
+  }, [registerOpenTune]);
 
   function openMobileChat() {
     if (
@@ -542,6 +566,131 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     };
   }, []);
 
+  // Send a nudge straight from the floating capsule (its own draft field).
+  function sendFromCapsule() {
+    const v = capInput.trim();
+    if (!v) return;
+    setCapInput("");
+    send(v);
+  }
+  // Expand chevron: toggle the conversation. Desktop = right sidebar; mobile =
+  // full-screen sheet. Typing in the capsule never triggers this.
+  function toggleConversation() {
+    if (isMobile) {
+      if (mobileTab === "chat") {
+        inputRef.current?.blur();
+        setMobileTab("feed");
+      } else {
+        setMobileTab("chat");
+        setOptionsUnread(false);
+      }
+    } else {
+      setExpanded((v) => !v);
+    }
+  }
+  // Open the conversation (from "Feed updated" / "see what changed").
+  function openConversation() {
+    setCapState("idle");
+    if (isMobile) {
+      setMobileTab("chat");
+      setOptionsUnread(false);
+    } else {
+      setExpanded(true);
+    }
+  }
+
+  // Keyboard avoidance (mobile): the fixed capsule would hide behind the
+  // on-screen keyboard; lift it by the visualViewport overlap via --cap-kb-offset.
+  useEffect(() => {
+    if (!isMobile || typeof window === "undefined") return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement;
+    const update = () => {
+      const overlap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      root.style.setProperty("--cap-kb-offset", `${overlap}px`);
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      root.style.removeProperty("--cap-kb-offset");
+    };
+  }, [isMobile]);
+
+  // Drive the capsule's progress pill from the busy flags: while a turn or a
+  // post re-query is in flight it shows the "thinking" goo; when it settles it
+  // flashes "updated" (only after the user has conversed), then returns to idle.
+  const busy = loading || feedRefreshing;
+  const wasBusyRef = useRef(false);
+  const updatedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sawMessageRef = useRef(false);
+  useEffect(() => { if (messages.length > 0) sawMessageRef.current = true; }, [messages.length]);
+  useEffect(() => {
+    if (busy) {
+      if (updatedTimerRef.current) { clearTimeout(updatedTimerRef.current); updatedTimerRef.current = null; }
+      wasBusyRef.current = true;
+      setScrollCollapsed(false);
+      setCapState("thinking");
+      return;
+    }
+    if (wasBusyRef.current) {
+      wasBusyRef.current = false;
+      if (sawMessageRef.current) {
+        setCapState("updated");
+        updatedTimerRef.current = setTimeout(() => {
+          setCapState("idle");
+          setScrollCollapsed(true);
+        }, 2600);
+      } else {
+        setCapState("idle");
+      }
+    }
+  }, [busy]);
+  useEffect(() => () => { if (updatedTimerRef.current) clearTimeout(updatedTimerRef.current); }, []);
+
+  // Scroll-collapse (desktop): tuck the capsule into the Refine pill when the
+  // feed pane scrolls, while idle and not expanded/tuning.
+  useEffect(() => {
+    const pane = feedPaneRef.current;
+    if (!pane) return;
+    if (!window.matchMedia("(min-width: 768px)").matches) return;
+    let lastTop = pane.scrollTop;
+    const onScroll = () => {
+      const top = pane.scrollTop;
+      const delta = top - lastTop;
+      lastTop = top;
+      if (expanded || tuning || capState !== "idle") return;
+      if (Math.abs(delta) > 4 && top > 60) {
+        capInputRef.current?.blur();
+        setScrollCollapsed(true);
+      }
+    };
+    pane.addEventListener("scroll", onScroll, { passive: true });
+    return () => pane.removeEventListener("scroll", onScroll);
+  }, [expanded, tuning, capState]);
+
+  // Scroll-collapse (mobile): the document is the scroller.
+  useEffect(() => {
+    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    if (mobileTab === "chat" || tuning) return;
+    let last = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      const delta = y - last;
+      last = y;
+      if (capState !== "idle") return;
+      if (Math.abs(delta) > 4 && y > 60) {
+        capInputRef.current?.blur();
+        setScrollCollapsed(true);
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [capState, tuning, mobileTab]);
+
   function finalizeNow() {
     if (loading) return;
     interviewModeRef.current = false;
@@ -614,6 +763,13 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const lastMsg = messages[messages.length - 1];
   const lastParsed = lastMsg?.role === "assistant" ? parseMessage(lastMsg.content) : null;
 
+  // Structured options card: shown when the latest assistant turn carries
+  // numbered options, unless the user dismissed it to type free-form. Reset the
+  // dismissal whenever a new turn lands so the next question's card shows.
+  const hasPendingOptions = (lastParsed?.options.length ?? 0) > 0;
+  const showOptionsCard = hasPendingOptions && !optionsDismissed;
+  useEffect(() => { setOptionsDismissed(false); }, [messages.length]);
+
   const questionCount = messages.filter(
     (m) => m.role === "assistant" && parseMessage(m.content).options.length > 0
   ).length;
@@ -635,8 +791,14 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         strategy="afterInteractive"
         onLoad={() => window.bluesky?.scan?.()}
       />
-      <div className="cur-workbench" data-right-pane={rightPane}>
-        {/* MOBILE: pull-to-refresh indicator */}
+      <div
+        className="cur-workbench"
+        data-right-pane={rightPane}
+        data-expanded={expanded ? "side" : undefined}
+        data-tuning={tuning ? "" : undefined}
+      >
+        {/* MOBILE: pull-to-refresh indicator (fixed under the topbar; the
+            gesture lives on the feed pane below) */}
         <div className="cur-ptr-spinner" ref={ptrSpinnerRef} aria-hidden>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="23 4 23 10 17 10" />
@@ -644,7 +806,14 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           </svg>
         </div>
 
+        {/* STAGE — non-scrolling wrapper that anchors the floating capsule and
+            the Tune slide-over over the feed column only. */}
+        <div className="cur-stage">
         {/* POSTS PANE (middle) */}
+        {/* POSTS PANE (middle) — recursive FeedView owns the post stream, swipe-to-
+            tune / swipe-to-branch (inline fold model + today's lift fix), pipeline
+            loader, and the inline nested branch. Workbench drives the initial load
+            and reads config/posts/loading back via the callbacks below. */}
         <div className="cur-feed-posts" ref={feedPaneRef} style={{ position: "relative" }}>
           <FeedView
             ref={rootFeedRef}
@@ -658,19 +827,73 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
             onTune={handleRootTune}
             onLoaded={handleRootLoaded}
           />
-        </div>
+        </div>{/* /.cur-feed-posts */}
 
-        {/* WORKBENCH RESIZER */}
+          {/* ════ THE CAPSULE — floating, input-only curator (desktop + mobile) ════ */}
+          <Capsule
+            value={capInput}
+            onValueChange={setCapInput}
+            onSend={sendFromCapsule}
+            state={capState}
+            collapsed={scrollCollapsed && !tuning}
+            expanded={isMobile ? mobileTab === "chat" : expanded}
+            placeholder={hasCriteria ? "Make it more…" : "Describe the feed you want to read…"}
+            onToggleExpand={toggleConversation}
+            onReopen={() => {
+              setScrollCollapsed(false);
+              setTimeout(() => capInputRef.current?.focus(), 320);
+            }}
+            onUpdatedOpen={openConversation}
+            inputRef={capInputRef}
+          />
+          {/* gooey filter for the metaballs progress style */}
+          <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden>
+            <defs>
+              <filter id="cur-goo">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
+                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -9" />
+              </filter>
+            </defs>
+          </svg>
+
+          {/* TUNE SLIDE-OVER scrim (the panel itself is the FilterPanel below) */}
+          <div className="tune-scrim" onClick={() => setTuning(false)} aria-hidden />
+        </div>{/* /.cur-stage */}
+
+        {/* WORKBENCH RESIZER (between stage and side chat) */}
         <div
           className="cur-resizer cur-resizer-workbench"
           onPointerDown={startRightDrag}
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize right pane"
+          aria-label="Resize conversation"
         />
 
-        {/* CHAT PANE (right, when rightPane === "chat") */}
-        <div className="cur-chat-pane" style={{ ["--cur-right-w" as string]: `${rightWidth}px` }}>
+        {/* ════ SIDE CHAT — the expanded conversation (keeps cur-chat-pane so the
+            existing mobile full-screen-sheet rules continue to apply) ════ */}
+        <aside className="chat-side cur-chat-pane" style={{ ["--cur-right-w" as string]: `${rightWidth}px` }}>
+          <div className="thread-head">
+            <span className="h-glyph" aria-hidden />
+            <div className="th-titles">
+              <div className="th-t">Curator</div>
+              <div className="th-s">conversation</div>
+            </div>
+            <button
+              type="button"
+              className="th-x"
+              aria-label="Close conversation"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                inputRef.current?.blur();
+                setExpanded(false);
+                setMobileTab("feed");
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+            </button>
+          </div>
+          {/* MOBILE: pull-down affordance to dismiss the full-screen chat sheet.
+              Acts on pointer-down so a collapsing iOS keyboard can't swallow the tap. */}
           <button
             type="button"
             className="cur-chat-close"
@@ -678,7 +901,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
             onPointerDown={(e) => {
               e.preventDefault();
               inputRef.current?.blur();
-              setRightPane("chat");
+              setExpanded(false);
               setMobileTab("feed");
             }}
           >
@@ -686,26 +909,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
-          <div className="cur-right-toggle" role="tablist" aria-label="Workbench mode">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={rightPane === "chat"}
-              className={`cur-right-seg${rightPane === "chat" ? " active" : ""}`}
-              onClick={() => setRightPane("chat")}
-            >
-              Chat
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={rightPane === "tune"}
-              className={`cur-right-seg${rightPane === "tune" ? " active" : ""}`}
-              onClick={() => setRightPane("tune")}
-            >
-              Tune
-            </button>
-          </div>
           <div className="cur-chat-area">
             <div className="cur-chat-inner">
               {sourcePost && (
@@ -763,10 +966,12 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                   const url = bskyUrlFromUri(swipe.uri);
                   return (
                     <div key={i} className="cur-msg cur-swipe-card">
-                      <span className={`cur-swipe-card-tag cur-swipe-card-tag-${swipe.verdict}`}>
+                      <span
+                        className={`cur-swipe-card-tag cur-swipe-card-tag-${swipe.verdict}`}
+                      >
                         {swipe.verdict === "approve"
-                          ? "✓ More like this"
-                          : "✕ Less like this"}
+                          ? "\u2713 More like this"
+                          : "\u2715 Less like this"}
                       </span>
                       <a
                         className="cur-branch-source-card"
@@ -776,9 +981,15 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                       >
                         <div className="cur-branch-source-author">
                           {name || "A post"}
-                          {handle && <span className="cur-branch-source-handle">@{handle}</span>}
+                          {handle && (
+                            <span className="cur-branch-source-handle">
+                              @{handle}
+                            </span>
+                          )}
                         </div>
-                        {text && <div className="cur-branch-source-text">{text}</div>}
+                        {text && (
+                          <div className="cur-branch-source-text">{text}</div>
+                        )}
                       </a>
                     </div>
                   );
@@ -806,60 +1017,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           </div>
 
           <div className="cur-input-bar">
-            {lastParsed?.options.length ? (
-              <div className="cur-pinned-options">
-                {lastParsed.options.map((opt) => {
-                  const checked = selectedOptions.has(opt.key);
-                  const interactive = !loading;
-                  return (
-                    <button
-                      key={opt.key}
-                      type="button"
-                      className={`cur-opt${checked ? " cur-opt-selected" : ""}`}
-                      disabled={!interactive}
-                      onClick={() => {
-                        if (!interactive) return;
-                        setSelectedOptions((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(opt.key)) next.delete(opt.key);
-                          else next.add(opt.key);
-                          return next;
-                        });
-                      }}
-                    >
-                      <span className="cur-opt-key">{checked ? "✓" : opt.key}</span>
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-            {!hasCriteria && (
-              <div className="cur-mode-row">
-                {lastParsed?.options.length ? (
-                  <>
-                    <button
-                      type="button"
-                      className="cur-mode-toggle is-active"
-                      onClick={cancelQuestions}
-                      disabled={loading}
-                    >
-                      ✕ Cancel questions
-                    </button>
-                    <span className="cur-mode-hint">go back to free-form chat</span>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    className="cur-mode-toggle"
-                    onClick={askForQuestions}
-                    disabled={loading}
-                  >
-                    ✦ Help me build my prompt
-                  </button>
-                )}
-              </div>
-            )}
             {showFinalize && (
               <div className="cur-finalize-row">
                 <button
@@ -875,51 +1032,125 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 </span>
               </div>
             )}
-            <form
-              className="cur-input-wrap"
-              onSubmit={(e) => {
-                e.preventDefault();
-                openMobileChat();
-                if (lastParsed?.options.length) submitChat();
-                else send(input);
-              }}
-            >
-              <textarea
-                ref={inputRef}
-                className={`cur-input${lastParsed?.options.length ? " cur-input-hint" : ""}`}
-                rows={1}
-                value={input}
-                onFocus={openMobileChat}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            {showOptionsCard ? (
+              /* Structured options card: numbered multi-select rows + an answer
+                 field, pinned at the bottom of the conversation. */
+              <div className="cur-opts-card">
+                <div className="cur-opts-card-head">
+                  <span className="cur-opts-card-lbl">Pick any that fit</span>
+                  <button
+                    type="button"
+                    className="cur-opts-card-x"
+                    aria-label="Dismiss options"
+                    title="Dismiss — type freely instead"
+                    onClick={() => setOptionsDismissed(true)}
+                  >
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M18 6 6 18M6 6l12 12" /></svg>
+                  </button>
+                </div>
+                <div className="cur-opts-rows">
+                  {lastParsed!.options.map((opt) => {
+                    const checked = selectedOptions.has(opt.key);
+                    return (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        className="cur-opts-row"
+                        data-selected={checked}
+                        disabled={loading}
+                        onClick={() => {
+                          if (loading) return;
+                          setSelectedOptions((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(opt.key)) next.delete(opt.key);
+                            else next.add(opt.key);
+                            return next;
+                          });
+                        }}
+                      >
+                        <span className="cur-opts-num" aria-hidden>
+                          {checked ? (
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="m5 13 4 4L19 7" /></svg>
+                          ) : opt.key}
+                        </span>
+                        <span className="cur-opts-label">{opt.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <form
+                  className="cur-opts-answer"
+                  onSubmit={(e) => { e.preventDefault(); submitChat(); }}
+                >
+                  <span className="cur-opts-pencil" aria-hidden>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                  </span>
+                  <textarea
+                    ref={inputRef}
+                    className="cur-opts-input"
+                    rows={1}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        submitChat();
+                      }
+                    }}
+                    placeholder={selectedOptions.size > 0 ? "Add a comment (optional)…" : "Type your answer…"}
+                    disabled={loading}
+                  />
+                  <SendButton disabled={loading || (selectedOptions.size === 0 && !input.trim())} />
+                </form>
+              </div>
+            ) : (
+              <>
+                {!hasCriteria && (
+                  <div className="cur-mode-row">
+                    <button
+                      type="button"
+                      className="cur-mode-toggle"
+                      onClick={askForQuestions}
+                      disabled={loading}
+                    >
+                      ✦ Help me build my prompt
+                    </button>
+                  </div>
+                )}
+                <form
+                  className={`cur-input-wrap${busy ? " loading" : ""}`}
+                  onSubmit={(e) => {
                     e.preventDefault();
-                    if (lastParsed?.options.length) submitChat();
-                    else send(input);
-                  }
-                }}
-                placeholder={
-                  lastParsed?.options.length
-                    ? selectedOptions.size > 0
-                      ? "Add a comment (optional)…"
-                      : "Tap the options above, or describe it in your own words…"
-                    : "Describe your ideal feed…"
-                }
-                disabled={loading}
-              />
-              <SendButton
-                disabled={
-                  loading ||
-                  (lastParsed?.options.length
-                    ? selectedOptions.size === 0 && !input.trim()
-                    : !input.trim())
-                }
-              />
-            </form>
+                    openMobileChat();
+                    send(input);
+                  }}
+                >
+                  {/* metaballs goo shown over the composer while a turn is in flight */}
+                  <div className="cap-meta" aria-hidden><i /><i /><i /><i /><i /></div>
+                  <textarea
+                    ref={inputRef}
+                    className="cur-input"
+                    rows={1}
+                    value={input}
+                    onFocus={openMobileChat}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        send(input);
+                      }
+                    }}
+                    placeholder="Describe your ideal feed…"
+                    disabled={loading}
+                  />
+                  <SendButton disabled={loading || !input.trim()} />
+                </form>
+              </>
+            )}
           </div>
-        </div>
+        </aside>
 
-        {/* TUNE PANEL (right, when rightPane === "tune") */}
+        {/* TUNE PANEL — right slide-over, driven by data-tuning on the workbench */}
         <FilterPanel
           mechanicalFilters={mechanicalFilters || ({} as MechanicalFilters)}
           subqueries={subqueries}
@@ -930,7 +1161,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           engagementWeight={engagementWeight}
           recencyWeight={recencyWeight}
           recencyHalflifeH={recencyHalflifeH}
-          seenFilterEnabled={seenFilterEnabled}
           onMechanicalChange={saveMechanicalFilters}
           onSubqueriesChange={saveSubqueries}
           onCandidateBudgetChange={saveCandidateBudget}
@@ -939,11 +1169,8 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           onEngagementWeightChange={saveEngagementWeight}
           onRecencyWeightChange={saveRecencyWeight}
           onRecencyHalflifeChange={saveRecencyHalflife}
-          onSeenFilterChange={saveSeenFilterEnabled}
           postCount={activePostCount}
-          rightPane={rightPane}
-          onRightPaneChange={setRightPane}
-          style={{ ["--cur-right-w" as string]: `${rightWidth}px` }}
+          onClose={() => setTuning(false)}
         />
       </div>
     </FeedActionsProvider>
