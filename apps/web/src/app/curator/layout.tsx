@@ -128,7 +128,7 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
 function CuratorBoot() {
   return (
     <div className="cur-boot" role="status" aria-label="Loading">
-      <span className="cur-boot-mark">amadi</span>
+      <img src="/images/logo_periwinkle.svg" alt="amadi" className="cur-boot-mark" />
       <span className="cur-boot-dots" aria-hidden>
         <span /><span /><span />
       </span>

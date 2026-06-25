@@ -1900,10 +1900,8 @@
   z-index: 9999;
 }
 .cur-boot-mark{
-  font-family: 'Instrument Serif', serif;
-  font-size: 40px;
-  letter-spacing: -0.02em;
-  color: #0d0b1e;
+  width: 56px;
+  height: auto;
   animation: cur-boot-breathe 1.8s ease-in-out infinite;
 }
 .cur-boot-dots{ display: inline-flex; gap: 6px; }
