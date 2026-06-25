@@ -570,7 +570,7 @@ function CuratorShell({
           </div>
 
           <div className="cur-sidebar-label">
-            <span>Your feeds</span>
+            <span>Your Topics</span>
             {topicFeeds.length > 0 && (
               <button
                 type="button"
