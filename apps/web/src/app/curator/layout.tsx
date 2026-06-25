@@ -19,7 +19,6 @@ import FeedbackModal from "@/components/FeedbackModal";
 import EditableFeedName from "@/components/EditableFeedName";
 import PublishFeedModal from "@/components/PublishFeedModal";
 import FeedSearch from "@/components/FeedSearch";
-import { type PipelineStage } from "@/components/PipelineLoader";
 import { authedFetch } from "@/lib/authed-fetch";
 import { useResizable } from "./useResizable";
 import {
@@ -192,14 +191,6 @@ function CuratorShell({
     }
   }
   const [activePostCount, setActivePostCount] = useState(0);
-  const [pipelineStage, setPipelineStage] = useState<PipelineStage>("idle");
-  const [pipelineCandidates, setPipelineCandidates] = useState<number | undefined>(undefined);
-  const [pipelineHits, setPipelineHits] = useState<number | undefined>(undefined);
-  const [pipelineImages, setPipelineImages] = useState<number | undefined>(undefined);
-  const [pipelineModel, setPipelineModel] = useState<string | undefined>(undefined);
-  const [pipelineThinkingEnabled, setPipelineThinkingEnabled] = useState<boolean | undefined>(undefined);
-  const [pipelineSeenFiltered, setPipelineSeenFiltered] = useState<number | undefined>(undefined);
-  const [branchOverlayName, setBranchOverlayName] = useState<string | null>(null);
   // Feed-first on mobile: the chat is a slide-up overlay ("chat" = open).
   // Drafting feeds auto-open it via the tab-reset logic below.
   const [mobileTab, setMobileTab] = useState<MobileTab>("feed");
@@ -539,22 +530,6 @@ function CuratorShell({
         openPublish: () => setShowPublish(true),
         openTune: () => openTuneRef.current?.(),
         registerOpenTune: (fn: () => void) => { openTuneRef.current = fn; },
-        pipelineStage,
-        setPipelineStage,
-        pipelineCandidates,
-        setPipelineCandidates,
-        pipelineHits,
-        setPipelineHits,
-        pipelineImages,
-        setPipelineImages,
-        pipelineModel,
-        setPipelineModel,
-        pipelineThinkingEnabled,
-        setPipelineThinkingEnabled,
-        pipelineSeenFiltered,
-        setPipelineSeenFiltered,
-        branchOverlayName,
-        setBranchOverlayName,
       }}
     >
       <div className="curator-shell">
@@ -779,9 +754,7 @@ function CuratorShell({
               </svg>
             </button>
             <div className="cur-topbar-left">
-              {branchOverlayName ? (
-                <h2>{branchOverlayName}</h2>
-              ) : activeFeed ? (
+              {activeFeed ? (
                 <h2>
                   {activeFeed.isHome ? (
                     "Home"

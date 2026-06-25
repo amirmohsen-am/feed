@@ -1485,14 +1485,19 @@
 .cur-post-item-other{
   transition: transform 0.28s cubic-bezier(0.3, 0.8, 0.3, 1), opacity 0.28s ease;
 }
-.cur-branch-dragging .cur-post-item-other{
+/* Direct-child scope (`>`) is load-bearing: a nested branch feed is itself a
+   .cur-feed-posts-inner whose posts are all .cur-post-item-other. Without `>`,
+   a parent feed's .cur-branching would cascade into the nested feed and shove
+   every branch post off-screen (opacity:0). Each feed recedes only its own
+   direct posts; the rule then works recursively at any depth. */
+.cur-branch-dragging > .cur-post-item-other{
   transform-origin: center top;
   transform: translateX(calc(var(--branch-progress, 0) * -160px))
              scale(calc(1 - var(--branch-progress, 0) * 0.12));
   opacity: calc(1 - var(--branch-progress, 0) * 0.7);
   transition: none; /* follow the finger 1:1 while dragging */
 }
-.cur-branching .cur-post-item-other{
+.cur-branching > .cur-post-item-other{
   transform: translateX(-150%) scale(0.85);
   opacity: 0;
   pointer-events: none;
@@ -1501,7 +1506,7 @@
 /* Returning from a branch (Back): the exact reverse of the pin. The other posts
    come back in from where they exited (off-screen left, scaled down) and settle,
    while the pinned card expands in place. */
-.cur-branch-returning .cur-post-item-other{
+.cur-branch-returning > .cur-post-item-other{
   animation: cur-post-return 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
 @keyframes cur-post-return{
@@ -1510,9 +1515,9 @@
 }
 @media (prefers-reduced-motion: reduce){
   .cur-post-item-other,
-  .cur-branch-dragging .cur-post-item-other,
-  .cur-branching .cur-post-item-other{ transition: none; }
-  .cur-branch-returning .cur-post-item-other{ animation: none; }
+  .cur-branch-dragging > .cur-post-item-other,
+  .cur-branching > .cur-post-item-other{ transition: none; }
+  .cur-branch-returning > .cur-post-item-other{ animation: none; }
 }
 
 /* Everything below the header is wrapped in .cur-post-foldable so the fold can
