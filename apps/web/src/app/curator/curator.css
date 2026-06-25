@@ -520,6 +520,13 @@
   .cur-workbench[data-right-pane="chat"] .ctrl-tower{ display: none; }
   .cur-workbench[data-right-pane="tune"] .cur-chat-pane{ display: none; }
 
+  /* Branch topics header: a bordered rectangle on desktop (square corners set
+     it apart from the rounded post cards), instead of the mobile full-width band. */
+  .cur-branch-header{
+    border: 1px solid var(--hair);
+    border-radius: 0;
+    margin: 8px 0;
+  }
 }
 
 /* ── SEGMENTED CHAT ↔ TUNE TOGGLE ───────────── */
@@ -1655,12 +1662,13 @@
   .cur-branch-back-pinned{ animation: none; }
 }
 
-/* Branch topics header — atop a branched feed. Two lanes split by kind
-   (deeper / adjacent), distinguished by color alone; each lane scrolls
-   horizontally and never wraps or truncates. Not sticky — scrolls away with
-   the feed. A lane with no topics is omitted by the component. */
+/* Branch topics header — atop a branched feed. A "Topics" heading over two
+   kind-split rows (deeper / adjacent), distinguished by color alone. Both rows
+   share ONE horizontal scroll. White, never sticky.
+   Mobile (base): a full-width band, bordered top + bottom.
+   Desktop (>=768px): a bordered rectangle, set apart from the rounded posts. */
 .cur-branch-header{
-  padding: 13px 0 14px;
+  padding: 12px 0 13px;
   border-top: 1px solid var(--hair);
   border-bottom: 1px solid var(--hair);
   background: #fff;
@@ -1676,33 +1684,43 @@
   to{ opacity:1; transform:translateY(0); }
 }
 
-/* Quiet section heading above the lanes. */
+/* Quiet section heading above the rows. */
 .cur-branch-header-label{
   font-family: var(--rf-mono);
   font-size: 9.5px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-3);
-  padding: 0 20px;
+  padding-left: 18px;
 }
 
-/* One scrolling lane per kind. The right-edge fade signals more topics
-   off-screen; once scrolled to the end the trailing padding slides under it
-   so the fade falls on empty space and reads as "no more". */
+/* Single scroll container for both rows. The track is sized to the longer row
+   (width:max-content), so one drag moves deeper + adjacent together and the
+   shorter row runs empty on the right. A right-edge fade hints at more; with
+   the track's matching trailing padding it falls on empty space at the end. */
+.cur-branch-scroll{
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent);
+}
+.cur-branch-scroll::-webkit-scrollbar{ display: none; }
+.cur-branch-track{
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: max-content;
+  min-width: 100%;
+  padding: 0 22px 0 18px;
+}
 .cur-branch-row{
   display: flex;
   flex-wrap: nowrap;
   gap: 6px;
-  overflow-x: auto;
-  padding: 1px 20px;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
-  mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
 }
-.cur-branch-row::-webkit-scrollbar{ display: none; }
 
-/* Full label on a single line; the lane scrolls to reach it (no truncation). */
+/* Full label on a single line; the row scrolls to reach it (no truncation). */
 .cur-branch-tag{
   flex-shrink: 0;
   white-space: nowrap;

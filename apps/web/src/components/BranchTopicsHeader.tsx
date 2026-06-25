@@ -20,15 +20,22 @@ export default function BranchTopicsHeader({
   return (
     <div className="cur-branch-header cur-branch-header-animate">
       <div className="cur-branch-header-label">Topics</div>
-      {rows.map((row) => (
-        <div key={row.kind} className={`cur-branch-row cur-branch-row-${row.kind}`}>
-          {row.items.map((o, i) => (
-            <span key={i} className="cur-branch-tag" title={o.subquery}>
-              {o.label}
-            </span>
+      {/* Both kind rows share ONE horizontal scroll container (the track is
+          sized to the longer row), so a single drag moves them together; the
+          shorter row simply runs empty on the right as you scroll. */}
+      <div className="cur-branch-scroll">
+        <div className="cur-branch-track">
+          {rows.map((row) => (
+            <div key={row.kind} className={`cur-branch-row cur-branch-row-${row.kind}`}>
+              {row.items.map((o, i) => (
+                <span key={i} className="cur-branch-tag" title={o.subquery}>
+                  {o.label}
+                </span>
+              ))}
+            </div>
           ))}
         </div>
-      ))}
+      </div>
     </div>
   );
 }
