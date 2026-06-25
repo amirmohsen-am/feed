@@ -96,8 +96,6 @@ function easeScrollTop(scroller: HTMLElement | Window, to: number, dur = 460) {
 // region collapses to a couple of lines whose text dissolves to transparent (a
 // mask, not a white overlay — no hard clip), and the avatar shrinks. Heights are
 // measured (not guessable in CSS), so the fold is driven imperatively here.
-const foldLerp = (a: number, b: number, p: number) => a + (b - a) * p;
-const fold01 = (v: number) => Math.max(0, Math.min(1, v));
 const FOLD_MIN = 48;      // collapsed body height (≈ 2 lines + the fade)
 const AVA_FULL = 40, AVA_MIN = 30;
 const FOLD_DUR = 440;     // ms — matches the recede/lift timing on commit & Back
@@ -186,7 +184,6 @@ function FeedViewImpl(
   const [sourceExpanded, setSourceExpanded] = useState(false);
   const foldElRef = useRef<{ foldable: HTMLElement; avatar: HTMLElement | null } | null>(null);
   const foldFullRef = useRef<number | null>(null);
-  const foldClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The source's viewport top, captured at Back (before it un-pins) so the scroll
   // can be anchored to keep it visually still across the other posts re-inserting.
   const backAnchorTopRef = useRef<number | null>(null);
@@ -423,32 +420,6 @@ function FeedViewImpl(
     return { foldable, avatar };
   }, []);
 
-  // Scrub the fold to the drag (t ∈ [0,1]); no transition, follows the finger. The
-  // body/avatar fold lags the ride (starts at t=0.4) so the early drag is just the
-  // card sliding right — the collapse reads as a consequence of committing.
-  const driveFold = useCallback((t: number) => {
-    const { foldable, avatar } = sourceFoldEls();
-    if (!foldable) return;
-    if (foldFullRef.current == null) {
-      const prev = foldable.style.maxHeight;
-      foldable.style.maxHeight = "none";
-      foldFullRef.current = foldable.scrollHeight;
-      foldable.style.maxHeight = prev;
-    }
-    const full = foldFullRef.current;
-    const p = fold01((t - 0.4) / 0.6);
-    foldable.style.transition = "none";
-    foldable.style.overflow = "hidden";
-    foldable.style.maxHeight = foldLerp(full, Math.min(FOLD_MIN, full), p) + "px";
-    foldable.style.webkitMaskImage = foldable.style.maskImage = foldMask(foldLerp(100, 52, p));
-    if (avatar) {
-      const a = foldLerp(AVA_FULL, AVA_MIN, p) + "px";
-      avatar.style.transition = "none";
-      avatar.style.width = a;
-      avatar.style.height = a;
-    }
-  }, [sourceFoldEls]);
-
   // Animate the source to its folded (collapsed=true) or full (collapsed=false)
   // state — used on commit, on the expand/collapse chevron, and on Back. Re-measures
   // the natural height each time (images may have loaded since the drag).
@@ -492,7 +463,6 @@ function FeedViewImpl(
     }
     foldElRef.current = null;
     foldFullRef.current = null;
-    foldClearTimerRef.current = null;
   }, []);
 
   const resetBranch = useCallback(() => {
@@ -591,13 +561,15 @@ function FeedViewImpl(
     if (branchCommittedRef.current) return;
     const el = feedInnerRef.current;
     if (!el) return;
+    // The source stays a fixed size for the whole drag — it does not fold and its
+    // banner does not grow (both would reflow the post on every pointer move and make
+    // the swipe shake on a real phone). --branch-progress only drives the OTHER posts
+    // receding, all via composited transforms. The fold + banner play once, on commit.
     if (t <= 0) {
       el.style.removeProperty("--branch-progress");
       if (branchDraggingRef.current) {
         branchDraggingRef.current = false;
         setBranchDragging(false);
-        settleFold(false);                                  // ease the source back open
-        foldClearTimerRef.current = setTimeout(clearFoldInline, FOLD_DUR + 40); // then drop the inline styles
         setPendingBranch(null);
       }
       return;
@@ -605,13 +577,9 @@ function FeedViewImpl(
     if (!branchDraggingRef.current) {
       branchDraggingRef.current = true;
       setBranchDragging(true);
-      // A fresh drag pre-empts a pending "ease back open then clear" from a just-
-      // cancelled drag, so the cleanup can't strip styles mid-fold.
-      if (foldClearTimerRef.current) { clearTimeout(foldClearTimerRef.current); foldClearTimerRef.current = null; }
     }
     el.style.setProperty("--branch-progress", String(t));
-    driveFold(t);
-  }, [driveFold, settleFold, clearFoldInline]);
+  }, []);
 
   // When topics arrive, fill the pending panel + kick off deferred creation.
   useEffect(() => {
@@ -878,7 +846,9 @@ function FeedViewImpl(
             // animate OUT (shrink), the reverse of the commit grow.
             const branchHeaderLeaving = isReturningSource;
             const showBackButton = isCommittedSource || isReturningSource;
-            const showBranchBanner = isCommittedSource || pendingBranch?.post?.uri === post.uri || isReturningSource;
+            // Banner appears on commit, not during the drag — growing it per-frame
+            // while swiping reflows the source and makes the swipe shake.
+            const showBranchBanner = isCommittedSource || isReturningSource;
             return (
               <Fragment key={post.uri}>
                 {showBackButton && (

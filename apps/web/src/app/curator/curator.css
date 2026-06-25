@@ -914,17 +914,15 @@
   transition: max-height 0.3s cubic-bezier(0.3,0.8,0.3,1), opacity 0.3s ease, padding 0.3s;
 }
 .cur-post-branch-banner svg{ color: var(--aurora-deep); flex-shrink: 0; }
-/* While dragging right, the source's banner grows with the gesture — but it
-   reaches FULL height at the commit threshold (--branch-progress = 0.5, the point
-   past which a release branches; the 2 below is 1 / 0.5). So by the time you
-   release it is already full: the post lands at its final position in one motion
-   instead of lifting to the top and then having the banner finish growing and
-   shove the content down. */
-.cur-branch-dragging .cur-post-item-source .cur-post-branch-banner{
-  max-height: calc(min(var(--branch-progress, 0) * 2, 1) * 3em);
-  opacity: min(var(--branch-progress, 0) * 2, 1);
-  padding-bottom: calc(min(var(--branch-progress, 0) * 2, 1) * 9px);
-  transition: none;
+/* The banner is not shown while dragging (growing it per-frame would reflow the
+   source and make the swipe shake). It mounts when the branch commits and grows in
+   once, as part of the commit — a single animation, not a per-frame scrub. */
+.cur-branching > .cur-post-item-source .cur-post-branch-banner{
+  animation: cur-branch-banner-grow 0.34s cubic-bezier(0.3,0.8,0.3,1) both;
+}
+@keyframes cur-branch-banner-grow{
+  from{ max-height: 0; opacity: 0; padding-bottom: 0; }
+  to{ max-height: 3em; opacity: 1; padding-bottom: 9px; }
 }
 /* Back (return): the banner shrinks back out — reverse of the grow. */
 .cur-post-branch-banner-leaving{
