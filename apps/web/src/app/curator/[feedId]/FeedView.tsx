@@ -107,6 +107,10 @@ function FeedViewImpl(
     branchFeedName?: string;
   } | null>(null);
   const [committedBranchUri, setCommittedBranchUri] = useState<string | null>(null);
+  // The pinned source post opens collapsed (A1 fade); user expands/collapses it.
+  const [pinnedExpanded, setPinnedExpanded] = useState(false);
+  // Stable so memoized PostCards keep skipping re-renders during a swipe.
+  const togglePinned = useCallback(() => setPinnedExpanded((v) => !v), []);
   const [othersCleared, setOthersCleared] = useState(false);
   const [branchDragging, setBranchDragging] = useState(false);
   const branchDraggingRef = useRef(false);
@@ -114,6 +118,9 @@ function FeedViewImpl(
   const [returningSourceUri, setReturningSourceUri] = useState<string | null>(null);
   const branchCommittedRef = useRef(false);
   const feedInnerRef = useRef<HTMLDivElement | null>(null);
+  // Scroll position captured at commit so Back can animate the source back to
+  // where it was when branched from mid-page.
+  const savedScrollRef = useRef<{ pane: number; win: number }>({ pane: 0, win: 0 });
 
   const postsRef = useRef<Post[]>([]);
   useEffect(() => {
@@ -290,13 +297,15 @@ function FeedViewImpl(
     branchDraggingRef.current = false;
     setBranchDragging(false);
     feedInnerRef.current?.style.removeProperty("--branch-progress");
+    // Remember where we were so Back can animate the source back to its spot.
+    const pane = document.querySelector(".cur-feed-posts") as HTMLElement | null;
+    savedScrollRef.current = { pane: pane?.scrollTop ?? 0, win: window.scrollY };
     setCommittedBranchUri(post.uri);
+    setPinnedExpanded(false);
     setOthersCleared(false);
-    setTimeout(() => {
-      setOthersCleared(true);
-      document.querySelector(".cur-feed-posts")?.scrollTo({ top: 0, behavior: "smooth" });
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }, 480);
+    // Drop the receded posts once they've slid out (scrolled off-screen above);
+    // bringing the source to the top is handled by the committedBranchUri effect.
+    setTimeout(() => { setOthersCleared(true); }, 480);
     const options = swipeRightTopics.get(post.uri);
     if (Array.isArray(options) && options.length > 0) {
       void createBranchForOverlay(post, options);
@@ -311,6 +320,7 @@ function FeedViewImpl(
     branchDraggingRef.current = false;
     setBranchDragging(false);
     setCommittedBranchUri(null);
+    setPinnedExpanded(false);
     setOthersCleared(false);
     setPendingBranch(null);
     if (isRoot) setActivePostCount(postCount);
@@ -319,6 +329,30 @@ function FeedViewImpl(
     setBranchReturning(true);
     setTimeout(() => { setBranchReturning(false); setReturningSourceUri(null); }, 520);
   }
+
+  // On commit, smoothly bring the pinned source (and its Back button) to the
+  // top of the pane; the receding posts scroll out of view above and are then
+  // removed. Works whether the branched post was at the top or mid-page.
+  useEffect(() => {
+    if (!committedBranchUri) return;
+    const root = feedInnerRef.current;
+    const target =
+      root?.querySelector(".cur-branch-back-pinned") ||
+      root?.querySelector(".cur-post-item-source");
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [committedBranchUri]);
+
+  // On Back, animate the scroll position back to where the source was.
+  useEffect(() => {
+    if (!branchReturning) return;
+    const saved = savedScrollRef.current;
+    const pane = document.querySelector(".cur-feed-posts") as HTMLElement | null;
+    if (pane && pane.scrollHeight > pane.clientHeight) {
+      pane.scrollTo({ top: saved.pane, behavior: "smooth" });
+    } else {
+      window.scrollTo({ top: saved.win, behavior: "smooth" });
+    }
+  }, [branchReturning]);
 
   const handleRightProgress = useCallback((t: number) => {
     if (branchCommittedRef.current) return;
@@ -582,6 +616,19 @@ function FeedViewImpl(
             const isCommittedSource = committedBranchUri === post.uri;
             return (
               <Fragment key={post.uri}>
+                {isCommittedSource && (
+                  <button
+                    type="button"
+                    className="cur-branch-back cur-branch-back-pinned"
+                    onClick={resetBranch}
+                    aria-label="Back to feed"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <polyline points="15 18 9 12 15 6" />
+                    </svg>
+                    Back
+                  </button>
+                )}
                 <div className={`cur-post-item${isBranchSource ? " cur-post-item-source" : " cur-post-item-other"}`}>
                   <SwipeableCard
                     disabled={isCommittedSource}
@@ -590,8 +637,11 @@ function FeedViewImpl(
                     onFirstRightDrag={() => {
                       const prefetched = swipeRightTopics.get(post.uri);
                       const options = Array.isArray(prefetched) && prefetched.length > 0 ? prefetched : null;
+                      // pendingBranch must be set now so this card is marked the
+                      // source (excluded from the recede). The topic fetch is
+                      // visual-irrelevant, so defer it off the first drag frame.
                       setPendingBranch({ post, options });
-                      fetchSwipeRightTopics(post);
+                      requestAnimationFrame(() => fetchSwipeRightTopics(post));
                     }}
                     onRightProgress={handleRightProgress}
                     followupContent={
@@ -604,31 +654,30 @@ function FeedViewImpl(
                       />
                     }
                   >
-                    <PostCard post={post} />
+                    <PostCard
+                      post={post}
+                      pinned={isCommittedSource}
+                      collapsed={isCommittedSource && !pinnedExpanded}
+                      onToggleCollapse={togglePinned}
+                    />
                   </SwipeableCard>
                 </div>
                 {isCommittedSource && (
                   <div className="cur-branch-inline-host">
                     {pendingBranch?.branchFeedId ? (
                       // Branch feed is created — render it through the same
-                      // FeedView so it has full swipe/branch parity.
+                      // FeedView so it has full swipe/branch parity. (Back lives
+                      // above the pinned source post, not inside the branch.)
                       <FeedView
                         feedId={pendingBranch.branchFeedId}
                         headerContent={<BranchTopicsHeader options={pendingBranch.options ?? []} />}
                         excludeUri={committedBranchUri ?? undefined}
-                        onBack={resetBranch}
                       />
                     ) : (
-                      // Branch feed still being created — show back + topics
-                      // (or a finding-topics shimmer) until its id arrives, then
-                      // the FeedView above takes over with the real pipeline loader.
+                      // Branch feed still being created — show topics (or a
+                      // finding-topics shimmer) until its id arrives, then the
+                      // FeedView above takes over with the real pipeline loader.
                       <div className="cur-feed-posts-inner">
-                        <button type="button" className="cur-branch-back" onClick={resetBranch} aria-label="Back">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                            <polyline points="15 18 9 12 15 6" />
-                          </svg>
-                          Back
-                        </button>
                         {pendingBranch?.options ? (
                           <BranchTopicsHeader options={pendingBranch.options} />
                         ) : (

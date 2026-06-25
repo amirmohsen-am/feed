@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { useCurator } from "@/app/curator/curatorContext";
 import { useFeedActions } from "@/app/curator/feedActions";
 import type { Post } from "@/app/curator/feedTypes";
@@ -85,8 +86,20 @@ export function EngageFooter({ post, bskyUrl }: { post: Post; bskyUrl: string | 
 
 // The card-view post UI, shared by the main feed and every nested branch feed
 // so a branch renders identical cards (avatar, embeds, images, engagement) —
-// not a stripped-down mockup.
-export default function PostCard({ post }: { post: Post }) {
+// not a stripped-down mockup. Memoized so a feed-level re-render (e.g. starting
+// a swipe) doesn't re-render every card's subtree — keeps the gesture smooth.
+function PostCard({
+  post,
+  pinned = false,
+  collapsed = false,
+  onToggleCollapse,
+}: {
+  post: Post;
+  // Pinned source post (branched from): accent ring + manual fade-collapse.
+  pinned?: boolean;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+}) {
   const { showDebug } = useCurator();
   const { quotedPosts, aiLabels, openLightbox } = useFeedActions();
 
@@ -113,7 +126,7 @@ export default function PostCard({ post }: { post: Post }) {
   })();
 
   return (
-    <article className="cur-post-card">
+    <article className={`cur-post-card${pinned ? " cur-post-card-pinned" : ""}${pinned && collapsed ? " cur-post-collapsed" : ""}`}>
       {post.is_reply && (
         <div className="cur-post-reply-banner">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -318,6 +331,18 @@ export default function PostCard({ post }: { post: Post }) {
 
         <EngageFooter post={post} bskyUrl={bskyUrl} />
       </div>
+      {pinned && (
+        <button
+          type="button"
+          className="cur-post-expand"
+          onClick={onToggleCollapse}
+          aria-expanded={!collapsed}
+        >
+          {collapsed ? "Show more ▾" : "Show less ▴"}
+        </button>
+      )}
     </article>
   );
 }
+
+export default memo(PostCard);

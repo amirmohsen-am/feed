@@ -453,13 +453,11 @@ function CuratorShell({
             ) : (
               <div className="fi-name">{feed.name}</div>
             )}
-            <div className="fi-sub">
-              {!isComplete
-                ? "drafting · resume chat"
-                : isActive
-                ? `${activePostCount} posts · viewing`
-                : `created ${new Date(feed.createdAt).toLocaleDateString()}`}
-            </div>
+            {(!isComplete || isActive) && (
+              <div className="fi-sub">
+                {!isComplete ? "drafting · resume chat" : `${activePostCount} posts · viewing`}
+              </div>
+            )}
           </div>
           {editingTopics && !isRenaming && !isConfirming && (
             <button

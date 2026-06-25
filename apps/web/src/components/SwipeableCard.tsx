@@ -183,14 +183,17 @@ export default function SwipeableCard({
     decidedRef.current = true;
     branchCommittedRef.current = true;
     swallowNextClick();
-    // Keep the card (folded) and settle it back to x=0 with a springy bounce.
-    setFoldTransition(true);
-    applyFold(1);
+    // Hand the collapsed presentation to the parent: the pinned source renders
+    // in its A1 (fade + "Show more") state, driven by React/CSS. Clear our
+    // imperative drag-fold so it doesn't fight that, settle the card back to
+    // x=0, and unlock content so the Show more toggle + links are clickable.
+    resetFold(false);
+    setLocked(false);
     const action = branchActionRef.current;
     if (action) { action.style.transition = "opacity 0.2s"; action.style.opacity = "0"; }
     animate(xv, 0, { type: "spring", stiffness: 240, damping: 20 });
     onSwipe("approve");
-  }, [xv, onSwipe, swallowNextClick, applyFold, setFoldTransition]);
+  }, [xv, onSwipe, swallowNextClick, resetFold]);
 
   const commitReject = useCallback(() => {
     if (decidedRef.current) return;
@@ -217,6 +220,12 @@ export default function SwipeableCard({
     if (disabled || decidedRef.current) return;
     draggingRef.current = true;
     engagedRef.current = false;
+    // Re-arm the first-drag latches each gesture. Otherwise a cancelled right
+    // drag leaves firstRightFired=true, so a second right drag never re-fires
+    // onFirstRightDrag → the card isn't re-marked the branch source → it recedes
+    // (slides left + fades) along with the others. (Fetches are idempotent.)
+    firstLeftFired.current = false;
+    firstRightFired.current = false;
     startXRef.current = e.clientX;
     startYRef.current = e.clientY;
     dxRef.current = 0;
@@ -288,7 +297,10 @@ export default function SwipeableCard({
       commitReject();
       return;
     }
-    // Cancel — un-fold and settle back to rest.
+    // Cancel — un-fold and settle back to rest. Also tell the parent the
+    // rightward progress is back to 0 so the *other* posts (which receded via
+    // --branch-progress) animate back in; without this they stay stuck mid-recede.
+    onRightProgress?.(0);
     if (foldMeasured.current) resetFold(true);
     animate(xv, 0, { type: "spring", stiffness: 340, damping: 32 });
     if (wrapperRef.current) { wrapperRef.current.style.position = ""; wrapperRef.current.style.zIndex = ""; }
