@@ -309,7 +309,7 @@ function CuratorShell({
     setTabResetKey(activeFeedId);
     const f = feeds.find((x) => x.id === activeFeedId);
     if (f) {
-      setMobileTab(feedIsComplete(f) ? "feed" : "chat");
+      setMobileTab("feed");
       setOptionsUnread(false);
     }
   }

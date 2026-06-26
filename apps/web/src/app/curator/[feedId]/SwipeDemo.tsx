@@ -235,15 +235,6 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, shouldRun]);
 
-  // Compute tooltip position below the first card
-  const [tipTop, setTipTop] = useState(0);
-  useEffect(() => {
-    if (!tipVisible) return;
-    const { wrap } = getCardEls();
-    if (!wrap) return;
-    const rect = wrap.getBoundingClientRect();
-    setTipTop(rect.bottom + 8);
-  }, [tipVisible]);
 
   function handleGotIt() {
     setShowButton(false);
@@ -259,7 +250,7 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
   return (
     <div
       className={`swipe-demo-tip${tipVisible ? " visible" : ""}`}
-      style={{ top: tipTop }}
+      style={{ top: 70 }}
     >
       <span>{tipText}</span>
       {showButton && (
