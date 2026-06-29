@@ -856,12 +856,3 @@ function uniqueAuthorDids(hits: VectorHit[]): string[] {
   for (const h of hits) seen.add(h.did);
   return Array.from(seen);
 }
-
-/**
- * Convert an AT-Protocol post URI to its public bsky.app URL.
- */
-export function blueskyUrl(uri: string): string | null {
-  const m = uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
-  if (!m) return null;
-  return `https://bsky.app/profile/${m[1]}/post/${m[2]}`;
-}

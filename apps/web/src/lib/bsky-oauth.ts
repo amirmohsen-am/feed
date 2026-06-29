@@ -77,12 +77,6 @@ export async function getOAuthStateContext(stateKey: string): Promise<{
   };
 }
 
-/** @deprecated Use getOAuthStateContext */
-export async function getOAuthStateUserId(stateKey: string): Promise<string | null> {
-  const ctx = await getOAuthStateContext(stateKey);
-  return ctx.userId;
-}
-
 function pgSessionStore(): NodeSavedSessionStore {
   return {
     async set(sub: string, val: NodeSavedSession) {

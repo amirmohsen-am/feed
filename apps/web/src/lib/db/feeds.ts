@@ -254,13 +254,6 @@ export async function getPublishedFeedsWithPublisher(): Promise<PublishedFeedEnt
   }));
 }
 
-export async function getActiveFeeds(): Promise<DbFeed[]> {
-  const res = await query(
-    "SELECT * FROM feeds WHERE is_active = true ORDER BY id"
-  );
-  return res.rows.map(rowToFeed);
-}
-
 export async function updateFeed(
   id: number,
   updates: {

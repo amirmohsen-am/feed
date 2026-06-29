@@ -57,8 +57,6 @@ export const DEFAULT_CANDIDATE_BUDGET = 200;
 export const MIN_CANDIDATE_BUDGET = 50;
 export const MAX_CANDIDATE_BUDGET = 500;
 
-export const DEFAULT_SUBQUERIES: string[] = [];
-
 // --- Ranking bias (deterministic, bake-time blend after rerank) ---
 // final = w_q·(rerank/100) + w_e·engagement + w_r·recency, with
 // w_q = 1 - w_e - w_r (clamped ≥ 0). Weights are per-feed and surfaced in the
