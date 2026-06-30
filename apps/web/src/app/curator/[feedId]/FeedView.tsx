@@ -24,6 +24,8 @@ import type { MechanicalFilters } from "@/lib/types";
 import { type BranchOption } from "@/lib/branch";
 import { useCurator } from "../curatorContext";
 import { useFeedActions } from "../feedActions";
+import { useFeedFocus } from "../feedFocus";
+import { useSeenTracker } from "./useSeenTracker";
 import type { Post } from "../feedTypes";
 
 // Config echoed back by the feed-preview stream's "done" event — reported up so
@@ -38,7 +40,7 @@ export interface StreamedConfig {
 }
 
 export interface FeedViewHandle {
-  reload: (force?: boolean) => void;
+  reload: (force?: boolean) => Promise<void> | void;
   setPosts: (posts: Post[]) => void;
 }
 
@@ -137,12 +139,18 @@ function FeedViewImpl(
     viewMode,
     showDebug,
     hideUnavailable,
+    hideSeen,
     setActivePostCount,
     setUnavailableCount,
     openPublish,
     reloadFeeds,
   } = useCurator();
   const { trackPosts } = useFeedActions();
+  const { registerLeaf } = useFeedFocus();
+
+  // Client-side "seen" impression tracking, scoped to THIS feed's id. Recursion
+  // gives the root feed and every nested branch their own independent seen set.
+  const seenTracker = useSeenTracker(feedId, hideSeen);
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [postCount, setPostCount] = useState(0);
@@ -209,6 +217,11 @@ function FeedViewImpl(
 
   // ── Streaming post loader ───────────────────────────────────────
   const loadPosts = useCallback(async (force?: boolean) => {
+    // Record any pending on-screen impressions before we re-query, so the
+    // reload's server-side seen filter accounts for what was just viewed, then
+    // start a fresh impression generation for the incoming results.
+    await seenTracker.flushNow();
+    seenTracker.reset();
     setPostsLoading(true);
     // A non-forced load means we're entering a feed fresh (feed switch, branch
     // mount, or a chat-driven config change) rather than refreshing the current
@@ -316,13 +329,21 @@ function FeedViewImpl(
       setPostsLoading(false);
       onLoaded?.();
     }
-  }, [feedId, isRoot, setActivePostCount, onConfigLoaded, onLoaded]);
+  }, [feedId, isRoot, setActivePostCount, onConfigLoaded, onLoaded, seenTracker]);
 
-  // Expose imperative control to the workbench (root only uses it).
-  useImperativeHandle(ref, () => ({
-    reload: (force?: boolean) => { void loadPosts(force); },
-    setPosts: (p: Post[]) => { setPosts(p); setPostsLoading(false); },
-  }), [loadPosts]);
+  // A stable handle object (identity fixed for the mount; method bodies refreshed
+  // each render so they always close over the latest loadPosts). Exposed to the
+  // workbench via ref AND registered in the leaf-feed stack below.
+  const selfHandle = useRef<FeedViewHandle>({ reload: () => {}, setPosts: () => {} });
+  selfHandle.current.reload = (force?: boolean) => loadPosts(force);
+  selfHandle.current.setPosts = (p: Post[]) => { setPosts(p); setPostsLoading(false); };
+  useImperativeHandle(ref, () => selfHandle.current, []);
+
+  // Register in the workbench's leaf-feed stack so a user-initiated refresh
+  // (mobile pull-to-refresh) targets whichever feed is currently in view — the
+  // deepest open branch, not always the root. A branch only mounts once its
+  // parent commits, so mount order == nesting depth and the stack top is the leaf.
+  useEffect(() => registerLeaf(selfHandle.current), [registerLeaf]);
 
   // Nested branch feeds load themselves on mount; the root is driven by the
   // workbench (which sequences chat load / branch-init / snapshot restore).
@@ -726,7 +747,7 @@ function FeedViewImpl(
 
       {headerContent}
 
-      {(pipelineStage !== "idle" || posts.length > 0) && (
+      {(pipelineStage !== "idle" || (posts.length > 0 && !committedBranchUri)) && (
         <div className="cur-feed-pl-row">
           {pipelineStage !== "idle" && (
             <div className="cur-feed-pl">
@@ -742,7 +763,9 @@ function FeedViewImpl(
               />
             </div>
           )}
-          {posts.length > 0 && (
+          {/* Hidden while this feed has an open inline branch — the branch in view
+              shows its own Refresh, so the parent's would refresh the wrong feed. */}
+          {posts.length > 0 && !committedBranchUri && (
             <button
               type="button"
               className={`cur-feed-refresh${postsLoading ? " busy" : ""}`}
@@ -784,7 +807,7 @@ function FeedViewImpl(
           if (post.uri === excludeUri) return null;
           if (hideUnavailable && unavailableUris.has(post.uri)) return null;
           return (
-            <div key={post.uri} className="cur-post-item cur-post-item-embed">
+            <div key={post.uri} ref={seenTracker.register(post.uri)} className="cur-post-item cur-post-item-embed">
               <div className="cur-post-embed-wrap" data-bsky-uri={post.uri}>
                 <div className="cur-post-embed-frame">
                   {post.is_reply && (
@@ -865,7 +888,7 @@ function FeedViewImpl(
                     Back
                   </button>
                 )}
-                <div className={`cur-post-item${isBranchSource ? " cur-post-item-source" : " cur-post-item-other"}`}>
+                <div ref={seenTracker.register(post.uri)} className={`cur-post-item${isBranchSource ? " cur-post-item-source" : " cur-post-item-other"}`}>
                   <SwipeableCard
                     disabled={isCommittedSource}
                     onSwipe={(v) => handleCardSwipe(post, v)}

@@ -20,6 +20,7 @@ import type { BranchOption } from "@/lib/branch";
 import { useResizable } from "../useResizable";
 import { useCurator } from "../curatorContext";
 import { FeedActionsProvider } from "../feedActions";
+import { FeedFocusProvider, type FeedFocusValue } from "../feedFocus";
 import type { Post, ChatSourcePost } from "../feedTypes";
 import { BlueskyEmbed, bskyUrlFromUri } from "@/components/postCardUtils";
 import FeedView, { type FeedViewHandle, type StreamedConfig } from "./FeedView";
@@ -148,6 +149,26 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const rootFeedRef = useRef<FeedViewHandle | null>(null);
   // Mirror of the root feed's posts, kept for the navigation snapshot.
   const snapshotPostsRef = useRef<Post[]>([]);
+
+  // ── Leaf-feed focus stack ──────────────────────────────────────────────
+  // Every FeedView (root + each inline nested branch) registers its handle here.
+  // Mount order == nesting depth (a branch only mounts once its parent commits),
+  // so the stack top is always the feed currently in view. User-initiated refresh
+  // (mobile pull-to-refresh) targets that leaf rather than always hitting root.
+  const leafStackRef = useRef<FeedViewHandle[]>([]);
+  const registerLeaf = useCallback((handle: FeedViewHandle) => {
+    leafStackRef.current.push(handle);
+    return () => {
+      const i = leafStackRef.current.lastIndexOf(handle);
+      if (i !== -1) leafStackRef.current.splice(i, 1);
+    };
+  }, []);
+  const refreshLeaf = useCallback((force?: boolean): Promise<void> => {
+    const stack = leafStackRef.current;
+    const target = stack[stack.length - 1] ?? rootFeedRef.current;
+    return Promise.resolve(target?.reload(force));
+  }, []);
+  const feedFocusValue = useRef<FeedFocusValue>({ registerLeaf }).current;
 
   // Consume the ?prompt= seed once: focus the textarea + drop it from the URL.
   const promptConsumedRef = useRef(false);
@@ -352,26 +373,30 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   const handlePostsChange = useCallback((p: Post[]) => { snapshotPostsRef.current = p; }, []);
 
-  // Fires whenever the root feed settles a load: clear the fade, and if a
-  // pull-to-refresh is pending, spring the pane + spinner back.
+  // Spring the pull-to-refresh pane + spinner back to rest. Called when the
+  // refreshed leaf feed settles its reload (see the PTR gesture handler), not
+  // tied to the root — pull-to-refresh can target an open branch.
+  const springBackPtr = useCallback(() => {
+    if (!ptrRefreshingRef.current) return;
+    ptrRefreshingRef.current = false;
+    setPtrRefreshing(false);
+    const pane = feedPaneRef.current;
+    const spin = ptrSpinnerRef.current;
+    if (pane) {
+      pane.style.transition =
+        "transform 0.5s cubic-bezier(0.2, 1.4, 0.4, 1), filter 0.42s cubic-bezier(0.65, 0, 0.35, 1)";
+      pane.style.transform = "";
+    }
+    if (spin) {
+      spin.classList.remove("spinning");
+      spin.style.opacity = "0";
+      spin.style.transform = "translate(-50%, 0) scale(0.6)";
+    }
+  }, []);
+
+  // Fires whenever the root feed settles a load: clear the chat-driven fade.
   const handleRootLoaded = useCallback(() => {
     setFeedRefreshing(false);
-    if (ptrRefreshingRef.current) {
-      ptrRefreshingRef.current = false;
-      setPtrRefreshing(false);
-      const pane = feedPaneRef.current;
-      const spin = ptrSpinnerRef.current;
-      if (pane) {
-        pane.style.transition =
-          "transform 0.5s cubic-bezier(0.2, 1.4, 0.4, 1), filter 0.42s cubic-bezier(0.65, 0, 0.35, 1)";
-        pane.style.transform = "";
-      }
-      if (spin) {
-        spin.classList.remove("spinning");
-        spin.style.opacity = "0";
-        spin.style.transform = "translate(-50%, 0) scale(0.6)";
-      }
-    }
   }, []);
 
   // Swipe-left tune from the root feed: stamp the post into the swipe cache
@@ -493,7 +518,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         setPtrRefreshing(true);
         paint(HOLD, true);
         spin.classList.add("spinning");
-        rootFeedRef.current?.reload(true);
+        // Refresh whichever feed is in view (deepest open branch, else root) and
+        // spring back when ITS reload settles — not the root's onLoaded.
+        void refreshLeaf(true).finally(springBackPtr);
       } else {
         paint(0, true);
       }
@@ -512,7 +539,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       pane.style.transform = "";
       pane.style.transition = "";
     };
-  }, [feedId]);
+  }, [feedId, refreshLeaf, springBackPtr]);
 
   async function send(text: string) {
     if (!text.trim() || loading) return;
@@ -869,18 +896,20 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
             loader, and the inline nested branch. Workbench drives the initial load
             and reads config/posts/loading back via the callbacks below. */}
         <div className="cur-feed-posts" ref={feedPaneRef} style={{ position: "relative" }}>
-          <FeedView
-            ref={rootFeedRef}
-            feedId={feedId}
-            isRoot
-            refreshing={feedRefreshing}
-            headerContent={branchHeaderOptions ? <BranchTopicsHeader options={branchHeaderOptions} /> : undefined}
-            onBack={rootOnBack}
-            onConfigLoaded={handleConfigLoaded}
-            onPostsChange={handlePostsChange}
-            onTune={handleRootTune}
-            onLoaded={handleRootLoaded}
-          />
+          <FeedFocusProvider value={feedFocusValue}>
+            <FeedView
+              ref={rootFeedRef}
+              feedId={feedId}
+              isRoot
+              refreshing={feedRefreshing}
+              headerContent={branchHeaderOptions ? <BranchTopicsHeader options={branchHeaderOptions} /> : undefined}
+              onBack={rootOnBack}
+              onConfigLoaded={handleConfigLoaded}
+              onPostsChange={handlePostsChange}
+              onTune={handleRootTune}
+              onLoaded={handleRootLoaded}
+            />
+          </FeedFocusProvider>
         </div>{/* /.cur-feed-posts */}
 
           {/* ════ THE CAPSULE — floating, input-only curator (desktop + mobile) ════ */}
