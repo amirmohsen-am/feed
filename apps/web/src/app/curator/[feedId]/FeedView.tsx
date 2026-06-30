@@ -182,6 +182,13 @@ function FeedViewImpl(
   // chevron. The fold itself lives in inline styles on the source card's foldable
   // region (measured heights + mask), tracked here so cleanup can find them.
   const [sourceExpanded, setSourceExpanded] = useState(false);
+  // ── Loading → posts reveal choreography ("Settle") ──────────────
+  // Hold the skeleton one beat so it can animate OUT (scale + fade) before the
+  // posts spring IN. prevShowSkelRef tracks the skeleton being on screen so we
+  // only choreograph the skeleton→posts handoff, not every posts change.
+  const prevShowSkelRef = useRef(false);
+  const [skelExiting, setSkelExiting] = useState(false);
+  const [postsEntering, setPostsEntering] = useState(false);
   const foldElRef = useRef<{ foldable: HTMLElement; avatar: HTMLElement | null } | null>(null);
   const foldFullRef = useRef<number | null>(null);
   // The source's viewport top, captured at Back (before it un-pins) so the scroll
@@ -206,6 +213,27 @@ function FeedViewImpl(
 
   // Register posts for shared quote + AI-label hydration.
   useEffect(() => { trackPosts(posts); }, [posts, trackPosts]);
+
+  // Drive the skeleton-out → posts-in handoff. Sequential (skeleton fully exits
+  // before posts mount) so there's no absolute-overlay alignment to maintain
+  // against the variable header height. postsEntering is a transient gate: it
+  // adds the entrance animation only for its duration, so the one-shot scale
+  // transform can't linger on .cur-post-item and fight the branch-commit
+  // transforms later. Skipped under reduced-motion (posts just appear).
+  useEffect(() => {
+    const showSkel = posts.length === 0 && postsLoading;
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prevShowSkelRef.current && !showSkel && posts.length > 0 && !reduce) {
+      setSkelExiting(true);
+      const toEnter = setTimeout(() => { setSkelExiting(false); setPostsEntering(true); }, 300);
+      const toRest = setTimeout(() => setPostsEntering(false), 300 + 850);
+      prevShowSkelRef.current = showSkel;
+      return () => { clearTimeout(toEnter); clearTimeout(toRest); };
+    }
+    prevShowSkelRef.current = showSkel;
+  }, [posts.length, postsLoading]);
 
   // ── Streaming post loader ───────────────────────────────────────
   const loadPosts = useCallback(async (force?: boolean) => {
@@ -710,10 +738,12 @@ function FeedViewImpl(
     return () => ac.abort();
   }, [viewMode, posts]);
 
+  const showSkeleton = posts.length === 0 && postsLoading;
+
   return (
     <div
       ref={feedInnerRef}
-      className={`cur-feed-posts-inner${refreshing ? " refreshing" : ""}${branchDragging ? " cur-branch-dragging" : ""}${committedBranchUri ? " cur-branching" : ""}${branchReturning ? " cur-branch-returning" : ""}`}
+      className={`cur-feed-posts-inner${refreshing ? " refreshing" : ""}${branchDragging ? " cur-branch-dragging" : ""}${committedBranchUri ? " cur-branching" : ""}${branchReturning ? " cur-branch-returning" : ""}${postsEntering ? " cur-feed-entering" : ""}`}
     >
       {onBack && (
         <button type="button" className="cur-branch-back" onClick={onBack} aria-label="Back">
@@ -761,17 +791,17 @@ function FeedViewImpl(
         </div>
       )}
 
-      {posts.length === 0 ? (
-        postsLoading ? (
-          <FeedSkeleton />
-        ) : (
-          <div className="cur-empty">
-            <p>No posts yet.</p>
-            <p className="sub">Try Refresh, or refine the subqueries in chat or the Tune panel.</p>
-          </div>
-        )
+      {showSkeleton ? (
+        <FeedSkeleton />
+      ) : skelExiting ? (
+        <FeedSkeleton exiting />
+      ) : posts.length === 0 ? (
+        <div className="cur-empty">
+          <p>No posts yet.</p>
+          <p className="sub">Try Refresh, or refine the subqueries in chat or the Tune panel.</p>
+        </div>
       ) : viewMode === "embed" ? (
-        posts.map((post) => {
+        posts.map((post, idx) => {
           const bskyUrl = (() => {
             const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
             return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
@@ -784,7 +814,7 @@ function FeedViewImpl(
           if (post.uri === excludeUri) return null;
           if (hideUnavailable && unavailableUris.has(post.uri)) return null;
           return (
-            <div key={post.uri} className="cur-post-item cur-post-item-embed">
+            <div key={post.uri} className="cur-post-item cur-post-item-embed" style={{ animationDelay: `${Math.min(idx, 6) * 0.05}s` }}>
               <div className="cur-post-embed-wrap" data-bsky-uri={post.uri}>
                 <div className="cur-post-embed-frame">
                   {post.is_reply && (
@@ -837,7 +867,7 @@ function FeedViewImpl(
           .filter((post) => post.uri !== excludeUri)
           .filter((post) => !swipedUris.has(post.uri))
           .filter((post) => !othersCleared || post.uri === committedBranchUri)
-          .map((post) => {
+          .map((post, idx) => {
             const sourceUri = committedBranchUri ?? pendingBranch?.post?.uri ?? returningSourceUri ?? null;
             const isBranchSource = post.uri === sourceUri;
             const isCommittedSource = committedBranchUri === post.uri;
@@ -865,7 +895,7 @@ function FeedViewImpl(
                     Back
                   </button>
                 )}
-                <div className={`cur-post-item${isBranchSource ? " cur-post-item-source" : " cur-post-item-other"}`}>
+                <div className={`cur-post-item${isBranchSource ? " cur-post-item-source" : " cur-post-item-other"}`} style={{ animationDelay: `${Math.min(idx, 6) * 0.05}s` }}>
                   <SwipeableCard
                     disabled={isCommittedSource}
                     onSwipe={(v) => handleCardSwipe(post, v)}
