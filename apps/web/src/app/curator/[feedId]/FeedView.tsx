@@ -163,7 +163,11 @@ function FeedViewImpl(
       setPosts([]);
       setPostCount(0);
     }
-    setPipelineStage("searching");
+    // Don't optimistically show "searching" — drive the loader purely off the
+    // server's stage events. A cache hit emits no visible stage (only the final
+    // done{cached}), so the loader never mounts for cached loads instead of
+    // flashing in and vanishing. Reset to idle in case a prior load left "done".
+    setPipelineStage("idle");
     setPipelineCandidates(undefined);
     setPipelineHits(undefined);
     setPipelineImages(undefined);

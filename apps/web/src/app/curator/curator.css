@@ -2555,6 +2555,26 @@
   color: var(--ink-3);
 }
 
+/* Quiet sub-action under the "Hide posts I've seen" toggle: wipe seen history. */
+.settings-clear-seen{
+  align-self: flex-start;
+  margin: 0 0 10px;
+  padding: 5px 11px;
+  font-family: var(--rf-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  background: transparent;
+  border: 1px solid var(--hair-strong);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.settings-clear-seen:hover:not(:disabled){ color: var(--aurora-deep); border-color: var(--aurora-deep); }
+.settings-clear-seen:disabled{ opacity: 0.6; cursor: default; }
+/* The button sits between two toggle rows, so restore the divider it interrupts. */
+.settings-clear-seen + .settings-toggle-row{ border-top: 1px solid var(--hair); }
+
 /* Toggle switch — replaces the native checkbox in the settings dialog */
 .settings-switch{
   appearance: none;

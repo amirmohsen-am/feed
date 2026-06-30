@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { recordSeen } from "@/lib/pg";
+import { recordSeen, clearSeen } from "@/lib/pg";
 
 /**
  * Client-reported impressions from the curator preview. The workbench feed
@@ -47,5 +47,34 @@ export async function POST(req: NextRequest) {
       e instanceof Error ? e.message : String(e)
     );
     return NextResponse.json({ ok: false }, { status: 200 });
+  }
+}
+
+/**
+ * Clear the viewer's seen history so already-seen posts surface again. Scoped
+ * to the authenticated viewer's own rows; an optional ?feedId limits it to one
+ * feed (default: every feed for this user).
+ */
+export async function DELETE(req: NextRequest) {
+  const auth = await requireAuth();
+
+  const feedIdParam = req.nextUrl.searchParams.get("feedId");
+  let feedId: number | undefined;
+  if (feedIdParam !== null) {
+    feedId = Number(feedIdParam);
+    if (!Number.isInteger(feedId) || feedId <= 0) {
+      return NextResponse.json({ error: "invalid feedId" }, { status: 400 });
+    }
+  }
+
+  try {
+    const deleted = await clearSeen(auth.userId, feedId);
+    return NextResponse.json({ ok: true, deleted });
+  } catch (e) {
+    console.warn(
+      "[seen] clear failed:",
+      e instanceof Error ? e.message : String(e)
+    );
+    return NextResponse.json({ ok: false, error: "clear failed" }, { status: 500 });
   }
 }
