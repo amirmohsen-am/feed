@@ -757,6 +757,25 @@ function CuratorShell({
                 {bskyConnecting ? "Connecting…" : "Connect"}
               </button>
             </div>
+            <div style={{ height: 1, background: "var(--hair)", margin: "20px 0 16px" }} />
+            <div>
+              <p style={{ fontFamily: "var(--rf-display)", fontSize: 15, fontWeight: 500, color: "var(--ink)", margin: "0 0 6px" }}>
+                New to Bluesky?
+              </p>
+              <p style={{ fontSize: 12, color: "var(--ink-3)", lineHeight: 1.55, margin: "0 0 12px" }}>
+                Bluesky is an open social network where you own your identity
+                and your feed. Create a free account to start engaging with
+                the posts you curate.
+              </p>
+              <a
+                href="https://bsky.app"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontSize: 13, fontFamily: "var(--rf-body)", color: "var(--aurora-deep)", fontWeight: 500, textDecoration: "none" }}
+              >
+                Create a Bluesky account <span aria-hidden>↗</span>
+              </a>
+            </div>
           </DialogContent>
         </Dialog>
 
@@ -1090,15 +1109,23 @@ function CuratorShell({
                         </button>
                       )
                     ) : (
-                      <button
-                        className="cur-bsky-connect-btn"
-                        onClick={() => {
-                          setProfileOpen(false);
-                          setShowBskyConnect(true);
-                        }}
-                      >
-                        Connect Bluesky
-                      </button>
+                      <span>
+                        <button
+                          className="cur-bsky-connect-btn"
+                          onClick={() => {
+                            setProfileOpen(false);
+                            setShowBskyConnect(true);
+                          }}
+                        >
+                          Connect Bluesky
+                        </button>
+                        <span style={{ fontSize: 11, color: "var(--ink-4)", display: "block", marginTop: 4 }}>
+                          No account yet?{" "}
+                          <a href="https://bsky.app" target="_blank" rel="noopener noreferrer" style={{ color: "var(--aurora-deep)" }}>
+                            Create one for free
+                          </a>
+                        </span>
+                      </span>
                     )}
                   </div>
                   <div className="profile-row">

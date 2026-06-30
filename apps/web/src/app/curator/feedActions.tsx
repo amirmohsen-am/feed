@@ -485,6 +485,23 @@ export function FeedActionsProvider({ children }: { children: React.ReactNode })
                 {bskyAuthLoading ? "Redirecting…" : "Sign in"}
               </button>
             </div>
+            <div className="cur-bsky-auth-divider" />
+            <div className="cur-bsky-auth-signup">
+              <p className="cur-bsky-auth-signup-title">New to Bluesky?</p>
+              <p className="cur-bsky-auth-signup-body">
+                Bluesky is an open social network where you own your identity
+                and your feed. Create a free account to start engaging with
+                the posts you curate.
+              </p>
+              <a
+                href="https://bsky.app"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="cur-bsky-auth-signup-link"
+              >
+                Create a Bluesky account <span aria-hidden>↗</span>
+              </a>
+            </div>
           </div>
         </div>
       )}

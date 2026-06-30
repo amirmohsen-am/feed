@@ -3777,6 +3777,33 @@
 }
 .cur-bsky-auth-submit:hover{ background: var(--ink-2); }
 .cur-bsky-auth-submit:disabled{ opacity: 0.4; cursor: default; }
+.cur-bsky-auth-divider{
+  height: 1px;
+  background: var(--hair);
+  margin: 20px 0 16px;
+}
+.cur-bsky-auth-signup-title{
+  font-family: var(--rf-display);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+  margin: 0 0 6px;
+}
+.cur-bsky-auth-signup-body{
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.55;
+  margin: 0 0 12px;
+}
+.cur-bsky-auth-signup-link{
+  display: inline-block;
+  font-size: 13px;
+  font-family: var(--rf-body);
+  color: var(--aurora-deep);
+  font-weight: 500;
+  text-decoration: none;
+}
+.cur-bsky-auth-signup-link:hover{ text-decoration: underline; }
 
 .cur-compose-modal{ max-width: 480px; }
 .cur-compose-textarea{

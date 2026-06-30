@@ -82,6 +82,7 @@ function FeedViewImpl(
     setActivePostCount,
     setUnavailableCount,
     openPublish,
+    profile,
   } = useCurator();
   const { trackPosts } = useFeedActions();
   const { registerLeaf } = useFeedFocus();
@@ -557,23 +558,53 @@ function FeedViewImpl(
       {posts.length > 0 && !postsLoading && !branch.committedBranchUri && (
         <div className="cur-feed-end-prompt">
           <p className="cur-feed-end-title">You&rsquo;ve reached the end</p>
-          <p className="cur-feed-end-sub">Like what you see? Take your feed to Bluesky.</p>
-          <div className="cur-feed-end-actions">
-            <button type="button" className="cur-feed-end-btn cur-feed-end-publish" onClick={openPublish}>
-              Publish to Bluesky
-            </button>
-            <button
-              type="button"
-              className="cur-feed-end-btn cur-feed-end-refresh"
-              onClick={() => {
-                document.querySelector(".cur-feed-posts")?.scrollTo({ top: 0 });
-                window.scrollTo({ top: 0 });
-                setTimeout(() => loadPosts(true), 50);
-              }}
-            >
-              Refresh feed
-            </button>
-          </div>
+          {profile.blueskyDid ? (
+            <>
+              <p className="cur-feed-end-sub">Like what you see? Take your feed to Bluesky.</p>
+              <div className="cur-feed-end-actions">
+                <button type="button" className="cur-feed-end-btn cur-feed-end-publish" onClick={openPublish}>
+                  Publish to Bluesky
+                </button>
+                <button
+                  type="button"
+                  className="cur-feed-end-btn cur-feed-end-refresh"
+                  onClick={() => {
+                    document.querySelector(".cur-feed-posts")?.scrollTo({ top: 0 });
+                    window.scrollTo({ top: 0 });
+                    setTimeout(() => loadPosts(true), 50);
+                  }}
+                >
+                  Refresh feed
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="cur-feed-end-sub">Like what you see? Take this feed with you on Bluesky, the open social network.</p>
+              <div className="cur-feed-end-actions">
+                <a
+                  href="https://bsky.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="cur-feed-end-btn cur-feed-end-publish"
+                  style={{ textDecoration: "none", textAlign: "center" }}
+                >
+                  Get started with Bluesky
+                </a>
+                <button
+                  type="button"
+                  className="cur-feed-end-btn cur-feed-end-refresh"
+                  onClick={() => {
+                    document.querySelector(".cur-feed-posts")?.scrollTo({ top: 0 });
+                    window.scrollTo({ top: 0 });
+                    setTimeout(() => loadPosts(true), 50);
+                  }}
+                >
+                  Refresh feed
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
