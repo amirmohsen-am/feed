@@ -21,8 +21,76 @@ import type { Post } from "./feedTypes";
 interface LikeEntry { liked: boolean; likeUri?: string; pending: boolean }
 interface RepostEntry { reposted: boolean; repostUri?: string; pending: boolean }
 interface CountDelta { replies?: number; quotes?: number }
-interface QuotedPost { text: string; handle: string | null; displayName: string | null; avatar: string | null }
+interface QuotedExternal { uri: string; title: string; desc: string; thumb: string | null }
+interface QuotedPost {
+  text: string;
+  handle: string | null;
+  displayName: string | null;
+  avatar: string | null;
+  // The quoted post's own media, so the quote block mirrors a real Bluesky post.
+  images: string[];
+  imageAlts: string[];
+  videoThumbnail: string | null;
+  videoPlaylist: string | null;
+  external: QuotedExternal | null;
+}
 interface AiLabel { ai_generated: boolean; scores: number[] }
+
+// Hydrated embed view returned by app.bsky.feed.getPosts for a quoted post.
+interface BskyEmbedView {
+  $type?: string;
+  external?: { uri?: string; title?: string; description?: string; thumb?: string };
+  images?: Array<{ thumb?: string; fullsize?: string; alt?: string }>;
+  thumbnail?: string;
+  playlist?: string;
+  // recordWithMedia nests the media one level deeper.
+  media?: {
+    $type?: string;
+    external?: { uri?: string; title?: string; description?: string; thumb?: string };
+    images?: Array<{ thumb?: string; fullsize?: string; alt?: string }>;
+    thumbnail?: string;
+    playlist?: string;
+  };
+}
+
+// Pull images / video / external link out of a quoted post's hydrated embed.
+function parseQuotedEmbed(embed: BskyEmbedView | undefined): {
+  images: string[];
+  imageAlts: string[];
+  videoThumbnail: string | null;
+  videoPlaylist: string | null;
+  external: QuotedExternal | null;
+} {
+  const empty = { images: [], imageAlts: [], videoThumbnail: null, videoPlaylist: null, external: null };
+  if (!embed) return empty;
+  const media = embed.media ?? embed;
+  const type = media.$type;
+
+  const imgs = media.images ?? [];
+  const images = imgs
+    .map((i) => i.thumb ?? i.fullsize ?? null)
+    .filter((u): u is string => typeof u === "string" && u.length > 0);
+  const imageAlts = imgs.map((i) => i.alt ?? "");
+
+  let videoThumbnail: string | null = null;
+  let videoPlaylist: string | null = null;
+  if (type === "app.bsky.embed.video#view") {
+    videoThumbnail = media.thumbnail ?? null;
+    videoPlaylist = media.playlist ?? null;
+  }
+
+  let external: QuotedExternal | null = null;
+  if (type === "app.bsky.embed.external#view" && media.external?.uri) {
+    external = {
+      uri: media.external.uri,
+      title: media.external.title ?? "",
+      desc: media.external.description ?? "",
+      thumb: media.external.thumb ?? null,
+    };
+  }
+
+  return { images, imageAlts, videoThumbnail, videoPlaylist, external };
+}
 
 interface FeedActionsValue {
   // Bluesky engagement
@@ -272,6 +340,7 @@ export function FeedActionsProvider({ children }: { children: React.ReactNode })
                   uri: string;
                   author?: { handle?: string; displayName?: string; avatar?: string };
                   record?: { text?: string };
+                  embed?: BskyEmbedView;
                 }[];
               })
             : { posts: [] };
@@ -284,6 +353,7 @@ export function FeedActionsProvider({ children }: { children: React.ReactNode })
                 handle: p.author?.handle ?? null,
                 displayName: p.author?.displayName ?? null,
                 avatar: p.author?.avatar ?? null,
+                ...parseQuotedEmbed(p.embed),
               };
             }
             return next;

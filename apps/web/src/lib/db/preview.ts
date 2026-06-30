@@ -46,6 +46,7 @@ export interface FeedPreviewPost {
   image_alts: string[];
   image_urls: string[];
   video_thumbnail: string | null;
+  video_playlist: string | null;
   is_reply: boolean;
   reply_parent_uri: string | null;
 }
@@ -415,6 +416,7 @@ async function buildSnapshot(
         image_alts: h.image_alts,
         image_urls: h.image_urls,
         video_thumbnail: h.video_thumbnail,
+        video_playlist: h.video_playlist,
         is_reply: h.is_reply,
         reply_parent_uri: h.reply_parent_uri,
       };
