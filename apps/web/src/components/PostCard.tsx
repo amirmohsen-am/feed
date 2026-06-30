@@ -4,6 +4,7 @@ import { memo } from "react";
 import { useCurator } from "@/app/curator/curatorContext";
 import { useFeedActions } from "@/app/curator/feedActions";
 import type { Post } from "@/app/curator/feedTypes";
+import VideoPlayer from "./VideoPlayer";
 import {
   avatarUrl,
   externalHost,
@@ -255,47 +256,101 @@ function PostCard({
           const m = post.quote_uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
           const qUrl = m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : "#";
           return (
-            <a
-              className="cur-post-embed quote"
-              href={qUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            <div className="cur-post-embed quote">
               {q ? (
                 <>
-                  <div className="cur-post-quote-author">
-                    {q.avatar && (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
-                        src={q.avatar}
-                        alt=""
-                        className="cur-post-quote-avatar"
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                      />
+                  {/* Author + text link to the quoted post; media below is
+                      interactive on its own (lightbox / inline video). */}
+                  <a
+                    className="cur-post-quote-link"
+                    href={qUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <div className="cur-post-quote-author">
+                      {q.avatar && (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={q.avatar}
+                          alt=""
+                          className="cur-post-quote-avatar"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                      )}
+                      <span className="cur-post-quote-name">
+                        {q.displayName?.trim() || (q.handle ? `@${q.handle}` : "Quoted post")}
+                      </span>
+                      {q.handle && q.displayName?.trim() && (
+                        <span className="cur-post-quote-handle">@{q.handle}</span>
+                      )}
+                    </div>
+                    {q.text && (
+                      <div className="cur-post-quote-text">{q.text}</div>
                     )}
-                    <span className="cur-post-quote-name">
-                      {q.displayName?.trim() || (q.handle ? `@${q.handle}` : "Quoted post")}
-                    </span>
-                    {q.handle && q.displayName?.trim() && (
-                      <span className="cur-post-quote-handle">@{q.handle}</span>
-                    )}
-                  </div>
-                  {q.text && (
-                    <div className="cur-post-quote-text">{q.text}</div>
+                  </a>
+
+                  {q.images.length > 0 && (
+                    <div className={`cur-post-images cur-post-quote-images cur-post-images-${Math.min(q.images.length, 4)}`}>
+                      {q.images.slice(0, 4).map((url, i) => (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          key={i}
+                          src={url}
+                          alt={q.imageAlts[i] || ""}
+                          className="cur-post-img"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          onClick={() => openLightbox(q.images, i)}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {q.videoPlaylist && (
+                    <VideoPlayer playlist={q.videoPlaylist} thumbnail={q.videoThumbnail} compact />
+                  )}
+
+                  {q.external && (
+                    <a
+                      className={`cur-post-embed cur-post-quote-external${q.external.thumb ? " has-thumb" : ""}`}
+                      href={q.external.uri}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <div className="cur-post-embed-body">
+                        <div className="cur-post-embed-host">{externalHost(q.external.uri) || "link"}</div>
+                        {q.external.title && (
+                          <div className="cur-post-embed-title">{q.external.title}</div>
+                        )}
+                        {q.external.desc && (
+                          <div className="cur-post-embed-desc">{q.external.desc}</div>
+                        )}
+                      </div>
+                      {q.external.thumb && (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={q.external.thumb}
+                          alt=""
+                          className="cur-post-embed-thumb"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                      )}
+                    </a>
                   )}
                 </>
               ) : q === null ? (
-                <>
+                <a className="cur-post-quote-link" href={qUrl} target="_blank" rel="noopener noreferrer">
                   <div className="cur-post-embed-host">↳ quoted post</div>
                   <div className="cur-post-embed-desc">
                     Quoted post unavailable — open on Bluesky.
                   </div>
-                </>
+                </a>
               ) : (
                 <div className="cur-post-embed-host">↳ quoted post…</div>
               )}
-            </a>
+            </div>
           );
         })()}
 
@@ -326,9 +381,17 @@ function PostCard({
           </div>
         )}
 
-        {/* AI label for video-only posts (image posts show it in the images-wrap above) */}
-        {!post.has_images && post.has_video && aiLabels[post.uri]?.ai_generated && (
-          <span className="cur-ai-label">AI Generated</span>
+        {/* Video — inline HLS player with the AI label overlaid on the poster. */}
+        {post.has_video && post.video_playlist && (
+          <VideoPlayer playlist={post.video_playlist} thumbnail={post.video_thumbnail}>
+            {aiLabels[post.uri]?.ai_generated && (
+              <span className="cur-ai-label">AI Generated</span>
+            )}
+          </VideoPlayer>
+        )}
+        {/* AI label for a video we can't play inline (no playlist URL). */}
+        {post.has_video && !post.video_playlist && aiLabels[post.uri]?.ai_generated && (
+          <span className="cur-ai-label cur-ai-label-inline">AI Generated</span>
         )}
 
         {showDebug && (
