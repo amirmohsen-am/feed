@@ -24,7 +24,7 @@ import { isIP } from "node:net";
  * otherwise non-publicly-routable range. Unparseable input is treated as
  * unsafe (fail closed).
  */
-export function isPrivateIp(ip: string): boolean {
+function isPrivateIp(ip: string): boolean {
   const kind = isIP(ip);
   if (kind === 4) return isPrivateV4(ip);
   if (kind === 6) return isPrivateV6(ip);

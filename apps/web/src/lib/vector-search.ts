@@ -129,6 +129,9 @@ export interface VectorHit {
   // Video thumbnail from AppView embed (app.bsky.embed.video#view).
   // A single frame from the video, used for AI-generated content detection.
   video_thumbnail: string | null;
+  // HLS playlist (.m3u8) from AppView embed (app.bsky.embed.video#view),
+  // used by the card view to play the video inline.
+  video_playlist: string | null;
 }
 
 export interface SearchFilter {
@@ -402,6 +405,7 @@ function rowToHit(r: PgRow): VectorHit {
     image_urls: [],
     external_thumb: null,
     video_thumbnail: null,
+    video_playlist: null,
   };
 }
 
@@ -533,6 +537,7 @@ interface AppViewMeta {
   imageUrls: string[];
   externalThumb: string | null;
   videoThumbnail: string | null;
+  videoPlaylist: string | null;
 }
 
 interface AppViewPostView {
@@ -578,6 +583,23 @@ function extractVideoThumbnail(p: AppViewPostView): string | null {
   ) {
     const thumb = embed.media.thumbnail;
     return typeof thumb === "string" && thumb.length > 0 ? thumb : null;
+  }
+  return null;
+}
+
+function extractVideoPlaylist(p: AppViewPostView): string | null {
+  const embed = p.embed;
+  if (!embed) return null;
+  if (embed.$type === "app.bsky.embed.video#view") {
+    const pl = embed.playlist;
+    return typeof pl === "string" && pl.length > 0 ? pl : null;
+  }
+  if (
+    embed.$type === "app.bsky.embed.recordWithMedia#view" &&
+    embed.media?.$type === "app.bsky.embed.video#view"
+  ) {
+    const pl = embed.media.playlist;
+    return typeof pl === "string" && pl.length > 0 ? pl : null;
   }
   return null;
 }
@@ -654,6 +676,7 @@ async function fetchAppViewMeta(
         imageUrls: extractImageUrls(p),
         externalThumb: extractExternalThumb(p),
         videoThumbnail: extractVideoThumbnail(p),
+        videoPlaylist: extractVideoPlaylist(p),
       });
     }
   }
@@ -725,7 +748,7 @@ function descriptionLooksNsfw(description: string | null | undefined): boolean {
   return false;
 }
 
-export interface SearchOpts {
+interface SearchOpts {
   subqueries: string[];
   totalBudget: number;
   filter?: SearchFilter;
@@ -805,6 +828,7 @@ export async function searchPosts(opts: SearchOpts): Promise<VectorHit[]> {
       if (wantImages && meta.imageUrls.length > 0) h.image_urls = meta.imageUrls;
       if (meta.externalThumb) h.external_thumb = meta.externalThumb;
       if (meta.videoThumbnail) h.video_thumbnail = meta.videoThumbnail;
+      if (meta.videoPlaylist) h.video_playlist = meta.videoPlaylist;
     }
   }
 
@@ -857,11 +881,3 @@ function uniqueAuthorDids(hits: VectorHit[]): string[] {
   return Array.from(seen);
 }
 
-/**
- * Convert an AT-Protocol post URI to its public bsky.app URL.
- */
-export function blueskyUrl(uri: string): string | null {
-  const m = uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
-  if (!m) return null;
-  return `https://bsky.app/profile/${m[1]}/post/${m[2]}`;
-}

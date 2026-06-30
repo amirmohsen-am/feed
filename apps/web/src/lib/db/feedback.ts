@@ -4,7 +4,7 @@ import { query } from "./connection";
 
 export type FeedbackCategory = "bug" | "idea" | "feed_quality" | "other";
 
-export interface DbFeedback {
+interface DbFeedback {
   id: string;
   user_id: string;
   feed_id: number | null;

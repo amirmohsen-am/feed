@@ -1125,7 +1125,9 @@
   text-decoration: underline;
 }
 
-/* Image grid — Bluesky-style tiled layout */
+/* Image grid — Bluesky-style tiled layout. A lone image is shown in full at
+   its natural aspect ratio (never cropped); galleries of 2-4 tile into a
+   fixed-height grid, matching Bluesky. */
 .cur-post-images{
   display: grid;
   gap: 2px;
@@ -1133,7 +1135,6 @@
   overflow: hidden;
   max-height: 280px;
 }
-.cur-post-images-1{ grid-template-columns: 1fr; }
 .cur-post-images-2{ grid-template-columns: 1fr 1fr; }
 .cur-post-images-3{ grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
 .cur-post-images-3 .cur-post-img:first-child{ grid-row: 1 / -1; }
@@ -1147,6 +1148,23 @@
   transition: filter 0.15s;
 }
 .cur-post-img:hover{ filter: brightness(0.85); }
+
+/* Single image: natural aspect ratio, centered, capped in height — no crop. */
+.cur-post-images-1{
+  display: flex;
+  justify-content: center;
+  max-height: none;
+  overflow: visible;
+  background: var(--paper-2);
+}
+.cur-post-images-1 .cur-post-img{
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 510px;
+  object-fit: contain;
+  border-radius: 10px;
+}
 
 /* Image wrapper — positions the AI label badge */
 .cur-post-images-wrap{
@@ -1168,6 +1186,70 @@
   border-radius: 4px;
   pointer-events: none;
   backdrop-filter: blur(4px);
+}
+/* AI label without an image/video wrap to anchor to. */
+.cur-ai-label-inline{
+  position: static;
+  display: inline-block;
+}
+
+/* Video — inline HLS player (poster + play overlay until first play). */
+.cur-post-video{
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000;
+  line-height: 0;
+}
+.cur-post-video-poster{
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: #000;
+  cursor: pointer;
+}
+.cur-post-video-poster img{
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 510px;
+  object-fit: contain;
+}
+.cur-post-video-play{
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  backdrop-filter: blur(2px);
+  transition: background 0.15s, transform 0.15s;
+}
+.cur-post-video-poster:hover .cur-post-video-play{
+  background: rgba(0, 0, 0, 0.78);
+  transform: translate(-50%, -50%) scale(1.06);
+}
+.cur-post-video-el{
+  display: block;
+  width: 100%;
+  max-height: 510px;
+  background: #000;
+}
+.cur-post-video.compact .cur-post-video-poster img,
+.cur-post-video.compact .cur-post-video-el{
+  max-height: 280px;
+}
+.cur-post-video.compact .cur-post-video-play{
+  width: 42px;
+  height: 42px;
 }
 
 /* Fallback note when image URLs aren't available */
@@ -2033,6 +2115,27 @@
   padding-top: 0;
 }
 /* Hydrated quoted-post content inside the quote embed card */
+.cur-post-quote-link{
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+/* Quoted post's own media, mirroring a real Bluesky post (more compact). */
+.cur-post-quote-images{
+  margin-top: 8px;
+  max-height: 200px;
+}
+.cur-post-quote-images.cur-post-images-1{
+  max-height: none;
+}
+.cur-post-quote-images.cur-post-images-1 .cur-post-img{
+  max-height: 280px;
+}
+.cur-post-quote-link + .cur-post-video,
+.cur-post-quote-images + .cur-post-video,
+.cur-post-quote-external{
+  margin-top: 8px;
+}
 .cur-post-quote-author{
   display: flex;
   align-items: center;
@@ -2173,6 +2276,20 @@
 /* Pipeline loader placed inside the feed column (and branch overlay) rather
    than pinned to the topbar. Scrolls with the feed content. */
 .cur-feed-pl{ padding: 2px 0 14px; }
+/* Tail-recompute loader: sits at the commit boundary (below the frozen prefix)
+   while a refinement signal recomputes only what comes next. A hairline rule
+   above it marks where the feed the user has read ends and the updating tail
+   begins. */
+.cur-feed-tail-loading{
+  padding: 16px 0 8px;
+  border-top: 1px dashed var(--hair-strong);
+  margin-top: 8px;
+}
+.cur-feed-tail-loading-note{
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-muted, #888);
+}
 /* Row that holds the pipeline loader on the left and the Refresh button on the
    right. When the loader is idle it renders nothing, so the row carries the
    bottom spacing and the Refresh button sits alone, still right-aligned. */

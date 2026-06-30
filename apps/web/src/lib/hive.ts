@@ -4,12 +4,12 @@ import { getCachedImageLabels, upsertImageLabels, type CachedImageLabel } from "
 const HIVE_API_URL =
   "https://api.thehive.ai/api/v3/hive/ai-generated-and-deepfake-content-detection";
 
-export interface HiveImageResult {
+interface HiveImageResult {
   ai_generated: boolean;
   score: number;
 }
 
-export interface HivePostResult {
+interface HivePostResult {
   ai_generated: boolean;
   scores: number[];
   error?: boolean;
@@ -32,7 +32,7 @@ async function getHiveApiKey(): Promise<string | null> {
  * the caller does NOT cache it — a successful 200 (even "not flagged") is a
  * real, cacheable classification; a failure must stay retryable.
  */
-export async function checkImageAiGenerated(
+async function checkImageAiGenerated(
   imageUrl: string,
   apiKey: string
 ): Promise<HiveImageResult | null> {

@@ -46,6 +46,7 @@ export interface FeedPreviewPost {
   image_alts: string[];
   image_urls: string[];
   video_thumbnail: string | null;
+  video_playlist: string | null;
   is_reply: boolean;
   reply_parent_uri: string | null;
 }
@@ -97,7 +98,7 @@ export const SNAPSHOT_LIMIT = 50;
  * results: the curator preview surfaces the error, the skeleton serves an
  * empty page, and nothing is cached — the next request retries.
  */
-export class RerankUnavailableError extends Error {}
+class RerankUnavailableError extends Error {}
 
 // Stable JSON: object keys sorted recursively so semantically-equal configs
 // (keys in a different order) hash identically and don't cause false misses.
@@ -169,6 +170,14 @@ export async function getFeedPreviewPosts(
     // viewer. The stream route folds it into the final "done" event so the
     // loader can show it without regressing the stage progression.
     onSeenFiltered?: (n: number) => void;
+    // Tail-recompute: URIs to drop from the result before serving. The curator's
+    // partial-refresh sends the FROZEN PREFIX (posts the viewer has read + the
+    // small look-ahead buffer) here so a refinement signal recomputes only the
+    // tail and the client can splice [...frozen, ...newTail] without disturbing
+    // the read position. Like seen filtering, this is a serve-time, per-request
+    // concern applied AFTER the shared snapshot build — never cached, never fed
+    // into buildSnapshot's config hash.
+    excludeUris?: string[];
   }
 ): Promise<FeedPreviewPost[]> {
   const feedRes = await query("SELECT * FROM feeds WHERE id = $1", [feedId]);
@@ -176,7 +185,14 @@ export async function getFeedPreviewPosts(
   const feed = rowToFeed(feedRes.rows[0]);
 
   // Full, unfiltered, shared snapshot (up to SNAPSHOT_LIMIT).
-  const snapshot = await buildSnapshot(feed, onStage, opts);
+  let snapshot = await buildSnapshot(feed, onStage, opts);
+
+  // Tail-recompute exclude (frozen prefix). Dropped before the per-viewer seen
+  // filter and the display slice so the tail returns only fresh posts.
+  if (opts?.excludeUris?.length) {
+    const ex = new Set(opts.excludeUris);
+    snapshot = snapshot.filter((p) => !ex.has(p.uri));
+  }
 
   // Serve-time seen filter (per viewer). Skipped entirely without a viewer or
   // when the viewer has the preference off — the cron and anonymous reads land
@@ -415,6 +431,7 @@ async function buildSnapshot(
         image_alts: h.image_alts,
         image_urls: h.image_urls,
         video_thumbnail: h.video_thumbnail,
+        video_playlist: h.video_playlist,
         is_reply: h.is_reply,
         reply_parent_uri: h.reply_parent_uri,
       };
@@ -489,7 +506,7 @@ async function readFeedSnapshot(feedId: number): Promise<FeedSnapshot | null> {
   }
 }
 
-export interface SkeletonPage {
+interface SkeletonPage {
   uris: string[];
   cursor?: string;
 }
@@ -611,7 +628,7 @@ export async function getSharedFeedPosts(
  * they're publishing. (After publish they can edit freely; the refresh cron
  * recomputes within 24h.)
  */
-export type PublishSnapshotState = "ready" | "missing" | "stale_config" | "empty";
+type PublishSnapshotState = "ready" | "missing" | "stale_config" | "empty";
 
 export async function getPublishSnapshotState(
   feed: DbFeed

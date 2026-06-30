@@ -2,7 +2,7 @@
 
 import { type RefObject } from "react";
 
-export type CapsuleState = "idle" | "thinking" | "updated";
+type CapsuleState = "idle" | "thinking" | "updated";
 
 interface CapsuleProps {
   /** Current draft text. */

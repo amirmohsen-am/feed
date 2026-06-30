@@ -15,7 +15,7 @@ import * as THREE from "three";
  * also use a real photo of dirty glass as the film itself (usePhoto).
  */
 
-export interface GlassPreset {
+interface GlassPreset {
   label: string;
   description: string;
   /** grime textures: a = primary relief (and film color if usePhoto), b = secondary */
@@ -49,7 +49,7 @@ export interface GlassPreset {
 const SMUDGE_A = "/images/prototype/smudge-fingerprints.jpg";
 const SMUDGE_B = "/images/prototype/smudge-imperfections.jpg";
 
-export const GLASS_PRESETS: Record<string, GlassPreset> = {
+const GLASS_PRESETS: Record<string, GlassPreset> = {
   grimy: {
     label: "grimy window",
     description: "translucent dirt haze, dust speckles, heavy at the edges",

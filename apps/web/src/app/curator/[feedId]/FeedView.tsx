@@ -39,10 +39,26 @@ export interface StreamedConfig {
   rerank_thinking_enabled?: boolean;
 }
 
+// How a reload mutates the feed:
+//   full  — replace the whole list (Refresh button, feed switch, finalize)
+//   tail  — keep the frozen prefix (read + look-ahead) and recompute only the
+//           posts past the commit point, splicing the result in place. Used by
+//           refinement signals (chat tune, swipe-left "less like this") so the
+//           feed the user is reading is not yanked. Degrades to a full load when
+//           nothing has been read yet (empty prefix).
+export interface ReloadOpts {
+  force?: boolean;
+  tail?: boolean;
+}
+
 export interface FeedViewHandle {
-  reload: (force?: boolean) => Promise<void> | void;
+  reload: (opts?: ReloadOpts | boolean) => Promise<void> | void;
   setPosts: (posts: Post[]) => void;
 }
+
+// Look-ahead buffer past the last-seen post that stays frozen on a tail recompute
+// — "keep the feed up until now, plus the next few". Tunable.
+const TAIL_BUFFER = 3;
 
 interface FeedViewProps {
   feedId: number;
@@ -93,6 +109,9 @@ function FeedViewImpl(
   const [posts, setPosts] = useState<Post[]>([]);
   const [postCount, setPostCount] = useState(0);
   const [postsLoading, setPostsLoading] = useState(false);
+  // Tail recompute in flight: the frozen prefix stays rendered while only the
+  // posts past `tailCommitIndex` are recomputed. Null when not in a tail load.
+  const [tailCommitIndex, setTailCommitIndex] = useState<number | null>(null);
 
   // ── Local pipeline state (each FeedView owns its own loader so a nested
   //    branch's progress never collides with its parent's) ──
@@ -147,22 +166,57 @@ function FeedViewImpl(
   useEffect(() => { trackPosts(posts); }, [posts, trackPosts]);
 
   // ── Streaming post loader ───────────────────────────────────────
-  const loadPosts = useCallback(async (force?: boolean) => {
+  const loadPosts = useCallback(async (arg?: ReloadOpts | boolean) => {
+    // Back-compat: a bare boolean means `force`. Prefer { force, tail }.
+    const opts: ReloadOpts = typeof arg === "boolean" ? { force: arg } : (arg ?? {});
+    const force = opts.force ?? false;
+
     // Record any pending on-screen impressions before we re-query, so the
-    // reload's server-side seen filter accounts for what was just viewed, then
-    // start a fresh impression generation for the incoming results.
+    // reload's server-side seen filter accounts for what was just viewed.
     await seenTracker.flushNow();
-    seenTracker.reset();
-    setPostsLoading(true);
-    // A non-forced load means we're entering a feed fresh (feed switch, branch
-    // mount, or a chat-driven config change) rather than refreshing the current
-    // one in place. Drop the prior feed's posts so the skeleton shows instead of
-    // stale results lingering dimmed. Forced loads (Refresh button, pull-to-
-    // refresh) keep the posts on screen and dim them via the .refreshing class.
-    if (!force) {
-      setPosts([]);
-      setPostCount(0);
+
+    // Tail recompute: keep the frozen prefix (everything up to last-seen +
+    // TAIL_BUFFER) and recompute only the posts past it. Compute the commit
+    // point from impressions recorded so far. Falls back to a full load when the
+    // prefix is empty (nothing read yet — a fresh feed), where a tail splice
+    // would be indistinguishable from a replace anyway.
+    const current = postsRef.current;
+    let frozen: Post[] = [];
+    let excludeUris: string[] | undefined;
+    if (opts.tail && current.length > 0) {
+      const seen = seenTracker.getSeenUris();
+      let lastSeenIndex = -1;
+      for (let i = 0; i < current.length; i++) {
+        if (seen.has(current[i].uri)) lastSeenIndex = i;
+      }
+      const commitIndex = Math.min(lastSeenIndex + TAIL_BUFFER, current.length - 1);
+      if (commitIndex >= 0) {
+        frozen = current.slice(0, commitIndex + 1);
+        // Exclude the frozen prefix AND every seen post (so a tail can't re-serve
+        // something already read even when per-user seen filtering is off).
+        excludeUris = Array.from(new Set([...frozen.map((p) => p.uri), ...seen]));
+      }
     }
+    const isTail = frozen.length > 0;
+
+    // A fresh-entry load (feed switch, branch mount, chat-driven full recompute)
+    // drops the prior posts so the skeleton shows. Forced loads (Refresh, pull-
+    // to-refresh) and tail recomputes keep posts on screen — forced dims the whole
+    // list via .refreshing; tail keeps the frozen prefix crisp and recomputes
+    // below the commit point.
+    if (isTail) {
+      setTailCommitIndex(frozen.length - 1);
+    } else {
+      // Full load generation: clear per-fetch impression dedup so the incoming
+      // results are all freshly trackable.
+      seenTracker.reset();
+      setTailCommitIndex(null);
+      if (!force) {
+        setPosts([]);
+        setPostCount(0);
+      }
+    }
+    setPostsLoading(true);
     // Don't optimistically show "searching" — drive the loader purely off the
     // server's stage events. A cache hit emits no visible stage (only the final
     // done{cached}), so the loader never mounts for cached loads instead of
@@ -175,11 +229,20 @@ function FeedViewImpl(
     setPipelineThinkingEnabled(undefined);
     setPipelineSeenFiltered(undefined);
     try {
-      const url = `/api/feed-preview/stream?feedId=${feedId}${force ? "&refresh=1" : ""}`;
-      const res = await authedFetch(url);
+      // Tail recomputes POST the frozen prefix as excludeUris; everything else is
+      // a plain GET (cache-eligible, or ?refresh=1 to force a fresh snapshot).
+      const res = isTail
+        ? await authedFetch("/api/feed-preview/stream", {
+            method: "POST",
+            body: JSON.stringify({ feedId, excludeUris }),
+          })
+        : await authedFetch(
+            `/api/feed-preview/stream?feedId=${feedId}${force ? "&refresh=1" : ""}`
+          );
       if (!res.ok || !res.body) {
         setPostsLoading(false);
         setPipelineStage("idle");
+        setTailCommitIndex(null);
         return;
       }
       const reader = res.body.getReader();
@@ -236,12 +299,17 @@ function FeedViewImpl(
             } else if (ev.event === "done") {
               setPipelineStage(ev.cached ? "idle" : "done");
               if (typeof ev.seen_filtered === "number") setPipelineSeenFiltered(ev.seen_filtered);
-              const nextCount = ev.total_stored || (ev.posts?.length ?? 0);
               const incoming = ev.posts || [];
-              // The "done" event carries the full recomputed snapshot in final
-              // reranked+blended order, so replace outright.
-              setPosts(incoming);
+              // Tail recompute: splice [...frozen, ...newTail] so the read prefix
+              // stays put. Otherwise the "done" event carries the full recomputed
+              // snapshot in final reranked+blended order, so replace outright.
+              const next = isTail ? [...frozen, ...incoming] : incoming;
+              const nextCount = isTail
+                ? next.length
+                : ev.total_stored || incoming.length;
+              setPosts(next);
               setPostCount(nextCount);
+              setTailCommitIndex(null);
               if (isRoot) setActivePostCount(nextCount);
               onConfigLoaded?.({
                 mechanical_filters: ev.mechanical_filters,
@@ -262,6 +330,9 @@ function FeedViewImpl(
     } catch { /* ignore */ }
     finally {
       setPostsLoading(false);
+      // Clear any tail-in-flight marker (a clean done already cleared it; this
+      // covers a mid-stream error so the frozen-prefix view doesn't get stuck).
+      setTailCommitIndex(null);
       onLoaded?.();
     }
   }, [feedId, isRoot, setActivePostCount, onConfigLoaded, onLoaded, seenTracker]);
@@ -276,7 +347,7 @@ function FeedViewImpl(
   // AND registered in the leaf-feed stack. setPosts/setPostsLoading are stable
   // state setters; loadPosts is read through the ref above.
   const selfHandle = useMemo<FeedViewHandle>(() => ({
-    reload: (force?: boolean) => loadPostsRef.current(force),
+    reload: (opts?: ReloadOpts | boolean) => loadPostsRef.current(opts),
     setPosts: (p: Post[]) => { setPosts(p); setPostsLoading(false); },
   }), []);
   useImperativeHandle(ref, () => selfHandle, [selfHandle]);
@@ -370,11 +441,15 @@ function FeedViewImpl(
   }, [viewMode, posts]);
 
   const showSkeleton = posts.length === 0 && postsLoading;
+  // While a tail recompute is in flight, render only the frozen prefix; the old
+  // tail is replaced by a boundary loader so it can't flash stale-then-swap.
+  const renderPosts =
+    tailCommitIndex === null ? posts : posts.slice(0, tailCommitIndex + 1);
 
   return (
     <div
       ref={feedInnerRef}
-      className={`cur-feed-posts-inner${refreshing ? " refreshing" : ""}${branch.branchDragging ? " cur-branch-dragging" : ""}${branch.committedBranchUri ? " cur-branching" : ""}${branch.branchReturning ? " cur-branch-returning" : ""}${postsEntering ? " cur-feed-entering" : ""}`}
+      className={`cur-feed-posts-inner${refreshing && tailCommitIndex === null ? " refreshing" : ""}${branch.branchDragging ? " cur-branch-dragging" : ""}${branch.committedBranchUri ? " cur-branching" : ""}${branch.branchReturning ? " cur-branch-returning" : ""}${postsEntering ? " cur-feed-entering" : ""}`}
     >
       {onBack && (
         <button type="button" className="cur-branch-back" onClick={onBack} aria-label="Back">
@@ -387,9 +462,9 @@ function FeedViewImpl(
 
       {headerContent}
 
-      {(pipelineStage !== "idle" || (posts.length > 0 && !branch.committedBranchUri)) && (
+      {((pipelineStage !== "idle" && tailCommitIndex === null) || (posts.length > 0 && !branch.committedBranchUri)) && (
         <div className="cur-feed-pl-row">
-          {pipelineStage !== "idle" && (
+          {pipelineStage !== "idle" && tailCommitIndex === null && (
             <div className="cur-feed-pl">
               <PipelineLoader
                 stage={pipelineStage}
@@ -434,7 +509,7 @@ function FeedViewImpl(
           <p className="sub">Try Refresh, or refine the subqueries in chat or the Tune panel.</p>
         </div>
       ) : viewMode === "embed" ? (
-        posts.map((post, idx) => {
+        renderPosts.map((post, idx) => {
           const bskyUrl = (() => {
             const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
             return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
@@ -496,7 +571,7 @@ function FeedViewImpl(
           );
         })
       ) : (
-        posts
+        renderPosts
           .filter((post) => post.uri !== excludeUri)
           .filter((post) => !branch.swipedUris.has(post.uri))
           .filter((post) => !branch.othersCleared || post.uri === branch.committedBranchUri)
@@ -589,6 +664,25 @@ function FeedViewImpl(
               </Fragment>
             );
           })
+      )}
+
+      {/* Tail recompute in flight: the frozen prefix above stays put; the feed
+          below the commit point is recomputing. Loader sits at the boundary so
+          the read position is never disturbed. */}
+      {tailCommitIndex !== null && (
+        <div className="cur-feed-tail-loading">
+          <PipelineLoader
+            stage={pipelineStage === "idle" ? "searching" : pipelineStage}
+            candidates={pipelineCandidates}
+            hits={pipelineHits}
+            images={pipelineImages}
+            model={pipelineModel}
+            thinkingEnabled={pipelineThinkingEnabled}
+            seenFiltered={pipelineSeenFiltered}
+            topK={25}
+          />
+          <p className="cur-feed-tail-loading-note">Updating what comes next</p>
+        </div>
       )}
 
       {isRoot && <SwipeDemo postsLoaded={posts.length > 0 && !postsLoading} />}

@@ -26,6 +26,45 @@ export async function GET(req: NextRequest) {
   const auth = await requireAuth();
 
   const feedId = Number(req.nextUrl.searchParams.get("feedId"));
+  // ?refresh=1 forces a fresh recompute and overwrites the cached snapshot.
+  // Any other load is cache-eligible (served if <24h old, see getFeedPreviewPosts).
+  const forceFresh = req.nextUrl.searchParams.get("refresh") === "1";
+  return streamPreview(feedId, auth.userId, { forceFresh });
+}
+
+/**
+ * Tail-recompute variant. The curator's partial refresh POSTs the FROZEN PREFIX
+ * (posts already read + the look-ahead buffer) as `excludeUris`; the server
+ * recomputes the snapshot from the feed's current config and returns only the
+ * posts NOT in that prefix, so the client can splice the tail in place without
+ * disturbing the read position. Body: { feedId, excludeUris?, refresh? }.
+ */
+export async function POST(req: NextRequest) {
+  const limited = enforceRateLimit(req, "feed-preview", LLM_RULES);
+  if (limited) return limited;
+  const auth = await requireAuth();
+
+  let body: { feedId?: number; excludeUris?: string[]; refresh?: boolean } = {};
+  try {
+    body = await req.json();
+  } catch {
+    /* empty / malformed body → treated as missing feedId below */
+  }
+  const feedId = Number(body.feedId);
+  const excludeUris = Array.isArray(body.excludeUris)
+    ? body.excludeUris.filter((u): u is string => typeof u === "string")
+    : undefined;
+  return streamPreview(feedId, auth.userId, {
+    forceFresh: body.refresh === true,
+    excludeUris,
+  });
+}
+
+async function streamPreview(
+  feedId: number,
+  userId: string,
+  opts: { forceFresh?: boolean; excludeUris?: string[] }
+): Promise<Response> {
   if (!feedId) {
     return new Response(
       JSON.stringify({ event: "error", message: "feedId required" }),
@@ -33,11 +72,10 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // ?refresh=1 forces a fresh recompute and overwrites the cached snapshot.
-  // Any other load is cache-eligible (served if <24h old, see getFeedPreviewPosts).
-  const forceFresh = req.nextUrl.searchParams.get("refresh") === "1";
+  const forceFresh = opts.forceFresh ?? false;
+  const excludeUris = opts.excludeUris;
 
-  const feed = await getFeedForUser(feedId, auth.userId);
+  const feed = await getFeedForUser(feedId, userId);
   if (!feed) {
     return new Response(
       JSON.stringify({ event: "error", message: "Feed not found" }),
@@ -74,7 +112,8 @@ export async function GET(req: NextRequest) {
       try {
         const posts = await getFeedPreviewPosts(feedId, 25, onStage, {
           forceFresh,
-          viewerUserId: auth.userId,
+          viewerUserId: userId,
+          excludeUris,
           onSeenFiltered: (n) => {
             seenFiltered = n;
           },

@@ -29,6 +29,7 @@ export interface Post {
   image_alts: string[];
   image_urls: string[];
   video_thumbnail: string | null;
+  video_playlist: string | null;
   is_reply: boolean;
   reply_parent_uri: string | null;
 }

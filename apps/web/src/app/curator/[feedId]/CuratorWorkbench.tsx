@@ -587,7 +587,14 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           feedSignatureRef.current = nextSig;
           if (subsChanged) reloadFeeds();
           if (postsDebounceRef.current) clearTimeout(postsDebounceRef.current);
-          postsDebounceRef.current = setTimeout(() => rootFeedRef.current?.reload(), 600);
+          // A mid-session refinement (chat tune, swipe-left "less like this")
+          // recomputes only the tail past the commit point, so the feed the user
+          // is reading isn't yanked. Degrades to a full load when nothing's been
+          // read yet (e.g. still building the feed during onboarding).
+          postsDebounceRef.current = setTimeout(
+            () => rootFeedRef.current?.reload({ tail: true }),
+            600
+          );
           willReload = true;
         }
       }

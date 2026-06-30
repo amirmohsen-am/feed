@@ -38,7 +38,7 @@ onAdcChange(() => {
   if (had) console.log("[pg] feed-db pool/connector reset after ADC change");
 });
 
-export async function getPool(): Promise<Pool> {
+async function getPool(): Promise<Pool> {
   if (_pool) return _pool;
   if (_poolInit) return _poolInit;
   const init = (async () => {

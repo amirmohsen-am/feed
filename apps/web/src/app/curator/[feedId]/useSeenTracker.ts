@@ -22,7 +22,7 @@ const ROOT_MARGIN = "-200px 0px -200px 0px";
 const FLUSH_MS = 2000;
 const MAX_BATCH = 200;
 
-export interface SeenTracker {
+interface SeenTracker {
   /** Stable callback ref to attach to each post element, keyed by its uri. */
   register: (uri: string) => (node: HTMLElement | null) => void;
   /**
@@ -32,6 +32,13 @@ export interface SeenTracker {
   flushNow: () => Promise<void>;
   /** Start a new load generation: clear per-fetch impression dedup. */
   reset: () => void;
+  /**
+   * URIs that have fired an impression this load generation (dwelled on screen).
+   * Used by the tail-recompute to derive the commit point — the boundary between
+   * the frozen prefix (read + look-ahead) and the recomputable tail. Returns the
+   * live set (do not mutate); reset() clears it.
+   */
+  getSeenUris: () => Set<string>;
 }
 
 export function useSeenTracker(feedId: number, enabled: boolean): SeenTracker {
@@ -179,8 +186,10 @@ export function useSeenTracker(feedId: number, enabled: boolean): SeenTracker {
 
   const flushNow = useCallback(() => flush(), [flush]);
 
+  const getSeenUris = useCallback(() => fired.current, []);
+
   return useMemo(
-    () => ({ register, flushNow, reset }),
-    [register, flushNow, reset]
+    () => ({ register, flushNow, reset, getSeenUris }),
+    [register, flushNow, reset, getSeenUris]
   );
 }

@@ -72,14 +72,14 @@ const foldMask = (stopPct: number) => `linear-gradient(to bottom,#000 ${stopPct}
 const prefersReducedMotion = () =>
   typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-export interface PendingBranch {
+interface PendingBranch {
   post: Post;
   options: BranchOption[] | null;
   branchFeedId?: number;
   branchFeedName?: string;
 }
 
-export interface BranchController {
+interface BranchController {
   // ── Container-class flags ──
   branchDragging: boolean;
   committedBranchUri: string | null;
@@ -124,7 +124,7 @@ export function useBranchController({
   postCount: number;
   /** The feed's inner container (owned by FeedView) — DOM queries scope to it. */
   feedInnerRef: RefObject<HTMLDivElement | null>;
-  loadPosts: (force?: boolean) => Promise<void> | void;
+  loadPosts: (opts?: { force?: boolean; tail?: boolean } | boolean) => Promise<void> | void;
   /** Root only: a swipe-left tune routes through the workbench chat. When
    *  omitted (nested), the controller tunes its own feed and reloads. */
   onTune?: (message: string, post: Post) => void;
@@ -411,13 +411,36 @@ export function useBranchController({
       el.style.removeProperty("--branch-progress");
       if (branchDraggingRef.current) {
         branchDraggingRef.current = false;
+        // Drop the class imperatively too (mirror of the add below) so the other
+        // posts settle back via the base 0.28s transition the same frame
+        // --branch-progress clears.
+        el.classList.remove("cur-branch-dragging");
         setBranchDragging(false);
-        setPendingBranch(null);
+        // Deliberately do NOT clear pendingBranch here. t hits 0 not only on a
+        // cancelled swipe but mid-gesture whenever the finger crosses back left
+        // (a right→left→right wiggle without releasing). Clearing the source mark
+        // on that transient zero un-marks this card as the branch source; the next
+        // rightward frame then re-applies --branch-progress before React can
+        // re-mark it, so for one frame the card is treated as a receding "other"
+        // and visibly jumps left. Keeping the mark sticky for the whole gesture
+        // means the source stays excluded from the recede throughout. It is
+        // overwritten by the next card's onFirstRightDrag and cleared on
+        // commit/reset, so a lingering mark after a plain cancel is inert (the
+        // recede transforms only apply while --branch-progress / dragging is set).
       }
       return;
     }
     if (!branchDraggingRef.current) {
       branchDraggingRef.current = true;
+      // Add the class imperatively, not only via React state. The recede CSS
+      // (.cur-branch-dragging > .cur-post-item-other) only consumes
+      // --branch-progress while this class is present. setBranchDragging is async,
+      // so if we waited for the re-render the other posts would sit still for the
+      // first frames of the drag and then snap to the current progress once the
+      // class landed — a laggy, jumpy start. Setting it here lands the class on the
+      // same frame as --branch-progress below; setBranchDragging keeps React's owned
+      // className in sync so later renders preserve it.
+      el.classList.add("cur-branch-dragging");
       setBranchDragging(true);
     }
     el.style.setProperty("--branch-progress", String(t));
@@ -468,12 +491,14 @@ export function useBranchController({
     if (onTune) {
       onTune(message, post);
     } else {
-      // Nested branch: tune this feed directly, then reload its posts.
+      // Nested branch: tune this feed directly, then recompute only the tail so
+      // the posts already read in the branch stay put (the read prefix isn't
+      // yanked — same partial-refresh behaviour as the root feed).
       void authedFetch("/api/chat", {
         method: "POST",
         body: JSON.stringify({ message, feedId }),
       })
-        .then(() => loadPosts())
+        .then(() => loadPosts({ tail: true }))
         .catch(() => {});
     }
   }

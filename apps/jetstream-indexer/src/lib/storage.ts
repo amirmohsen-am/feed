@@ -2,8 +2,6 @@
 // we care about: posts, likes, reposts, profiles, identity. Layout:
 //
 //   gs://{bucket}/jetstream/{kind}/dt=YYYY-MM-DD/{kind}-{tag}-{ts}.parquet
-//
-// Embeddings parquet (separate, for offline use) remains under embeddings/.
 
 import { Storage } from '@google-cloud/storage'
 import { parquetWriteBuffer } from 'hyparquet-writer'
@@ -16,11 +14,6 @@ import type {
   RepostRecord,
 } from './jetstream-extract.js'
 
-export type EmbeddingRecord = {
-  uri: string
-  embedding: number[]
-}
-
 const today = (): string => new Date().toISOString().slice(0, 10)
 
 let _storage: Storage | null = null
@@ -28,11 +21,6 @@ const getStorage = (cfg: Config): Storage => {
   if (_storage) return _storage
   _storage = new Storage({ projectId: cfg.gcpProject })
   return _storage
-}
-
-const packFloat32 = (vec: number[]): Buffer => {
-  const arr = new Float32Array(vec)
-  return Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength)
 }
 
 const upload = async (
@@ -177,27 +165,3 @@ export const writeIdentity = async (
   return upload(cfg, objectKey('identity', tag), buf)
 }
 
-// ----- Embeddings (legacy path, separate from jetstream/) -----
-
-const embeddingsPrefix = (cfg: Config, dt = today()): string =>
-  `embeddings/model=${cfg.embedModel}/task=retrieval-document/dim=${cfg.embedDim}/dt=${dt}/`
-
-export const writeEmbeddings = async (
-  cfg: Config,
-  embeddings: EmbeddingRecord[],
-  tag = 'batch',
-): Promise<string> => {
-  if (embeddings.length === 0) return ''
-  const buf = parquetWriteBuffer({
-    columnData: [
-      { name: 'uri', data: embeddings.map((e) => e.uri), type: 'STRING' },
-      {
-        name: 'embedding',
-        data: embeddings.map((e) => packFloat32(e.embedding)),
-        type: 'BYTE_ARRAY',
-      },
-    ],
-  })
-  const key = `${embeddingsPrefix(cfg)}embeddings-${tag}-${Date.now()}.parquet`
-  return upload(cfg, key, buf)
-}

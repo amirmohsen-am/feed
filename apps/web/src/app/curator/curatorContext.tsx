@@ -16,7 +16,7 @@ export type MobileTab = "chat" | "feed";
 
 export type ViewMode = "card" | "embed";
 
-export interface CuratorContextValue {
+interface CuratorContextValue {
   profile: UserProfile;
   bskyOAuthReady: boolean;
   refreshProfile: () => Promise<void>;

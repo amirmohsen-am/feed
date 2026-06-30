@@ -204,7 +204,7 @@ export async function listFeedsForUser(userId: string): Promise<DbFeed[]> {
   return res.rows.map(rowToFeed);
 }
 
-export async function getFeedByRkey(rkey: string): Promise<DbFeed | null> {
+async function getFeedByRkey(rkey: string): Promise<DbFeed | null> {
   const res = await query(
     "SELECT * FROM feeds WHERE published_rkey = $1",
     [rkey]
@@ -234,7 +234,7 @@ export async function getPublishedFeed(
   return getFeedByRkey(rkey);
 }
 
-export interface PublishedFeedEntry {
+interface PublishedFeedEntry {
   feed: DbFeed;
   publisher_did: string;
 }
@@ -252,13 +252,6 @@ export async function getPublishedFeedsWithPublisher(): Promise<PublishedFeedEnt
     feed: rowToFeed(row),
     publisher_did: row.publisher_did as string,
   }));
-}
-
-export async function getActiveFeeds(): Promise<DbFeed[]> {
-  const res = await query(
-    "SELECT * FROM feeds WHERE is_active = true ORDER BY id"
-  );
-  return res.rows.map(rowToFeed);
 }
 
 export async function updateFeed(

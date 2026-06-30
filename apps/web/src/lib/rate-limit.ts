@@ -17,7 +17,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-export interface RateRule {
+interface RateRule {
   /** Window length in milliseconds. */
   windowMs: number;
   /** Max requests permitted per key within the window. */
@@ -96,7 +96,7 @@ function sweep(now: number): void {
   }
 }
 
-export interface RateLimitResult {
+interface RateLimitResult {
   ok: boolean;
   /** Seconds until the most-constraining window frees up (0 when ok). */
   retryAfterSec: number;
@@ -107,7 +107,7 @@ export interface RateLimitResult {
  * quota when any rule is already at its limit, so a rejection by the daily
  * window doesn't also burn the minute window.
  */
-export function rateLimit(
+function rateLimit(
   key: string,
   rules: RateRule[],
   now: number = Date.now()
@@ -152,7 +152,7 @@ export function rateLimit(
  * is later fronted by an external HTTPS load balancer, the trusted-proxy depth
  * changes and this must be revisited.
  */
-export function clientIp(req: NextRequest): string {
+function clientIp(req: NextRequest): string {
   const xff = req.headers.get("x-forwarded-for");
   if (xff) {
     const parts = xff.split(",").map((s) => s.trim()).filter(Boolean);
