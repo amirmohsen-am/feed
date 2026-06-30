@@ -4367,3 +4367,59 @@
 @media (max-width: 767px){
   .cur-opts-input{ font-size: 16px; }  /* avoid iOS zoom-on-focus */
 }
+
+/* ─── Chat Memory (inline in chat) ─── */
+
+/* Inline flow shown in the chat area */
+.cur-memory-inline{
+  padding: 24px 20px 8px;
+  max-width: 340px; margin: 0 auto;
+  text-align: center;
+}
+.cur-memory-back{
+  background: none; border: none; color: var(--ink-3); cursor: pointer;
+  padding: 2px; display: flex; align-items: center;
+  position: absolute; left: 16px; top: 20px;
+}
+.cur-memory-back:hover{ color: var(--ink-1); }
+.cur-memory-inline-title{
+  font-family: var(--rf-display, Georgia); font-size: 17px;
+  font-weight: 500; color: var(--ink); margin-bottom: 6px;
+}
+.cur-memory-inline-desc{
+  font-size: 13px; color: var(--ink-3); margin-bottom: 20px; line-height: 1.45;
+}
+.cur-memory-links{
+  display: flex; gap: 12px; margin-bottom: 20px;
+}
+.cur-memory-link{
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 20px 14px; border-radius: 12px;
+  border: 1px solid var(--hair); background: var(--card-bg, rgba(255,255,255,0.03));
+  color: var(--ink-2); font-family: var(--rf-body); font-size: 13px;
+  font-weight: 500; text-decoration: none; transition: all 0.2s;
+}
+.cur-memory-link:hover{
+  border-color: var(--ink-3); color: var(--ink-1);
+  background: rgba(255,255,255,0.06);
+}
+.cur-memory-inline-hint{
+  font-size: 12px; color: var(--ink-4); margin: 0;
+}
+
+/* Memory button in mode row */
+.cur-memory-btn{
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--rf-body); font-size: 12px;
+  color: var(--ink-2); background: none;
+  border: 1px solid var(--hair); border-radius: 999px;
+  padding: 6px 14px 6px 12px; cursor: pointer;
+  transition: all 0.2s; white-space: nowrap;
+}
+.cur-memory-btn:hover:not(:disabled){
+  border-color: var(--ink-2); color: var(--ink-1);
+}
+.cur-memory-btn:disabled{ opacity: 0.5; cursor: default; }
+.cur-memory-btn-logos{
+  display: inline-flex; align-items: center; gap: 3px; margin-left: 2px;
+}

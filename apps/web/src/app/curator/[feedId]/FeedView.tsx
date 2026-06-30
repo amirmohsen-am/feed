@@ -18,6 +18,7 @@ import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader"
 import { FeedSkeleton } from "@/components/FeedSkeleton";
 import PostCard, { EngageFooter } from "@/components/PostCard";
 import SwipeDemo from "./SwipeDemo";
+import { useSeenTracker } from "./useSeenTracker";
 import { BlueskyEmbed } from "@/components/postCardUtils";
 import { authedFetch } from "@/lib/authed-fetch";
 import type { MechanicalFilters } from "@/lib/types";
@@ -137,12 +138,19 @@ function FeedViewImpl(
     viewMode,
     showDebug,
     hideUnavailable,
+    hideSeen,
     setActivePostCount,
     setUnavailableCount,
     openPublish,
     reloadFeeds,
   } = useCurator();
   const { trackPosts } = useFeedActions();
+
+  // Client-side "seen" tracking (viewport impressions → POST /api/seen). Each
+  // FeedView — root or nested branch — owns a tracker keyed to its own feedId,
+  // so impressions never bleed across feeds. Gated on the per-user hideSeen
+  // preference: with it off the observer is inert and nothing is recorded.
+  const seenTracker = useSeenTracker(feedId, hideSeen);
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [postCount, setPostCount] = useState(0);
@@ -254,6 +262,11 @@ function FeedViewImpl(
     setPipelineModel(undefined);
     setPipelineThinkingEnabled(undefined);
     setPipelineSeenFiltered(undefined);
+    // Record impressions from the generation we're leaving before refetching, so
+    // this reload's server-side seen filter drops the posts just viewed; then
+    // open a fresh impression generation for the incoming posts.
+    await seenTracker.flushNow();
+    seenTracker.reset();
     try {
       const url = `/api/feed-preview/stream?feedId=${feedId}${force ? "&refresh=1" : ""}`;
       const res = await authedFetch(url);
@@ -344,7 +357,7 @@ function FeedViewImpl(
       setPostsLoading(false);
       onLoaded?.();
     }
-  }, [feedId, isRoot, setActivePostCount, onConfigLoaded, onLoaded]);
+  }, [feedId, isRoot, setActivePostCount, onConfigLoaded, onLoaded, seenTracker]);
 
   // Expose imperative control to the workbench (root only uses it).
   useImperativeHandle(ref, () => ({
@@ -664,14 +677,31 @@ function FeedViewImpl(
     }
   }
 
+  // An explicit swipe-left reject must suppress that exact post across reloads.
+  // Tuning only adjusts the query (not the post), and a dismiss doesn't tune at
+  // all, so without recording the post as seen now it can re-enter the next
+  // snapshot. Record it via the same /api/seen path impressions use; the post-
+  // tune reload (or the next Refresh) then filters it out. Best-effort and
+  // idempotent server-side; fires well before any chat-driven reload completes.
+  function markRejected(uri: string) {
+    void authedFetch("/api/seen", {
+      method: "POST",
+      body: JSON.stringify({ feedId, uris: [uri] }),
+      suppressErrorToast: true,
+    }).catch(() => {});
+  }
+
   function handleFollowupChipSend(post: Post, reason: string) {
     submitTune(post, reason);
+    markRejected(post.uri);
     setSwipedUris((prev) => { const next = new Set(prev); next.add(post.uri); return next; });
   }
   function handleFollowupTextSend(post: Post, reason: string) {
     submitTune(post, reason);
+    markRejected(post.uri);
   }
   function handleFollowupDismiss(uri: string) {
+    markRejected(uri);
     setSwipedUris((prev) => { const next = new Set(prev); next.add(uri); return next; });
   }
 
@@ -814,7 +844,7 @@ function FeedViewImpl(
           if (post.uri === excludeUri) return null;
           if (hideUnavailable && unavailableUris.has(post.uri)) return null;
           return (
-            <div key={post.uri} className="cur-post-item cur-post-item-embed" style={{ animationDelay: `${Math.min(idx, 6) * 0.05}s` }}>
+            <div key={post.uri} ref={seenTracker.register(post.uri)} className="cur-post-item cur-post-item-embed" style={{ animationDelay: `${Math.min(idx, 6) * 0.05}s` }}>
               <div className="cur-post-embed-wrap" data-bsky-uri={post.uri}>
                 <div className="cur-post-embed-frame">
                   {post.is_reply && (
@@ -895,7 +925,7 @@ function FeedViewImpl(
                     Back
                   </button>
                 )}
-                <div className={`cur-post-item${isBranchSource ? " cur-post-item-source" : " cur-post-item-other"}`} style={{ animationDelay: `${Math.min(idx, 6) * 0.05}s` }}>
+                <div ref={seenTracker.register(post.uri)} className={`cur-post-item${isBranchSource ? " cur-post-item-source" : " cur-post-item-other"}`} style={{ animationDelay: `${Math.min(idx, 6) * 0.05}s` }}>
                   <SwipeableCard
                     disabled={isCommittedSource}
                     onSwipe={(v) => handleCardSwipe(post, v)}
