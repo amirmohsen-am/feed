@@ -124,7 +124,7 @@ export function useBranchController({
   postCount: number;
   /** The feed's inner container (owned by FeedView) — DOM queries scope to it. */
   feedInnerRef: RefObject<HTMLDivElement | null>;
-  loadPosts: (force?: boolean) => Promise<void> | void;
+  loadPosts: (opts?: { force?: boolean; tail?: boolean } | boolean) => Promise<void> | void;
   /** Root only: a swipe-left tune routes through the workbench chat. When
    *  omitted (nested), the controller tunes its own feed and reloads. */
   onTune?: (message: string, post: Post) => void;
@@ -468,12 +468,14 @@ export function useBranchController({
     if (onTune) {
       onTune(message, post);
     } else {
-      // Nested branch: tune this feed directly, then reload its posts.
+      // Nested branch: tune this feed directly, then recompute only the tail so
+      // the posts already read in the branch stay put (the read prefix isn't
+      // yanked — same partial-refresh behaviour as the root feed).
       void authedFetch("/api/chat", {
         method: "POST",
         body: JSON.stringify({ message, feedId }),
       })
-        .then(() => loadPosts())
+        .then(() => loadPosts({ tail: true }))
         .catch(() => {});
     }
   }

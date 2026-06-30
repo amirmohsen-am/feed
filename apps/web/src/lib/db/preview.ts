@@ -170,6 +170,14 @@ export async function getFeedPreviewPosts(
     // viewer. The stream route folds it into the final "done" event so the
     // loader can show it without regressing the stage progression.
     onSeenFiltered?: (n: number) => void;
+    // Tail-recompute: URIs to drop from the result before serving. The curator's
+    // partial-refresh sends the FROZEN PREFIX (posts the viewer has read + the
+    // small look-ahead buffer) here so a refinement signal recomputes only the
+    // tail and the client can splice [...frozen, ...newTail] without disturbing
+    // the read position. Like seen filtering, this is a serve-time, per-request
+    // concern applied AFTER the shared snapshot build — never cached, never fed
+    // into buildSnapshot's config hash.
+    excludeUris?: string[];
   }
 ): Promise<FeedPreviewPost[]> {
   const feedRes = await query("SELECT * FROM feeds WHERE id = $1", [feedId]);
@@ -177,7 +185,14 @@ export async function getFeedPreviewPosts(
   const feed = rowToFeed(feedRes.rows[0]);
 
   // Full, unfiltered, shared snapshot (up to SNAPSHOT_LIMIT).
-  const snapshot = await buildSnapshot(feed, onStage, opts);
+  let snapshot = await buildSnapshot(feed, onStage, opts);
+
+  // Tail-recompute exclude (frozen prefix). Dropped before the per-viewer seen
+  // filter and the display slice so the tail returns only fresh posts.
+  if (opts?.excludeUris?.length) {
+    const ex = new Set(opts.excludeUris);
+    snapshot = snapshot.filter((p) => !ex.has(p.uri));
+  }
 
   // Serve-time seen filter (per viewer). Skipped entirely without a viewer or
   // when the viewer has the preference off — the cron and anonymous reads land

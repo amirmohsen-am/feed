@@ -32,6 +32,13 @@ interface SeenTracker {
   flushNow: () => Promise<void>;
   /** Start a new load generation: clear per-fetch impression dedup. */
   reset: () => void;
+  /**
+   * URIs that have fired an impression this load generation (dwelled on screen).
+   * Used by the tail-recompute to derive the commit point — the boundary between
+   * the frozen prefix (read + look-ahead) and the recomputable tail. Returns the
+   * live set (do not mutate); reset() clears it.
+   */
+  getSeenUris: () => Set<string>;
 }
 
 export function useSeenTracker(feedId: number, enabled: boolean): SeenTracker {
@@ -179,8 +186,10 @@ export function useSeenTracker(feedId: number, enabled: boolean): SeenTracker {
 
   const flushNow = useCallback(() => flush(), [flush]);
 
+  const getSeenUris = useCallback(() => fired.current, []);
+
   return useMemo(
-    () => ({ register, flushNow, reset }),
-    [register, flushNow, reset]
+    () => ({ register, flushNow, reset, getSeenUris }),
+    [register, flushNow, reset, getSeenUris]
   );
 }
