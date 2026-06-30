@@ -2,7 +2,7 @@ import { query } from "./connection";
 
 // --- User ---
 
-export interface DbUser {
+interface DbUser {
   id: string; // UUID
   firebase_uid: string;
   name: string;

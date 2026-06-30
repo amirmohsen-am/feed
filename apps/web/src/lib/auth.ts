@@ -9,7 +9,7 @@ import { getSession, type SessionUser } from "./session";
  * backwards compatibility with all API routes.
  */
 
-export interface AuthUser {
+interface AuthUser {
   userId: string;
   blueskyDid: string | null;
   blueskyHandle: string | null;

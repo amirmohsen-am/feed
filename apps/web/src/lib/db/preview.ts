@@ -97,7 +97,7 @@ export const SNAPSHOT_LIMIT = 50;
  * results: the curator preview surfaces the error, the skeleton serves an
  * empty page, and nothing is cached — the next request retries.
  */
-export class RerankUnavailableError extends Error {}
+class RerankUnavailableError extends Error {}
 
 // Stable JSON: object keys sorted recursively so semantically-equal configs
 // (keys in a different order) hash identically and don't cause false misses.
@@ -489,7 +489,7 @@ async function readFeedSnapshot(feedId: number): Promise<FeedSnapshot | null> {
   }
 }
 
-export interface SkeletonPage {
+interface SkeletonPage {
   uris: string[];
   cursor?: string;
 }
@@ -611,7 +611,7 @@ export async function getSharedFeedPosts(
  * they're publishing. (After publish they can edit freely; the refresh cron
  * recomputes within 24h.)
  */
-export type PublishSnapshotState = "ready" | "missing" | "stale_config" | "empty";
+type PublishSnapshotState = "ready" | "missing" | "stale_config" | "empty";
 
 export async function getPublishSnapshotState(
   feed: DbFeed

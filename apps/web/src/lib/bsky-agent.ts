@@ -1,10 +1,10 @@
 /**
- * Minimal AT Protocol agent for authenticated actions (app-password path).
+ * Minimal AT Protocol agent for authenticated actions (like, repost).
  *
  * Uses the user's Bluesky handle + app password to create a session, then
- * writes records on their PDS (currently publishing the feed generator).
- * Sessions are short-lived and not cached — each action creates a fresh
- * session. This is fine for low-volume interactive use.
+ * calls createRecord / deleteRecord on their PDS. Sessions are short-lived
+ * and not cached — each action creates a fresh session. This is fine for
+ * low-volume interactive use (a few likes per feed preview).
  */
 
 const BSKY_SERVICE = "https://bsky.social";
@@ -32,7 +32,7 @@ export async function createSession(
 }
 
 /**
- * Publish (or update) an app.bsky.feed.generator record in the user's repo.
+ * Resolve a post URI to its CID by fetching it from the AppView.
  */
 export async function publishFeedGenerator(
   session: BskySession,

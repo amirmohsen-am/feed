@@ -27,7 +27,7 @@
 
 import { ENGAGEMENT_REF, MAX_BIAS_WEIGHT_SUM } from "../defaults";
 
-export interface BlendWeights {
+interface BlendWeights {
   engagementWeight: number;
   recencyWeight: number;
   recencyHalflifeH: number;
@@ -51,7 +51,7 @@ interface EngagementCounts {
  * compressed against ENGAGEMENT_REF so a handful of viral outliers don't pin
  * every other candidate's score to ~0.
  */
-export function engagementScore(c: EngagementCounts): number {
+function engagementScore(c: EngagementCounts): number {
   const raw =
     (c.like_count || 0) +
     2 * (c.repost_count || 0) +
@@ -76,7 +76,7 @@ const RECENCY_SKEW_TOLERANCE_H = 10 / 60; // 10 minutes
  * fresh, or fake-future spam would pin itself to the top of every recency-
  * weighted feed; beyond a small clock-skew tolerance we score it 0.
  */
-export function recencyScore(
+function recencyScore(
   createdAtIso: string,
   halflifeH: number,
   nowMs: number

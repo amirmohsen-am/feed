@@ -34,7 +34,7 @@ onAdcChange(() => {
   if (had) console.log("[bsky-pg] pool/connector reset after ADC change");
 });
 
-export async function getBskyPool(): Promise<Pool> {
+async function getBskyPool(): Promise<Pool> {
   if (_pool) return _pool;
   if (_poolInit) return _poolInit;
   const init = (async () => {

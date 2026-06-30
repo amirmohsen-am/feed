@@ -27,7 +27,7 @@ export const RERANK_MODEL = DEFAULT_RERANK_MODEL;
 // reasons dominate output tokens (a kept item with a reason is ~40 tokens vs
 // ~15 without) and rerank latency is output-bound. 0 = never ask for reasons,
 // dropping the `reason` field from the contract entirely for the fastest output.
-export const RERANK_REASONS_LIMIT = 0;
+const RERANK_REASONS_LIMIT = 0;
 
 const RERANK_OUTPUT_CONTRACT =
   RERANK_REASONS_LIMIT > 0
@@ -51,13 +51,13 @@ async function client(): Promise<Anthropic> {
   return _client;
 }
 
-export interface RerankedItem {
+interface RerankedItem {
   i: number;
   score: number;
   reason: string;
 }
 
-export interface RerankResult {
+interface RerankResult {
   kept: RerankedItem[];
   ms_rerank: number;
 }
@@ -89,7 +89,7 @@ function safeParseArray(raw: string): unknown {
   return JSON.parse(stripped.slice(start, end + 1));
 }
 
-export interface RerankPhaseInfo {
+interface RerankPhaseInfo {
   candidates: number;
   images: number;
   model: string;

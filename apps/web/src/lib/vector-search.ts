@@ -725,7 +725,7 @@ function descriptionLooksNsfw(description: string | null | undefined): boolean {
   return false;
 }
 
-export interface SearchOpts {
+interface SearchOpts {
   subqueries: string[];
   totalBudget: number;
   filter?: SearchFilter;
@@ -856,3 +856,4 @@ function uniqueAuthorDids(hits: VectorHit[]): string[] {
   for (const h of hits) seen.add(h.did);
   return Array.from(seen);
 }
+

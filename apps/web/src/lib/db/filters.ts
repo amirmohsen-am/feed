@@ -12,7 +12,7 @@ const PRESET_WINDOW_MS: Record<string, number> = {
   "3d": 3 * 24 * 60 * 60 * 1000,
 };
 
-export function timeWindowToBounds(m: MechanicalFilters): {
+function timeWindowToBounds(m: MechanicalFilters): {
   afterUs?: number;
   beforeUs?: number;
 } {

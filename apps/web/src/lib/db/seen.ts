@@ -18,7 +18,7 @@ import { query } from "./connection";
  * the query then returns at most `candidate.length` rows instead of the user's
  * whole retention-window history.
  */
-export async function getSeenUris(
+async function getSeenUris(
   userId: string,
   feedId: number,
   candidate?: string[]

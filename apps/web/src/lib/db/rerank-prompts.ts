@@ -2,7 +2,7 @@ import { query, withClient } from "./connection";
 
 // --- Reranker prompts (used by /search) ---
 
-export interface DbRerankPrompt {
+interface DbRerankPrompt {
   id: string;
   user_id: string;
   name: string;
@@ -11,7 +11,7 @@ export interface DbRerankPrompt {
   updated_at: Date;
 }
 
-export interface DbRerankPromptVersion {
+interface DbRerankPromptVersion {
   id: string;
   prompt_id: string;
   version: number;
@@ -19,7 +19,7 @@ export interface DbRerankPromptVersion {
   created_at: Date;
 }
 
-export interface RerankPromptWithVersion extends DbRerankPrompt {
+interface RerankPromptWithVersion extends DbRerankPrompt {
   current_version: number | null;
   current_system_prompt: string | null;
 }

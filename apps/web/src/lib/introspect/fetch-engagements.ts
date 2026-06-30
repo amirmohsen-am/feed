@@ -26,7 +26,7 @@ import {
 } from "./bsky-api";
 import type { Engagement, Subject, SignalType } from "./types";
 
-export const FETCH_CAPS = {
+const FETCH_CAPS = {
   like: 200,
   repost: 100,
   quote: 50, // upper bound; quote-vs-non-quote is decided during composition
@@ -34,7 +34,7 @@ export const FETCH_CAPS = {
   reply: 100, // upper bound on own-replies
 } as const;
 
-export interface FetchResult {
+interface FetchResult {
   did: string;
   pds: string;
   engagements: Engagement[];
