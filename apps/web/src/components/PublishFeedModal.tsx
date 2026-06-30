@@ -297,7 +297,7 @@ export default function PublishFeedModal({
         ) : authPhase === "unlinked" ? (
           <div>
             <p style={{ ...textBody, marginBottom: 20 }}>
-              Link your Bluesky account before publishing. We use OAuth — no
+              Link your Bluesky account before publishing. We use OAuth, no
               password is stored.
             </p>
             <div style={{ display: "flex", gap: 10 }}>
@@ -326,6 +326,13 @@ export default function PublishFeedModal({
                 Connect Bluesky
               </button>
             </div>
+            <p style={{ fontSize: 12, color: "var(--ink-4)", marginTop: 14, lineHeight: 1.5 }}>
+              Don&apos;t have Bluesky yet?{" "}
+              <a href="https://bsky.app" target="_blank" rel="noopener noreferrer" style={{ color: "var(--aurora-deep)" }}>
+                Create a free account
+              </a>
+              , then come back to publish.
+            </p>
           </div>
         ) : authPhase === "needs_oauth" ? (
           <div>
