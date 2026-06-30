@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import BranchTopicsHeader from "@/components/BranchTopicsHeader";
@@ -168,7 +168,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     const target = stack[stack.length - 1] ?? rootFeedRef.current;
     return Promise.resolve(target?.reload(force));
   }, []);
-  const feedFocusValue = useRef<FeedFocusValue>({ registerLeaf }).current;
+  const feedFocusValue = useMemo<FeedFocusValue>(() => ({ registerLeaf }), [registerLeaf]);
 
   // Consume the ?prompt= seed once: focus the textarea + drop it from the URL.
   const promptConsumedRef = useRef(false);
