@@ -104,6 +104,39 @@ function FeedViewImpl(
   const [pipelineThinkingEnabled, setPipelineThinkingEnabled] = useState<boolean | undefined>();
   const [pipelineSeenFiltered, setPipelineSeenFiltered] = useState<number | undefined>();
 
+  // ── Loading → posts reveal choreography ("Settle") ──────────────
+  // Hold the skeleton one beat so it can animate OUT (scale + fade) before the
+  // posts spring IN. prevShowSkelRef marks the skeleton being on screen so we
+  // only choreograph the skeleton→posts edge, not every posts change.
+  const prevShowSkelRef = useRef(false);
+  const [skelExiting, setSkelExiting] = useState(false);
+  const [postsEntering, setPostsEntering] = useState(false);
+  // Timers live in a ref and are cleared only on unmount — NOT via an effect
+  // cleanup, since postsLoading flips false right after setPosts and would
+  // otherwise re-run the effect and cancel the in-flight handoff mid-animation.
+  const revealTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => () => { revealTimersRef.current.forEach(clearTimeout); }, []);
+
+  useEffect(() => {
+    const showSkel = posts.length === 0 && postsLoading;
+    const reduce =
+      typeof window !== "undefined" &&
+      !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    // Skeleton was up and posts just arrived → exit the skeleton, then enter
+    // posts. Guarded by prevShowSkelRef (only the real edge) and re-armed only
+    // when the skeleton shows again, so streaming/loading flips can't retrigger.
+    if (prevShowSkelRef.current && posts.length > 0 && !reduce) {
+      revealTimersRef.current.forEach(clearTimeout);
+      setSkelExiting(true);
+      setPostsEntering(false);
+      revealTimersRef.current = [
+        setTimeout(() => { setSkelExiting(false); setPostsEntering(true); }, 300),
+        setTimeout(() => setPostsEntering(false), 300 + 850),
+      ];
+    }
+    prevShowSkelRef.current = showSkel;
+  }, [posts.length, postsLoading]);
+
   const postsRef = useRef<Post[]>([]);
   useEffect(() => {
     postsRef.current = posts;
@@ -332,10 +365,12 @@ function FeedViewImpl(
     return () => ac.abort();
   }, [viewMode, posts]);
 
+  const showSkeleton = posts.length === 0 && postsLoading;
+
   return (
     <div
       ref={feedInnerRef}
-      className={`cur-feed-posts-inner${refreshing ? " refreshing" : ""}${branch.branchDragging ? " cur-branch-dragging" : ""}${branch.committedBranchUri ? " cur-branching" : ""}${branch.branchReturning ? " cur-branch-returning" : ""}`}
+      className={`cur-feed-posts-inner${refreshing ? " refreshing" : ""}${branch.branchDragging ? " cur-branch-dragging" : ""}${branch.committedBranchUri ? " cur-branching" : ""}${branch.branchReturning ? " cur-branch-returning" : ""}${postsEntering ? " cur-feed-entering" : ""}`}
     >
       {onBack && (
         <button type="button" className="cur-branch-back" onClick={onBack} aria-label="Back">
@@ -385,17 +420,17 @@ function FeedViewImpl(
         </div>
       )}
 
-      {posts.length === 0 ? (
-        postsLoading ? (
-          <FeedSkeleton />
-        ) : (
-          <div className="cur-empty">
-            <p>No posts yet.</p>
-            <p className="sub">Try Refresh, or refine the subqueries in chat or the Tune panel.</p>
-          </div>
-        )
+      {showSkeleton ? (
+        <FeedSkeleton />
+      ) : skelExiting ? (
+        <FeedSkeleton exiting />
+      ) : posts.length === 0 ? (
+        <div className="cur-empty">
+          <p>No posts yet.</p>
+          <p className="sub">Try Refresh, or refine the subqueries in chat or the Tune panel.</p>
+        </div>
       ) : viewMode === "embed" ? (
-        posts.map((post) => {
+        posts.map((post, idx) => {
           const bskyUrl = (() => {
             const m = post.uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
             return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : null;
@@ -408,7 +443,7 @@ function FeedViewImpl(
           if (post.uri === excludeUri) return null;
           if (hideUnavailable && unavailableUris.has(post.uri)) return null;
           return (
-            <div key={post.uri} ref={seenTracker.register(post.uri)} className="cur-post-item cur-post-item-embed">
+            <div key={post.uri} ref={seenTracker.register(post.uri)} className="cur-post-item cur-post-item-embed" style={{ animationDelay: `${Math.min(idx, 6) * 0.05}s` }}>
               <div className="cur-post-embed-wrap" data-bsky-uri={post.uri}>
                 <div className="cur-post-embed-frame">
                   {post.is_reply && (
@@ -461,7 +496,7 @@ function FeedViewImpl(
           .filter((post) => post.uri !== excludeUri)
           .filter((post) => !branch.swipedUris.has(post.uri))
           .filter((post) => !branch.othersCleared || post.uri === branch.committedBranchUri)
-          .map((post) => {
+          .map((post, idx) => {
             const sourceUri = branch.committedBranchUri ?? branch.pendingBranch?.post?.uri ?? branch.returningSourceUri ?? null;
             const isBranchSource = post.uri === sourceUri;
             const isCommittedSource = branch.committedBranchUri === post.uri;
@@ -489,7 +524,7 @@ function FeedViewImpl(
                     Back
                   </button>
                 )}
-                <div ref={seenTracker.register(post.uri)} className={`cur-post-item${isBranchSource ? " cur-post-item-source" : " cur-post-item-other"}`}>
+                <div ref={seenTracker.register(post.uri)} className={`cur-post-item${isBranchSource ? " cur-post-item-source" : " cur-post-item-other"}`} style={{ animationDelay: `${Math.min(idx, 6) * 0.05}s` }}>
                   <SwipeableCard
                     disabled={isCommittedSource}
                     onSwipe={(v) => branch.handleCardSwipe(post, v)}
