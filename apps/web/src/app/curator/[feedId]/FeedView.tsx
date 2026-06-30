@@ -4,14 +4,14 @@ import {
   forwardRef,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   Fragment,
   type ReactNode,
 } from "react";
-import SwipeableCard, { type SwipeVerdict } from "@/components/SwipeableCard";
+import SwipeableCard from "@/components/SwipeableCard";
 import SwipeFollowupCard from "@/components/SwipeFollowupCard";
 import BranchTopicsHeader from "@/components/BranchTopicsHeader";
 import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
@@ -21,9 +21,11 @@ import SwipeDemo from "./SwipeDemo";
 import { BlueskyEmbed } from "@/components/postCardUtils";
 import { authedFetch } from "@/lib/authed-fetch";
 import type { MechanicalFilters } from "@/lib/types";
-import { type BranchOption } from "@/lib/branch";
 import { useCurator } from "../curatorContext";
 import { useFeedActions } from "../feedActions";
+import { useFeedFocus } from "../feedFocus";
+import { useSeenTracker } from "./useSeenTracker";
+import { useBranchController } from "./useBranchController";
 import type { Post } from "../feedTypes";
 
 // Config echoed back by the feed-preview stream's "done" event — reported up so
@@ -38,70 +40,9 @@ export interface StreamedConfig {
 }
 
 export interface FeedViewHandle {
-  reload: (force?: boolean) => void;
+  reload: (force?: boolean) => Promise<void> | void;
   setPosts: (posts: Post[]) => void;
 }
-
-// useLayoutEffect on the client, useEffect on the server — so the FLIP measure +
-// invert runs after DOM mutation but before paint (no flash) without the SSR
-// "useLayoutEffect does nothing on the server" warning.
-const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
-
-// The scroll container the feed lives in: the curator pane when it scrolls,
-// otherwise the window (mobile / short panes).
-function activeScroller(): HTMLElement | Window {
-  const pane = document.querySelector(".cur-feed-posts") as HTMLElement | null;
-  if (pane && pane.scrollHeight > pane.clientHeight + 4) return pane;
-  return window;
-}
-
-function scrollTopOf(scroller: HTMLElement | Window): number {
-  return scroller instanceof Window ? window.scrollY : scroller.scrollTop;
-}
-
-// Set scroll position instantly (no smooth) — used to anchor the source in place
-// across a DOM re-insertion before the eased scroll takes over.
-function setScrollTop(scroller: HTMLElement | Window, v: number) {
-  const top = Math.max(0, v);
-  if (scroller instanceof Window) window.scrollTo(0, top);
-  else scroller.scrollTop = top;
-}
-
-// The source's top relative to the scroller's top edge (viewport px).
-function topWithinScroller(el: HTMLElement, scroller: HTMLElement | Window): number {
-  const refTop = scroller instanceof Window ? 0 : scroller.getBoundingClientRect().top;
-  return el.getBoundingClientRect().top - refTop;
-}
-
-// Ease a scroller's scrollTop to `to` over `dur` ms (ease-out cubic). The source
-// moves via scroll — not a transform — so every other post stays in real layout
-// and nothing overlaps or leaves a blank gap as it travels.
-function easeScrollTop(scroller: HTMLElement | Window, to: number, dur = 460) {
-  const from = scrollTopOf(scroller);
-  const target = Math.max(0, to);
-  if (Math.abs(target - from) < 1) { setScrollTop(scroller, target); return; }
-  const start = performance.now();
-  const ease = (p: number) => 1 - Math.pow(1 - p, 3); // easeOutCubic
-
-  function step(now: number) {
-    const p = Math.min(1, (now - start) / dur);
-    setScrollTop(scroller, from + (target - from) * ease(p));
-    if (p < 1) requestAnimationFrame(step);
-  }
-  requestAnimationFrame(step);
-}
-
-// ── Source-post fold (swipe-right "dive deeper") ──
-// The source post folds into a compact pinned preview as you drag right: the body
-// region collapses to a couple of lines whose text dissolves to transparent (a
-// mask, not a white overlay — no hard clip), and the avatar shrinks. Heights are
-// measured (not guessable in CSS), so the fold is driven imperatively here.
-const FOLD_MIN = 48;      // collapsed body height (≈ 2 lines + the fade)
-const AVA_FULL = 40, AVA_MIN = 30;
-const FOLD_DUR = 440;     // ms — matches the recede/lift timing on commit & Back
-const foldMask = (stopPct: number) => `linear-gradient(to bottom,#000 ${stopPct}%,transparent)`;
-const prefersReducedMotion = () =>
-  typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 interface FeedViewProps {
   feedId: number;
@@ -137,12 +78,17 @@ function FeedViewImpl(
     viewMode,
     showDebug,
     hideUnavailable,
+    hideSeen,
     setActivePostCount,
     setUnavailableCount,
     openPublish,
-    reloadFeeds,
   } = useCurator();
   const { trackPosts } = useFeedActions();
+  const { registerLeaf } = useFeedFocus();
+
+  // Client-side "seen" impression tracking, scoped to THIS feed's id. Recursion
+  // gives the root feed and every nested branch their own independent seen set.
+  const seenTracker = useSeenTracker(feedId, hideSeen);
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [postCount, setPostCount] = useState(0);
@@ -158,46 +104,6 @@ function FeedViewImpl(
   const [pipelineThinkingEnabled, setPipelineThinkingEnabled] = useState<boolean | undefined>();
   const [pipelineSeenFiltered, setPipelineSeenFiltered] = useState<number | undefined>();
 
-  // ── Swipe-to-tune (left) + swipe-to-branch (right) state ──
-  const [swipedUris, setSwipedUris] = useState<Set<string>>(() => new Set());
-  const [followupTopics, setFollowupTopics] = useState<Map<string, BranchOption[]>>(() => new Map());
-  const fetchingFollowupRef = useRef(new Set<string>());
-  const [swipeRightTopics, setSwipeRightTopics] = useState<Map<string, BranchOption[] | null>>(() => new Map());
-  const [branchPendingUri, setBranchPendingUri] = useState<string | null>(null);
-  const [pendingBranch, setPendingBranch] = useState<{
-    post: Post;
-    options: BranchOption[] | null;
-    branchFeedId?: number;
-    branchFeedName?: string;
-  } | null>(null);
-  const [committedBranchUri, setCommittedBranchUri] = useState<string | null>(null);
-  const [othersCleared, setOthersCleared] = useState(false);
-  const [branchDragging, setBranchDragging] = useState(false);
-  const branchDraggingRef = useRef(false);
-  const [branchReturning, setBranchReturning] = useState(false);
-  const [returningSourceUri, setReturningSourceUri] = useState<string | null>(null);
-  const branchCommittedRef = useRef(false);
-  const feedInnerRef = useRef<HTMLDivElement | null>(null);
-  // Committed source post: whether the user has expanded the folded body via the
-  // chevron. The fold itself lives in inline styles on the source card's foldable
-  // region (measured heights + mask), tracked here so cleanup can find them.
-  const [sourceExpanded, setSourceExpanded] = useState(false);
-  const foldElRef = useRef<{ foldable: HTMLElement; avatar: HTMLElement | null } | null>(null);
-  const foldFullRef = useRef<number | null>(null);
-  // The source's viewport top, captured at Back (before it un-pins) so the scroll
-  // can be anchored to keep it visually still across the other posts re-inserting.
-  const backAnchorTopRef = useRef<number | null>(null);
-  // Same idea for the moment the receded posts are removed from the DOM (480ms
-  // after commit): their removal shrinks the content above the source and the
-  // browser yanks the scroll to compensate ("then it goes down"). Capture the
-  // source's spot just before removal so we can pin it across the removal. We
-  // store the SCROLLER too, not just the top: at capture the full feed makes the
-  // pane scrollable (activeScroller → pane), but once the other posts are gone the
-  // pane may be shorter than its viewport (activeScroller → window). Re-resolving
-  // the scroller in the restore would then pin the wrong element while the pane's
-  // own scrollTop clamps and snaps. Same scroller in, same scroller out.
-  const clearAnchorRef = useRef<{ scroller: HTMLElement | Window; top: number } | null>(null);
-
   const postsRef = useRef<Post[]>([]);
   useEffect(() => {
     postsRef.current = posts;
@@ -209,6 +115,11 @@ function FeedViewImpl(
 
   // ── Streaming post loader ───────────────────────────────────────
   const loadPosts = useCallback(async (force?: boolean) => {
+    // Record any pending on-screen impressions before we re-query, so the
+    // reload's server-side seen filter accounts for what was just viewed, then
+    // start a fresh impression generation for the incoming results.
+    await seenTracker.flushNow();
+    seenTracker.reset();
     setPostsLoading(true);
     // A non-forced load means we're entering a feed fresh (feed switch, branch
     // mount, or a chat-driven config change) rather than refreshing the current
@@ -316,13 +227,28 @@ function FeedViewImpl(
       setPostsLoading(false);
       onLoaded?.();
     }
-  }, [feedId, isRoot, setActivePostCount, onConfigLoaded, onLoaded]);
+  }, [feedId, isRoot, setActivePostCount, onConfigLoaded, onLoaded, seenTracker]);
 
-  // Expose imperative control to the workbench (root only uses it).
-  useImperativeHandle(ref, () => ({
-    reload: (force?: boolean) => { void loadPosts(force); },
+  // Keep the latest loadPosts reachable from the stable handle without rebuilding
+  // it (rebuilding would re-register the leaf on every reload). Updated in an
+  // effect so we never mutate a ref during render.
+  const loadPostsRef = useRef(loadPosts);
+  useEffect(() => { loadPostsRef.current = loadPosts; }, [loadPosts]);
+
+  // Stable handle (identity fixed for the mount): exposed to the workbench via ref
+  // AND registered in the leaf-feed stack. setPosts/setPostsLoading are stable
+  // state setters; loadPosts is read through the ref above.
+  const selfHandle = useMemo<FeedViewHandle>(() => ({
+    reload: (force?: boolean) => loadPostsRef.current(force),
     setPosts: (p: Post[]) => { setPosts(p); setPostsLoading(false); },
-  }), [loadPosts]);
+  }), []);
+  useImperativeHandle(ref, () => selfHandle, [selfHandle]);
+
+  // Register in the workbench's leaf-feed stack so a user-initiated refresh
+  // (mobile pull-to-refresh) targets whichever feed is currently in view — the
+  // deepest open branch, not always the root. A branch only mounts once its
+  // parent commits, so mount order == nesting depth and the stack top is the leaf.
+  useEffect(() => registerLeaf(selfHandle), [registerLeaf, selfHandle]);
 
   // Nested branch feeds load themselves on mount; the root is driven by the
   // workbench (which sequences chat load / branch-init / snapshot restore).
@@ -332,320 +258,16 @@ function FeedViewImpl(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Branch (swipe-right) ────────────────────────────────────────
-  function fetchSwipeRightTopics(post: Post) {
-    if (swipeRightTopics.has(post.uri)) return;
-    setSwipeRightTopics((prev) => { const next = new Map(prev); next.set(post.uri, null); return next; });
-    void authedFetch("/api/branch/options", {
-      method: "POST",
-      body: JSON.stringify({ feedId, postUri: post.uri }),
-    })
-      .then(async (res) => {
-        const d = await res.json();
-        const topics: BranchOption[] = Array.isArray(d.options) ? d.options : [];
-        setSwipeRightTopics((prev) => { const next = new Map(prev); next.set(post.uri, topics); return next; });
-      })
-      .catch(() => {
-        setSwipeRightTopics((prev) => { const next = new Map(prev); next.set(post.uri, []); return next; });
-      });
-  }
+  // The feed's inner container — the fold/lift choreography scopes its DOM queries
+  // to it. Owned here (not by the controller) so the render reads a plain local
+  // ref, and the controller's return stays ref-free.
+  const feedInnerRef = useRef<HTMLDivElement | null>(null);
 
-  // Creates the branch feed in the background and stores its id on pendingBranch
-  // so the inline nested FeedView can stream it. Does NOT navigate.
-  async function createBranchForOverlay(post: Post, options: BranchOption[]) {
-    const effective: BranchOption[] = options.length > 0 ? options : [{
-      kind: "deeper",
-      label: post.text.slice(0, 40).trim() || "this topic",
-      subquery: post.text.replace(/\s+/g, " ").trim().slice(0, 200),
-    }];
-    try {
-      const res = await authedFetch("/api/feeds/branch", {
-        method: "POST",
-        body: JSON.stringify({
-          parentFeedId: feedId,
-          sourcePostUri: post.uri,
-          subqueries: effective.map((o) => o.subquery),
-          labels: effective.map((o) => o.label),
-        }),
-      });
-      const d = await res.json();
-      if (d.feed?.id) {
-        reloadFeeds();
-        setPendingBranch((prev) => prev ? { ...prev, branchFeedId: d.feed.id, branchFeedName: d.feed.name } : prev);
-      }
-    } catch { /* panel still shows topics; can retry */ }
-  }
-
-  const sourceItemEl = () =>
-    (feedInnerRef.current?.querySelector(".cur-post-item-source") as HTMLElement | null) ?? null;
-
-  function handleCardSwipe(post: Post, verdict: SwipeVerdict) {
-    if (verdict === "reject") return;
-    branchCommittedRef.current = true;
-    branchDraggingRef.current = false;
-    setBranchDragging(false);
-    feedInnerRef.current?.style.removeProperty("--branch-progress");
-    setCommittedBranchUri(post.uri);
-    setOthersCleared(false);
-    // Fold the source into its compact pinned preview (the drag left it part-folded;
-    // ease it the rest of the way) and start it collapsed.
-    setSourceExpanded(false);
-    settleFold(true);
-    // Drop the receded posts once they've slid out. Capture the source's spot first
-    // so the clearAnchor effect can pin it across the removal (removing the
-    // full-height posts above it would otherwise yank the scroll — "then it goes
-    // down").
-    setTimeout(() => {
-      const scroller = activeScroller();
-      const el = sourceItemEl();
-      clearAnchorRef.current = el ? { scroller, top: topWithinScroller(el, scroller) } : null;
-      setOthersCleared(true);
-    }, 480);
-    const options = swipeRightTopics.get(post.uri);
-    if (Array.isArray(options) && options.length > 0) {
-      void createBranchForOverlay(post, options);
-    } else {
-      setBranchPendingUri(post.uri);
-    }
-  }
-
-  // Locate the source card's foldable region (the block under the header) + its
-  // avatar. Direct-child scope so a nested branch feed folds only its own source.
-  const sourceFoldEls = useCallback(() => {
-    const inner = feedInnerRef.current;
-    const src = inner?.querySelector(":scope > .cur-post-item-source") as HTMLElement | null;
-    const foldable = (src?.querySelector(".cur-post-foldable") as HTMLElement | null) ?? null;
-    const avatar = (src?.querySelector(".cur-post-avatar") as HTMLElement | null) ?? null;
-    if (foldable) foldElRef.current = { foldable, avatar };
-    return { foldable, avatar };
-  }, []);
-
-  // Animate the source to its folded (collapsed=true) or full (collapsed=false)
-  // state — used on commit, on the expand/collapse chevron, and on Back. Re-measures
-  // the natural height each time (images may have loaded since the drag).
-  const settleFold = useCallback((collapsed: boolean) => {
-    const { foldable, avatar } = sourceFoldEls();
-    if (!foldable) return;
-    const prevMax = foldable.style.maxHeight;
-    foldable.style.transition = "none";
-    foldable.style.maxHeight = "none";
-    const full = foldable.scrollHeight;
-    foldFullRef.current = full;
-    foldable.style.maxHeight = prevMax || full + "px";
-    void foldable.offsetHeight; // reflow so the change below animates from here
-    const reduce = prefersReducedMotion();
-    const ease = "cubic-bezier(0.4,0,0.2,1)";
-    foldable.style.transition = reduce
-      ? "none"
-      : `max-height ${FOLD_DUR}ms ${ease}, -webkit-mask-image ${FOLD_DUR}ms, mask-image ${FOLD_DUR}ms`;
-    foldable.style.overflow = "hidden";
-    foldable.style.maxHeight = (collapsed ? Math.min(FOLD_MIN, full) : full) + "px";
-    foldable.style.webkitMaskImage = foldable.style.maskImage = foldMask(collapsed ? 52 : 100);
-    if (avatar) {
-      avatar.style.transition = reduce ? "none" : `width ${FOLD_DUR}ms ${ease}, height ${FOLD_DUR}ms ${ease}`;
-      const a = (collapsed ? AVA_MIN : AVA_FULL) + "px";
-      avatar.style.width = a;
-      avatar.style.height = a;
-    }
-  }, [sourceFoldEls]);
-
-  // Strip the inline fold styles so the card returns to a plain post (after Back, or
-  // after a cancelled drag eases back open).
-  const clearFoldInline = useCallback(() => {
-    const els = foldElRef.current;
-    if (els?.foldable) {
-      const f = els.foldable.style;
-      f.transition = ""; f.maxHeight = ""; f.overflow = ""; f.webkitMaskImage = ""; f.maskImage = "";
-    }
-    if (els?.avatar) {
-      const a = els.avatar.style;
-      a.transition = ""; a.width = ""; a.height = "";
-    }
-    foldElRef.current = null;
-    foldFullRef.current = null;
-  }, []);
-
-  const resetBranch = useCallback(() => {
-    // Capture the source's viewport top (before it un-pins) so the Back effect can
-    // anchor the scroll there as the other posts re-insert, then glide it down.
-    const scroller = activeScroller();
-    const el = sourceItemEl();
-    backAnchorTopRef.current = el ? topWithinScroller(el, scroller) : null;
-    branchCommittedRef.current = false;
-    branchDraggingRef.current = false;
-    setBranchDragging(false);
-    setReturningSourceUri(committedBranchUri);
-    setCommittedBranchUri(null);
-    setOthersCleared(false);
-    setPendingBranch(null);
-    if (isRoot) setActivePostCount(postCount);
-    feedInnerRef.current?.style.removeProperty("--branch-progress");
-    // Unfold the source back to a full post as the other posts re-insert, then drop
-    // the inline fold styles once it has settled.
-    setSourceExpanded(false);
-    settleFold(false);
-    setBranchReturning(true);
-    setTimeout(() => { setBranchReturning(false); setReturningSourceUri(null); clearFoldInline(); }, 520);
-  }, [committedBranchUri, isRoot, postCount, setActivePostCount, settleFold, clearFoldInline]);
-
-  // On commit, ease the source up to the top as the other posts recede — but only
-  // as far as it can actually REST once those posts are unmounted. The source rises
-  // by "scroll", and the receding posts above it keep their layout height until they
-  // drop, so the scroll offset the lift travels through exists *only while they do*.
-  // Lift further than their combined height (e.g. all the way to viewport y=0) and
-  // the shrunken document can't hold that offset: it clamps the instant the posts go
-  // and the source snaps back DOWN by the overshoot. So the lift distance is exactly
-  // the height of the posts being removed ABOVE the source (back-button top → topmost
-  // removed post top) — the source lands precisely where the post-removal layout puts
-  // it (just under the back button), and the clamp cancels the document shrink with
-  // nothing left over. (Measuring the gap between those two elements captures the
-  // posts' heights AND the inter-post spacing, and naturally leaves any header above
-  // the back button in place — the source rides up only past what disappears.)
-  useIsoLayoutEffect(() => {
-    if (!committedBranchUri) return;
-    const el = sourceItemEl();
-    const inner = feedInnerRef.current;
-    if (!el || !inner) return;
-    const topEl = (inner.querySelector(".cur-branch-back-pinned") as HTMLElement | null) ?? el;
-    const above = (Array.from(inner.querySelectorAll(".cur-post-item-other")) as HTMLElement[])
-      .filter((o) => (el.compareDocumentPosition(o) & Node.DOCUMENT_POSITION_PRECEDING) !== 0);
-    if (above.length === 0) return; // source already at the top — nothing to lift through
-    // ABSOLUTE target scroll, not a delta: the layout distance from the topmost
-    // removed post to the back button equals the scrollTop that lands the back button
-    // (and the source just below it) at the feed's content top — where they rest once
-    // the posts above unmount. Use offsetTop, NOT getBoundingClientRect().top: at this
-    // instant the receding posts are mid-transition under `.cur-branching`
-    // (transform: scale + translateX), and rect.top *includes* that transform, so a
-    // scaled-down post reads ~tens of px lower than its real layout top — under-lifting
-    // and leaving a small bounce on removal. offsetTop is transform-immune. (The back
-    // button + every post item are siblings, so their offsetTops share a parent.)
-    const topMostOffset = Math.min(...above.map((o) => o.offsetTop));
-    const target = topEl.offsetTop - topMostOffset;
-    const scroller = activeScroller();
-    easeScrollTop(scroller, target, 460);
-  }, [committedBranchUri]);
-
-  // When the receded posts are removed (othersCleared), pin the source where it
-  // was a moment earlier — removing the full-height posts above it shrinks the
-  // content and the browser would otherwise jump the scroll to compensate.
-  useIsoLayoutEffect(() => {
-    if (!othersCleared) return;
-    const anchor = clearAnchorRef.current;
-    clearAnchorRef.current = null;
-    const el = sourceItemEl();
-    if (el && anchor != null) {
-      const { scroller } = anchor;
-      setScrollTop(scroller, scrollTopOf(scroller) + (topWithinScroller(el, scroller) - anchor.top));
-    }
-  }, [othersCleared]);
-
-  // On Back, the source stays at the top (we do NOT restore the pre-branch scroll).
-  // The other posts re-insert at full height — shoving the source down — so anchor
-  // the scroll to hold the source exactly where it sat (just under the Back button),
-  // cancelling that jump. The Back button + banner then shrink out (reverse of the
-  // commit grow), and the source rises to the very top via reflow as they collapse,
-  // while the other cards slide back in (cur-post-return). One motion, the mirror
-  // of the commit.
-  useIsoLayoutEffect(() => {
-    if (!branchReturning) return;
-    const scroller = activeScroller();
-    const el = sourceItemEl();
-    const anchor = backAnchorTopRef.current;
-    backAnchorTopRef.current = null;
-    if (el && anchor != null) {
-      setScrollTop(scroller, scrollTopOf(scroller) + (topWithinScroller(el, scroller) - anchor));
-    }
-  }, [branchReturning]);
-
-  const handleRightProgress = useCallback((t: number) => {
-    if (branchCommittedRef.current) return;
-    const el = feedInnerRef.current;
-    if (!el) return;
-    // The source stays a fixed size for the whole drag — it does not fold and its
-    // banner does not grow (both would reflow the post on every pointer move and make
-    // the swipe shake on a real phone). --branch-progress only drives the OTHER posts
-    // receding, all via composited transforms. The fold + banner play once, on commit.
-    if (t <= 0) {
-      el.style.removeProperty("--branch-progress");
-      if (branchDraggingRef.current) {
-        branchDraggingRef.current = false;
-        setBranchDragging(false);
-        setPendingBranch(null);
-      }
-      return;
-    }
-    if (!branchDraggingRef.current) {
-      branchDraggingRef.current = true;
-      setBranchDragging(true);
-    }
-    el.style.setProperty("--branch-progress", String(t));
-  }, []);
-
-  // When topics arrive, fill the pending panel + kick off deferred creation.
-  useEffect(() => {
-    if (!pendingBranch) return;
-    const uri = pendingBranch.post.uri;
-    const topics = swipeRightTopics.get(uri);
-    if (!Array.isArray(topics) || topics.length === 0) return;
-    if (pendingBranch.options === null) {
-      setPendingBranch((prev) => prev ? { ...prev, options: topics } : prev);
-    }
-    if (branchPendingUri === uri) {
-      setBranchPendingUri(null);
-      void createBranchForOverlay(pendingBranch.post, topics);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [swipeRightTopics]);
-
-  // ── Tune (swipe-left) ───────────────────────────────────────────
-  function fetchFollowupTopics(post: Post) {
-    if (followupTopics.has(post.uri)) return;
-    if (fetchingFollowupRef.current.has(post.uri)) return;
-    fetchingFollowupRef.current.add(post.uri);
-    void authedFetch("/api/branch/options", {
-      method: "POST",
-      body: JSON.stringify({ feedId, postUri: post.uri }),
-    })
-      .then(async (res) => {
-        fetchingFollowupRef.current.delete(post.uri);
-        const d = await res.json();
-        const topics: BranchOption[] = Array.isArray(d.options)
-          ? (d.options as BranchOption[]).filter((o) => o.kind === "deeper")
-          : [];
-        setFollowupTopics((prev) => { const next = new Map(prev); next.set(post.uri, topics); return next; });
-      })
-      .catch(() => {
-        fetchingFollowupRef.current.delete(post.uri);
-        setFollowupTopics((prev) => { const next = new Map(prev); next.set(post.uri, []); return next; });
-      });
-  }
-
-  function submitTune(post: Post, reason: string) {
-    const token = `⟦swipe:reject:${post.uri}⟧`;
-    const message = `${token} ${reason} Update my feed to show less of this.`;
-    if (onTune) {
-      onTune(message, post);
-    } else {
-      // Nested branch: tune this feed directly, then reload its posts.
-      void authedFetch("/api/chat", {
-        method: "POST",
-        body: JSON.stringify({ message, feedId }),
-      })
-        .then(() => loadPosts())
-        .catch(() => {});
-    }
-  }
-
-  function handleFollowupChipSend(post: Post, reason: string) {
-    submitTune(post, reason);
-    setSwipedUris((prev) => { const next = new Set(prev); next.add(post.uri); return next; });
-  }
-  function handleFollowupTextSend(post: Post, reason: string) {
-    submitTune(post, reason);
-  }
-  function handleFollowupDismiss(uri: string) {
-    setSwipedUris((prev) => { const next = new Set(prev); next.add(uri); return next; });
-  }
+  // Swipe-to-branch ("dive deeper") + swipe-to-tune ("less like this") state
+  // machine, plus the fold/lift choreography that pins the source post as the
+  // inline branch opens. The animation mechanics live in useBranchController so
+  // this component stays "load + render a feed".
+  const branch = useBranchController({ feedId, isRoot, postCount, feedInnerRef, loadPosts, onTune });
 
   // ── Embed-mode availability probe (mirrors count up only when root) ──
   const [unavailableUris, setUnavailableUris] = useState<Set<string>>(() => new Set());
@@ -713,7 +335,7 @@ function FeedViewImpl(
   return (
     <div
       ref={feedInnerRef}
-      className={`cur-feed-posts-inner${refreshing ? " refreshing" : ""}${branchDragging ? " cur-branch-dragging" : ""}${committedBranchUri ? " cur-branching" : ""}${branchReturning ? " cur-branch-returning" : ""}`}
+      className={`cur-feed-posts-inner${refreshing ? " refreshing" : ""}${branch.branchDragging ? " cur-branch-dragging" : ""}${branch.committedBranchUri ? " cur-branching" : ""}${branch.branchReturning ? " cur-branch-returning" : ""}`}
     >
       {onBack && (
         <button type="button" className="cur-branch-back" onClick={onBack} aria-label="Back">
@@ -726,7 +348,7 @@ function FeedViewImpl(
 
       {headerContent}
 
-      {(pipelineStage !== "idle" || posts.length > 0) && (
+      {(pipelineStage !== "idle" || (posts.length > 0 && !branch.committedBranchUri)) && (
         <div className="cur-feed-pl-row">
           {pipelineStage !== "idle" && (
             <div className="cur-feed-pl">
@@ -742,7 +364,9 @@ function FeedViewImpl(
               />
             </div>
           )}
-          {posts.length > 0 && (
+          {/* Hidden while this feed has an open inline branch — the branch in view
+              shows its own Refresh, so the parent's would refresh the wrong feed. */}
+          {posts.length > 0 && !branch.committedBranchUri && (
             <button
               type="button"
               className={`cur-feed-refresh${postsLoading ? " busy" : ""}`}
@@ -784,7 +408,7 @@ function FeedViewImpl(
           if (post.uri === excludeUri) return null;
           if (hideUnavailable && unavailableUris.has(post.uri)) return null;
           return (
-            <div key={post.uri} className="cur-post-item cur-post-item-embed">
+            <div key={post.uri} ref={seenTracker.register(post.uri)} className="cur-post-item cur-post-item-embed">
               <div className="cur-post-embed-wrap" data-bsky-uri={post.uri}>
                 <div className="cur-post-embed-frame">
                   {post.is_reply && (
@@ -835,13 +459,13 @@ function FeedViewImpl(
       ) : (
         posts
           .filter((post) => post.uri !== excludeUri)
-          .filter((post) => !swipedUris.has(post.uri))
-          .filter((post) => !othersCleared || post.uri === committedBranchUri)
+          .filter((post) => !branch.swipedUris.has(post.uri))
+          .filter((post) => !branch.othersCleared || post.uri === branch.committedBranchUri)
           .map((post) => {
-            const sourceUri = committedBranchUri ?? pendingBranch?.post?.uri ?? returningSourceUri ?? null;
+            const sourceUri = branch.committedBranchUri ?? branch.pendingBranch?.post?.uri ?? branch.returningSourceUri ?? null;
             const isBranchSource = post.uri === sourceUri;
-            const isCommittedSource = committedBranchUri === post.uri;
-            const isReturningSource = branchReturning && returningSourceUri === post.uri;
+            const isCommittedSource = branch.committedBranchUri === post.uri;
+            const isReturningSource = branch.branchReturning && branch.returningSourceUri === post.uri;
             // Keep the Back button + banner mounted through the return so they can
             // animate OUT (shrink), the reverse of the commit grow.
             const branchHeaderLeaving = isReturningSource;
@@ -855,7 +479,7 @@ function FeedViewImpl(
                   <button
                     type="button"
                     className={`cur-branch-back cur-branch-back-pinned${branchHeaderLeaving ? " cur-branch-back-leaving" : ""}`}
-                    onClick={resetBranch}
+                    onClick={branch.resetBranch}
                     disabled={branchHeaderLeaving}
                     aria-label="Back to feed"
                   >
@@ -865,28 +489,20 @@ function FeedViewImpl(
                     Back
                   </button>
                 )}
-                <div className={`cur-post-item${isBranchSource ? " cur-post-item-source" : " cur-post-item-other"}`}>
+                <div ref={seenTracker.register(post.uri)} className={`cur-post-item${isBranchSource ? " cur-post-item-source" : " cur-post-item-other"}`}>
                   <SwipeableCard
                     disabled={isCommittedSource}
-                    onSwipe={(v) => handleCardSwipe(post, v)}
-                    onFirstLeftDrag={() => fetchFollowupTopics(post)}
-                    onFirstRightDrag={() => {
-                      const prefetched = swipeRightTopics.get(post.uri);
-                      const options = Array.isArray(prefetched) && prefetched.length > 0 ? prefetched : null;
-                      // pendingBranch must be set now so this card is marked the
-                      // source (excluded from the recede). The topic fetch is
-                      // visual-irrelevant, so defer it off the first drag frame.
-                      setPendingBranch({ post, options });
-                      requestAnimationFrame(() => fetchSwipeRightTopics(post));
-                    }}
-                    onRightProgress={handleRightProgress}
+                    onSwipe={(v) => branch.handleCardSwipe(post, v)}
+                    onFirstLeftDrag={() => branch.fetchFollowupTopics(post)}
+                    onFirstRightDrag={() => branch.onFirstRightDrag(post)}
+                    onRightProgress={branch.handleRightProgress}
                     followupContent={
                       <SwipeFollowupCard
                         post={post}
-                        topics={followupTopics.get(post.uri)}
-                        onChipSend={(reason) => handleFollowupChipSend(post, reason)}
-                        onTextSend={(reason) => handleFollowupTextSend(post, reason)}
-                        onDismiss={() => handleFollowupDismiss(post.uri)}
+                        topics={branch.followupTopics.get(post.uri)}
+                        onChipSend={(reason) => branch.handleFollowupChipSend(post, reason)}
+                        onTextSend={(reason) => branch.handleFollowupTextSend(post, reason)}
+                        onDismiss={() => branch.handleFollowupDismiss(post.uri)}
                       />
                     }
                   >
@@ -895,33 +511,33 @@ function FeedViewImpl(
                       branchBanner={showBranchBanner}
                       branchLeaving={branchHeaderLeaving}
                       collapsible={isCommittedSource}
-                      collapsed={!sourceExpanded}
+                      collapsed={!branch.sourceExpanded}
                       onToggleCollapse={() => {
-                        const next = !sourceExpanded;
-                        setSourceExpanded(next);
-                        settleFold(!next);
+                        const next = !branch.sourceExpanded;
+                        branch.setSourceExpanded(next);
+                        branch.settleFold(!next);
                       }}
                     />
                   </SwipeableCard>
                 </div>
                 {isCommittedSource && (
                   <div className="cur-branch-inline-host">
-                    {pendingBranch?.branchFeedId ? (
+                    {branch.pendingBranch?.branchFeedId ? (
                       // Branch feed is created — render it through the same
                       // FeedView so it has full swipe/branch parity. (Back lives
                       // above the pinned source post, not inside the branch.)
                       <FeedView
-                        feedId={pendingBranch.branchFeedId}
-                        headerContent={<BranchTopicsHeader options={pendingBranch.options ?? []} />}
-                        excludeUri={committedBranchUri ?? undefined}
+                        feedId={branch.pendingBranch.branchFeedId}
+                        headerContent={<BranchTopicsHeader options={branch.pendingBranch.options ?? []} />}
+                        excludeUri={branch.committedBranchUri ?? undefined}
                       />
                     ) : (
                       // Branch feed still being created — show topics (or a
                       // finding-topics shimmer) until its id arrives, then the
                       // FeedView above takes over with the real pipeline loader.
                       <div className="cur-feed-posts-inner">
-                        {pendingBranch?.options ? (
-                          <BranchTopicsHeader options={pendingBranch.options} />
+                        {branch.pendingBranch?.options ? (
+                          <BranchTopicsHeader options={branch.pendingBranch.options} />
                         ) : (
                           <div className="cur-branch-posts-loading">
                             Finding topics<span className="cur-dots-inline"><span /><span /><span /></span>
@@ -938,7 +554,7 @@ function FeedViewImpl(
 
       {isRoot && <SwipeDemo postsLoaded={posts.length > 0 && !postsLoading} />}
 
-      {posts.length > 0 && !postsLoading && !committedBranchUri && (
+      {posts.length > 0 && !postsLoading && !branch.committedBranchUri && (
         <div className="cur-feed-end-prompt">
           <p className="cur-feed-end-title">You&rsquo;ve reached the end</p>
           <p className="cur-feed-end-sub">Like what you see? Take your feed to Bluesky.</p>

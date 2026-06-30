@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import BranchTopicsHeader from "@/components/BranchTopicsHeader";
@@ -20,6 +20,7 @@ import type { BranchOption } from "@/lib/branch";
 import { useResizable } from "../useResizable";
 import { useCurator } from "../curatorContext";
 import { FeedActionsProvider } from "../feedActions";
+import { FeedFocusProvider, type FeedFocusValue } from "../feedFocus";
 import type { Post, ChatSourcePost } from "../feedTypes";
 import { BlueskyEmbed, bskyUrlFromUri } from "@/components/postCardUtils";
 import FeedView, { type FeedViewHandle, type StreamedConfig } from "./FeedView";
@@ -113,6 +114,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // The capsule has its own draft field so it can send without mounting the
   // full side-chat input bar.
   const [capInput, setCapInput] = useState("");
+  const [memoryImportMode, setMemoryImportMode] = useState(false);
   const capInputRef = useRef<HTMLInputElement | null>(null);
   // True while the on-screen keyboard is animating open/closed. The keyboard
   // resizes the visual viewport rather than scrolling content, but iOS Safari
@@ -148,6 +150,26 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const rootFeedRef = useRef<FeedViewHandle | null>(null);
   // Mirror of the root feed's posts, kept for the navigation snapshot.
   const snapshotPostsRef = useRef<Post[]>([]);
+
+  // ── Leaf-feed focus stack ──────────────────────────────────────────────
+  // Every FeedView (root + each inline nested branch) registers its handle here.
+  // Mount order == nesting depth (a branch only mounts once its parent commits),
+  // so the stack top is always the feed currently in view. User-initiated refresh
+  // (mobile pull-to-refresh) targets that leaf rather than always hitting root.
+  const leafStackRef = useRef<FeedViewHandle[]>([]);
+  const registerLeaf = useCallback((handle: FeedViewHandle) => {
+    leafStackRef.current.push(handle);
+    return () => {
+      const i = leafStackRef.current.lastIndexOf(handle);
+      if (i !== -1) leafStackRef.current.splice(i, 1);
+    };
+  }, []);
+  const refreshLeaf = useCallback((force?: boolean): Promise<void> => {
+    const stack = leafStackRef.current;
+    const target = stack[stack.length - 1] ?? rootFeedRef.current;
+    return Promise.resolve(target?.reload(force));
+  }, []);
+  const feedFocusValue = useMemo<FeedFocusValue>(() => ({ registerLeaf }), [registerLeaf]);
 
   // Consume the ?prompt= seed once: focus the textarea + drop it from the URL.
   const promptConsumedRef = useRef(false);
@@ -352,26 +374,30 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   const handlePostsChange = useCallback((p: Post[]) => { snapshotPostsRef.current = p; }, []);
 
-  // Fires whenever the root feed settles a load: clear the fade, and if a
-  // pull-to-refresh is pending, spring the pane + spinner back.
+  // Spring the pull-to-refresh pane + spinner back to rest. Called when the
+  // refreshed leaf feed settles its reload (see the PTR gesture handler), not
+  // tied to the root — pull-to-refresh can target an open branch.
+  const springBackPtr = useCallback(() => {
+    if (!ptrRefreshingRef.current) return;
+    ptrRefreshingRef.current = false;
+    setPtrRefreshing(false);
+    const pane = feedPaneRef.current;
+    const spin = ptrSpinnerRef.current;
+    if (pane) {
+      pane.style.transition =
+        "transform 0.5s cubic-bezier(0.2, 1.4, 0.4, 1), filter 0.42s cubic-bezier(0.65, 0, 0.35, 1)";
+      pane.style.transform = "";
+    }
+    if (spin) {
+      spin.classList.remove("spinning");
+      spin.style.opacity = "0";
+      spin.style.transform = "translate(-50%, 0) scale(0.6)";
+    }
+  }, []);
+
+  // Fires whenever the root feed settles a load: clear the chat-driven fade.
   const handleRootLoaded = useCallback(() => {
     setFeedRefreshing(false);
-    if (ptrRefreshingRef.current) {
-      ptrRefreshingRef.current = false;
-      setPtrRefreshing(false);
-      const pane = feedPaneRef.current;
-      const spin = ptrSpinnerRef.current;
-      if (pane) {
-        pane.style.transition =
-          "transform 0.5s cubic-bezier(0.2, 1.4, 0.4, 1), filter 0.42s cubic-bezier(0.65, 0, 0.35, 1)";
-        pane.style.transform = "";
-      }
-      if (spin) {
-        spin.classList.remove("spinning");
-        spin.style.opacity = "0";
-        spin.style.transform = "translate(-50%, 0) scale(0.6)";
-      }
-    }
   }, []);
 
   // Swipe-left tune from the root feed: stamp the post into the swipe cache
@@ -493,7 +519,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         setPtrRefreshing(true);
         paint(HOLD, true);
         spin.classList.add("spinning");
-        rootFeedRef.current?.reload(true);
+        // Refresh whichever feed is in view (deepest open branch, else root) and
+        // spring back when ITS reload settles — not the root's onLoaded.
+        void refreshLeaf(true).finally(springBackPtr);
       } else {
         paint(0, true);
       }
@@ -512,9 +540,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       pane.style.transform = "";
       pane.style.transition = "";
     };
-  }, [feedId]);
+  }, [feedId, refreshLeaf, springBackPtr]);
 
-  async function send(text: string) {
+  async function send(text: string, opts?: { memoryImport?: boolean }) {
     if (!text.trim() || loading) return;
     setInput("");
     setSelectedOptions(new Set());
@@ -525,10 +553,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     feedChangedRef.current = false;
     const interview = interviewModeRef.current;
     interviewModeRef.current = false;
+    const memoryImport = opts?.memoryImport ?? false;
     try {
       const res = await authedFetch("/api/chat", {
         method: "POST",
-        body: JSON.stringify({ message: text.trim(), feedId, interview }),
+        body: JSON.stringify({ message: text.trim(), feedId, interview, memoryImport }),
       });
       if (!res.ok) return;
       const d = await res.json();
@@ -757,6 +786,16 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     send("Help me build my feed — walk me through it step by step.");
   }
 
+  function handleMemoryImport(memoryText: string) {
+    if (!memoryText.trim() || loading) return;
+    setMemoryImportMode(false);
+    openMobileChat();
+    send(
+      `Here is an export of my AI chat memory about my interests and preferences:\n\n${memoryText}`,
+      { memoryImport: true },
+    );
+  }
+
   function cancelQuestions() {
     if (loading) return;
     interviewModeRef.current = false;
@@ -869,18 +908,20 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
             loader, and the inline nested branch. Workbench drives the initial load
             and reads config/posts/loading back via the callbacks below. */}
         <div className="cur-feed-posts" ref={feedPaneRef} style={{ position: "relative" }}>
-          <FeedView
-            ref={rootFeedRef}
-            feedId={feedId}
-            isRoot
-            refreshing={feedRefreshing}
-            headerContent={branchHeaderOptions ? <BranchTopicsHeader options={branchHeaderOptions} /> : undefined}
-            onBack={rootOnBack}
-            onConfigLoaded={handleConfigLoaded}
-            onPostsChange={handlePostsChange}
-            onTune={handleRootTune}
-            onLoaded={handleRootLoaded}
-          />
+          <FeedFocusProvider value={feedFocusValue}>
+            <FeedView
+              ref={rootFeedRef}
+              feedId={feedId}
+              isRoot
+              refreshing={feedRefreshing}
+              headerContent={branchHeaderOptions ? <BranchTopicsHeader options={branchHeaderOptions} /> : undefined}
+              onBack={rootOnBack}
+              onConfigLoaded={handleConfigLoaded}
+              onPostsChange={handlePostsChange}
+              onTune={handleRootTune}
+              onLoaded={handleRootLoaded}
+            />
+          </FeedFocusProvider>
         </div>{/* /.cur-feed-posts */}
 
           {/* ════ THE CAPSULE — floating, input-only curator (desktop + mobile) ════ */}
@@ -1006,10 +1047,56 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 </div>
               )}
               {messages.length === 0 && !sourcePost && !chatLoading && !loading && (
-                <div className="cur-empty">
-                  <p>Describe your ideal feed</p>
-                  <p className="sub">a topic you&rsquo;re interested in, hobbies, etc.</p>
-                </div>
+                memoryImportMode ? (
+                  <div className="cur-memory-inline">
+                    <button
+                      type="button"
+                      className="cur-memory-back"
+                      onClick={() => setMemoryImportMode(false)}
+                      aria-label="Back"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></svg>
+                    </button>
+                    <p className="cur-memory-inline-title">Export your memory</p>
+                    <p className="cur-memory-inline-desc">
+                      We&rsquo;ll ask your AI to summarize what it knows about you. Pick one:
+                    </p>
+                    <div className="cur-memory-links">
+                      <a
+                        href={`https://chatgpt.com/?q=${encodeURIComponent("Please give me a concise summary of everything you know about me from our conversations — my interests, hobbies, what I like to read about, my profession, topics I'm curious about, opinions I've shared, and anything else that would help someone build a personalized content feed for me. Format it as a bullet-point list.")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="cur-memory-link"
+                      >
+                        {/* OpenAI logo */}
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                          <path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.998 5.998 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.676l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z" />
+                        </svg>
+                        ChatGPT
+                      </a>
+                      <a
+                        href={`https://claude.ai/new?q=${encodeURIComponent("Please give me a concise summary of everything you know about me from our conversations — my interests, hobbies, what I like to read about, my profession, topics I'm curious about, opinions I've shared, and anything else that would help someone build a personalized content feed for me. Format it as a bullet-point list.")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="cur-memory-link"
+                      >
+                        {/* Claude/Anthropic logo */}
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                          <path d="M13.827 3.52h3.603L24 20.48h-3.603l-6.57-16.96zm-7.258 0h3.767L16.906 20.48h-3.674l-1.343-3.461H5.017l-1.344 3.46H0l6.57-16.96zm2.327 5.14L6.77 14.16h4.25L8.896 8.66z" />
+                        </svg>
+                        Claude
+                      </a>
+                    </div>
+                    <p className="cur-memory-inline-hint">
+                      Then paste the response below
+                    </p>
+                  </div>
+                ) : (
+                  <div className="cur-empty">
+                    <p>Describe your ideal feed</p>
+                    <p className="sub">a topic you&rsquo;re interested in, hobbies, etc.</p>
+                  </div>
+                )
               )}
               {messages.map((msg, i) => {
                 const isUser = msg.role === "user";
@@ -1172,6 +1259,24 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                     >
                       ✦ Help me build my prompt
                     </button>
+                    <button
+                      type="button"
+                      className="cur-memory-btn"
+                      onClick={() => { setMemoryImportMode(true); openConversation(); }}
+                      disabled={loading}
+                    >
+                      Build with my chat memory
+                      <span className="cur-memory-btn-logos">
+                        {/* OpenAI logo */}
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                          <path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.998 5.998 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.676l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z" />
+                        </svg>
+                        {/* Claude/Anthropic logo */}
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                          <path d="M13.827 3.52h3.603L24 20.48h-3.603l-6.57-16.96zm-7.258 0h3.767L16.906 20.48h-3.674l-1.343-3.461H5.017l-1.344 3.46H0l6.57-16.96zm2.327 5.14L6.77 14.16h4.25L8.896 8.66z" />
+                        </svg>
+                      </span>
+                    </button>
                   </div>
                 )}
                 <form
@@ -1179,7 +1284,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                   onSubmit={(e) => {
                     e.preventDefault();
                     openMobileChat();
-                    send(input);
+                    if (memoryImportMode) {
+                      handleMemoryImport(input);
+                    } else {
+                      send(input);
+                    }
                   }}
                 >
                   {/* metaballs goo shown over the composer while a turn is in flight */}
@@ -1187,17 +1296,21 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                   <textarea
                     ref={inputRef}
                     className="cur-input"
-                    rows={1}
+                    rows={memoryImportMode ? 4 : 1}
                     value={input}
                     onFocus={openMobileChat}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                         e.preventDefault();
-                        send(input);
+                        if (memoryImportMode) {
+                          handleMemoryImport(input);
+                        } else {
+                          send(input);
+                        }
                       }
                     }}
-                    placeholder="Describe your ideal feed…"
+                    placeholder={memoryImportMode ? "Paste the AI's response here…" : "Describe your ideal feed…"}
                     disabled={loading}
                   />
                   <SendButton disabled={loading || !input.trim()} />
@@ -1230,6 +1343,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           onClose={() => setTuning(false)}
         />
       </div>
+
     </FeedActionsProvider>
   );
 }
