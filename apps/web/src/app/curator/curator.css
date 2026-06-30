@@ -540,12 +540,10 @@
   .cur-workbench[data-right-pane="chat"] .ctrl-tower{ display: none; }
   .cur-workbench[data-right-pane="tune"] .cur-chat-pane{ display: none; }
 
-  /* Branch topics header: a bordered rectangle on desktop (square corners set
-     it apart from the rounded post cards), instead of the mobile full-width band. */
+  /* Branch topics header: the blue card (base) carries over to desktop; only
+     drop the horizontal margin since the feed column already provides gutters. */
   .cur-branch-header{
-    border: 1px solid var(--hair);
-    border-radius: 0;
-    margin: 8px 0;
+    margin: 10px 0;
   }
 }
 
@@ -1800,13 +1798,14 @@
 /* Branch topics header — atop a branched feed. A "Topics" heading over two
    kind-split rows (deeper / adjacent), distinguished by color alone. Both rows
    share ONE horizontal scroll. White, never sticky.
-   Mobile (base): a full-width band, bordered top + bottom.
-   Desktop (>=768px): a bordered rectangle, set apart from the rounded posts. */
+   Styled as a card (rounded, blue-bordered) mirroring the swipe followup card,
+   tinted with the dive-deeper blue (--aurora-deep) to tie it to the gesture. */
 .cur-branch-header{
+  margin: 10px 12px;
   padding: 12px 0 13px;
-  border-top: 1px solid var(--hair);
-  border-bottom: 1px solid var(--hair);
   background: #fff;
+  border: 1.5px solid var(--aurora-deep);
+  border-radius: 22px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2672,6 +2671,26 @@
   letter-spacing: 0.02em;
   color: var(--ink-3);
 }
+
+/* Quiet sub-action under the "Hide posts I've seen" toggle: wipe seen history. */
+.settings-clear-seen{
+  align-self: flex-start;
+  margin: 0 0 10px;
+  padding: 5px 11px;
+  font-family: var(--rf-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  background: transparent;
+  border: 1px solid var(--hair-strong);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.settings-clear-seen:hover:not(:disabled){ color: var(--aurora-deep); border-color: var(--aurora-deep); }
+.settings-clear-seen:disabled{ opacity: 0.6; cursor: default; }
+/* The button sits between two toggle rows, so restore the divider it interrupts. */
+.settings-clear-seen + .settings-toggle-row{ border-top: 1px solid var(--hair); }
 
 /* Toggle switch — replaces the native checkbox in the settings dialog */
 .settings-switch{
@@ -3679,12 +3698,11 @@
        Flung/receding swipe cards travel far past 12px, so they still clip. */
     overflow-clip-margin: 12px;
   }
-  /* Topics band goes edge to edge on mobile: cancel the feed pane's 12px side
-     gutter so the white band touches the screen (its label/chips keep their own
-     inset). The clip-margin above keeps this from being clipped by the column. */
+  /* Topics card aligns with the post cards on mobile: drop the base rule's 12px
+     side margin and sit flush inside the feed pane's 12px gutter, like the posts. */
   .cur-branch-header{
-    margin-left: -12px;
-    margin-right: -12px;
+    margin-left: 0;
+    margin-right: 0;
   }
   /* Match the mobile feed's 12px side gutter (the overlay has no padded
      .cur-feed-posts wrapper of its own). */
@@ -4014,6 +4032,11 @@
 @keyframes cur-pop{ from{ transform:scale(.6); opacity:0;} to{ transform:scale(1); opacity:1;} }
 @keyframes cur-rise{ from{ opacity:0; transform:translateY(14px);} to{ opacity:1; transform:none;} }
 @keyframes cur-shimmer{ from{ background-position:130% 0;} to{ background-position:-90% 0;} }
+/* "Settle" loading→posts handoff: skeletons scale-fade in, scale-fade out, then
+   posts spring in past their mark and ease back (overshoot easing set on use). */
+@keyframes cur-settle-skel-in{ from{ opacity:0; transform:scale(.93);} to{ opacity:1; transform:none;} }
+@keyframes cur-settle-skel-out{ from{ opacity:1; transform:none;} to{ opacity:0; transform:scale(.9);} }
+@keyframes cur-settle-post-in{ from{ opacity:0; transform:scale(.94);} to{ opacity:1; transform:none;} }
 @keyframes cur-mb1{ from{ transform:translate(-46px,-4px);} to{ transform:translate(40px,5px);} }
 @keyframes cur-mb2{ from{ transform:translate(34px,7px);} to{ transform:translate(-38px,-6px);} }
 @keyframes cur-mb3{ from{ transform:translate(-14px,9px);} to{ transform:translate(20px,-8px);} }
@@ -4353,10 +4376,16 @@
 .cur-skel-card{
   background: #fff; border: 1px solid var(--hair-2); border-radius: 14px;
   padding: 16px 18px; margin-bottom: 12px;
-  opacity: 0; animation: cur-rise .5s var(--ease-out) forwards;
+  opacity: 0; animation: cur-settle-skel-in .42s var(--ease-out) both;
 }
-.cur-skel-card:nth-child(3){ animation-delay: .08s; }
-.cur-skel-card:nth-child(4){ animation-delay: .16s; }
+.cur-skel-card:nth-child(2){ animation-delay: .05s; }
+.cur-skel-card:nth-child(3){ animation-delay: .1s; }
+.cur-skel-card:nth-child(4){ animation-delay: .15s; }
+/* Exit pass (FeedSkeleton exiting): cards scale + fade away before posts mount. */
+.cur-skel-wrap--out .cur-skel-card{ animation: cur-settle-skel-out .3s ease forwards; }
+.cur-skel-wrap--out .cur-skel-card:nth-child(2){ animation-delay: .04s; }
+.cur-skel-wrap--out .cur-skel-card:nth-child(3){ animation-delay: .08s; }
+.cur-skel-wrap--out .cur-skel-card:nth-child(4){ animation-delay: .12s; }
 .cur-skel-head{ display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
 .cur-skel-av{
   width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
@@ -4367,6 +4396,19 @@
   height: 11px; border-radius: 6px; margin-bottom: 9px;
   background: linear-gradient(90deg, var(--paper-3) 25%, var(--paper-2) 45%, var(--paper-3) 65%);
   background-size: 220% 100%; animation: cur-shimmer 1.4s linear infinite;
+}
+
+/* Posts spring in after the skeleton exits. Scoped to the transient
+   .cur-feed-entering gate so the one-shot scale transform is removed once the
+   entrance is done and never fights the branch-commit transforms on these same
+   items. Per-item stagger comes from an inline animation-delay (FeedView). */
+.cur-feed-entering .cur-post-item{
+  animation: cur-settle-post-in .5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@media (prefers-reduced-motion: reduce){
+  .cur-skel-card,
+  .cur-skel-wrap--out .cur-skel-card,
+  .cur-feed-entering .cur-post-item{ animation: none; opacity: 1; }
 }
 
 /* ════════════════════════════════════════════════════════════════════

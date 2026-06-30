@@ -87,6 +87,19 @@ export async function recordSeen(
 }
 
 /**
+ * Clear a viewer's seen history so previously-seen posts surface again. Scoped
+ * to one feed when `feedId` is given, otherwise every feed for this user.
+ * Returns the number of rows deleted.
+ */
+export async function clearSeen(userId: string, feedId?: number): Promise<number> {
+  const res =
+    feedId !== undefined
+      ? await query(`DELETE FROM seen_posts WHERE user_id = $1 AND feed_id = $2`, [userId, feedId])
+      : await query(`DELETE FROM seen_posts WHERE user_id = $1`, [userId]);
+  return res.rowCount ?? 0;
+}
+
+/**
  * Delete seen rows older than the retention window. Run from the refresh cron.
  * `interval` is a Postgres interval literal (default matches bsky post
  * retention — a URI we can no longer serve never needs a seen row).

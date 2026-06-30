@@ -246,6 +246,24 @@ function CuratorShell({
   }, []);
   const [unavailableCount, setUnavailableCount] = useState(0);
 
+  // Clear the viewer's "seen" history so already-seen posts surface again, then
+  // reload the feed in view (the workbench listens for ripple:reload-feed).
+  const [clearingSeen, setClearingSeen] = useState(false);
+  const [seenCleared, setSeenCleared] = useState(false);
+  const clearSeenHistory = useCallback(async () => {
+    setClearingSeen(true);
+    try {
+      const res = await authedFetch("/api/seen", { method: "DELETE" });
+      if (res.ok) {
+        setSeenCleared(true);
+        window.dispatchEvent(new CustomEvent("ripple:reload-feed"));
+        setTimeout(() => setSeenCleared(false), 2400);
+      }
+    } finally {
+      setClearingSeen(false);
+    }
+  }, []);
+
   const reloadFeeds = useCallback(async () => {
     try {
       const res = await authedFetch("/api/feeds");
@@ -926,6 +944,18 @@ function CuratorShell({
                         onChange={(e) => setHideSeen(e.target.checked)}
                       />
                     </label>
+                    <button
+                      type="button"
+                      className="settings-clear-seen"
+                      onClick={clearSeenHistory}
+                      disabled={clearingSeen}
+                    >
+                      {seenCleared
+                        ? "Cleared ✓"
+                        : clearingSeen
+                        ? "Clearing…"
+                        : "Clear seen history"}
+                    </button>
                     <label className="settings-toggle-row">
                       <span>
                         Debug scores

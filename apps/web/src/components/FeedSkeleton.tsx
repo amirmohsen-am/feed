@@ -9,10 +9,13 @@
  *
  * Pure presentational shimmer — styled entirely by the .cur-skel-* rules in
  * curator.css. aria-hidden: the PipelineLoader already announces loading.
+ *
+ * `exiting` swaps the cards' entrance animation for the scale+fade-out used by
+ * the "Settle" loading→posts handoff (see FeedView's reveal choreography).
  */
-export function FeedSkeleton({ count = 4 }: { count?: number }) {
+export function FeedSkeleton({ count = 4, exiting = false }: { count?: number; exiting?: boolean }) {
   return (
-    <div className="cur-skel-wrap" aria-hidden>
+    <div className={`cur-skel-wrap${exiting ? " cur-skel-wrap--out" : ""}`} aria-hidden>
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="cur-skel-card">
           <div className="cur-skel-head">

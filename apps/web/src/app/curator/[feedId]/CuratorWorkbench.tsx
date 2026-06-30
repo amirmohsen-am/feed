@@ -437,6 +437,14 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
+  // Settings' "Clear seen history" wipes the viewer's seen rows server-side, then
+  // fires this so the feed in view re-fetches and the now-unfiltered posts return.
+  useEffect(() => {
+    const onReload = () => { void rootFeedRef.current?.reload(); };
+    window.addEventListener("ripple:reload-feed", onReload);
+    return () => window.removeEventListener("ripple:reload-feed", onReload);
+  }, []);
+
   // On navigating away from this feed, snapshot its posts so a return restores
   // them instantly.
   useEffect(() => {
