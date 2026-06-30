@@ -478,14 +478,31 @@ export function useBranchController({
     }
   }
 
+  // An explicit swipe-left reject must suppress that exact post across reloads.
+  // Tuning only adjusts the query (not the post), and a dismiss doesn't tune at
+  // all, so without recording the post as seen now it can re-enter the next
+  // snapshot. Record it via the same /api/seen path impressions use; the post-
+  // tune reload (or the next Refresh) then filters it out. Best-effort and
+  // idempotent server-side; fires well before any chat-driven reload completes.
+  function markRejected(uri: string) {
+    void authedFetch("/api/seen", {
+      method: "POST",
+      body: JSON.stringify({ feedId, uris: [uri] }),
+      suppressErrorToast: true,
+    }).catch(() => {});
+  }
+
   function handleFollowupChipSend(post: Post, reason: string) {
     submitTune(post, reason);
+    markRejected(post.uri);
     setSwipedUris((prev) => { const next = new Set(prev); next.add(post.uri); return next; });
   }
   function handleFollowupTextSend(post: Post, reason: string) {
     submitTune(post, reason);
+    markRejected(post.uri);
   }
   function handleFollowupDismiss(uri: string) {
+    markRejected(uri);
     setSwipedUris((prev) => { const next = new Set(prev); next.add(uri); return next; });
   }
 

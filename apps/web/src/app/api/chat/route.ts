@@ -62,6 +62,17 @@ The user asked to be walked through it. Follow this 6-step interview, one step p
 
 Question text: 1-2 sentences max. Options must feel real and specific — surprise them.`;
 
+const MEMORY_IMPORT_PROMPT = `
+
+MEMORY IMPORT MODE
+The user pasted an export of their AI chat memory (from ChatGPT, Claude, etc.). This contains their interests, preferences, and personality.
+
+Your job:
+1. First reply: briefly acknowledge what you see in their memory (1-2 sentences, be specific about what stood out). Then ask ONE quick clarifying question about what vibe or tone they want for this feed — use present_options with 3-4 surprising, specific options.
+2. Second reply (after they answer): immediately call update_feed_config with subqueries + a rerank_prompt + a name based on everything you know, then call finalize_feed. Write a short closing sentence.
+
+Do NOT ask multiple rounds of questions. One question, then build.`;
+
 const MECHANICAL_FILTERS_SCHEMA = {
   type: "object" as const,
   properties: {
@@ -191,7 +202,7 @@ export async function POST(req: NextRequest) {
   const tAuth = performance.now();
 
   try {
-    const { message, feedId, reset, interview } = await req.json();
+    const { message, feedId, reset, interview, memoryImport } = await req.json();
 
     if (!feedId) {
       return NextResponse.json({ error: "feedId required" }, { status: 400 });
@@ -215,9 +226,10 @@ export async function POST(req: NextRequest) {
     }
     // Bound input size: the user message is interpolated into the Claude
     // request, so cap it to keep per-call token cost predictable.
-    if (message.length > 4000) {
+    const maxLen = memoryImport ? 10000 : 4000;
+    if (message.length > maxLen) {
       return NextResponse.json(
-        { error: "Message too long (max 4000 characters)" },
+        { error: `Message too long (max ${maxLen} characters)` },
         { status: 400 }
       );
     }
@@ -245,7 +257,7 @@ export async function POST(req: NextRequest) {
         : `No preferences set yet — this is a fresh start.${biasBlock}`;
 
     const systemPrompt =
-      SYSTEM_PROMPT + stateBlock + (interview === true ? INTERVIEW_PROMPT : "");
+      SYSTEM_PROMPT + stateBlock + (interview === true ? INTERVIEW_PROMPT : "") + (memoryImport === true ? MEMORY_IMPORT_PROMPT : "");
 
     let apiMessages: { role: "user" | "assistant"; content: string }[];
 
@@ -287,7 +299,7 @@ export async function POST(req: NextRequest) {
       requestId: response._request_id,
       feedId,
       ms: tAfterLLM - tBeforeLLM,
-      extra: { init: isInit, branch_init: isBranchInit, interview: interview === true },
+      extra: { init: isInit, branch_init: isBranchInit, interview: interview === true, memoryImport: memoryImport === true },
     });
 
     // Process content blocks: collect text, apply tool calls.
