@@ -72,14 +72,14 @@ const foldMask = (stopPct: number) => `linear-gradient(to bottom,#000 ${stopPct}
 const prefersReducedMotion = () =>
   typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-export interface PendingBranch {
+interface PendingBranch {
   post: Post;
   options: BranchOption[] | null;
   branchFeedId?: number;
   branchFeedName?: string;
 }
 
-export interface BranchController {
+interface BranchController {
   // ── Container-class flags ──
   branchDragging: boolean;
   committedBranchUri: string | null;

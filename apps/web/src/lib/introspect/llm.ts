@@ -208,7 +208,7 @@ function computeCost(usage: {
 // ── Streaming helper ───────────────────────────────────────────────────────
 
 /** Callback fired with each incremental text delta as the model writes. */
-export type OnDelta = (textDelta: string) => void;
+type OnDelta = (textDelta: string) => void;
 
 type StreamArgs = Anthropic.Messages.MessageCreateParamsNonStreaming;
 
@@ -259,7 +259,7 @@ function splitHeadline(raw: string): { headline: string; body: string } {
 
 // ── Extractor ────────────────────────────────────────────────────────────
 
-export interface ExtractorResult {
+interface ExtractorResult {
   note: BatchNote;
 }
 

@@ -8,7 +8,7 @@
  * GCS-backed JSON — nothing else changes.
  */
 
-import { mkdir, readFile, writeFile, unlink, readdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { Snapshot } from "./types";
 
@@ -58,13 +58,4 @@ export async function deleteSnapshot(handle: string): Promise<void> {
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
-}
-
-/** Used by the API to enumerate cached snapshots (e.g. for a landing list). */
-export async function listSnapshotHandles(): Promise<string[]> {
-  await ensureDir();
-  const entries = await readdir(ROOT);
-  return entries
-    .filter((f) => f.endsWith(".json"))
-    .map((f) => f.slice(0, -".json".length));
 }

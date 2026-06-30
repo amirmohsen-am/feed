@@ -41,7 +41,7 @@ export interface CachedImage {
  * Fetch one image, with on-disk caching. Returns null on any failure so the
  * caller can drop the image and keep the engagement record (per design §6.4).
  */
-export async function fetchImage(
+async function fetchImage(
   authorDid: string,
   cid: string
 ): Promise<CachedImage | null> {

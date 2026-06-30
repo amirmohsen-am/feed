@@ -748,7 +748,7 @@ function descriptionLooksNsfw(description: string | null | undefined): boolean {
   return false;
 }
 
-export interface SearchOpts {
+interface SearchOpts {
   subqueries: string[];
   totalBudget: number;
   filter?: SearchFilter;
@@ -881,11 +881,3 @@ function uniqueAuthorDids(hits: VectorHit[]): string[] {
   return Array.from(seen);
 }
 
-/**
- * Convert an AT-Protocol post URI to its public bsky.app URL.
- */
-export function blueskyUrl(uri: string): string | null {
-  const m = uri.match(/^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/(.+)$/);
-  if (!m) return null;
-  return `https://bsky.app/profile/${m[1]}/post/${m[2]}`;
-}

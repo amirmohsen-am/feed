@@ -10,7 +10,7 @@ export class BskyWriteError extends Error {
   }
 }
 
-export interface PostTarget {
+interface PostTarget {
   uri: string;
   cid: string;
   root: { uri: string; cid: string };
@@ -32,7 +32,7 @@ interface BskyWriter {
 const BSKY_SERVICE = "https://bsky.social";
 const APPVIEW = "https://public.api.bsky.app";
 
-export async function resolvePostTarget(postUri: string): Promise<PostTarget> {
+async function resolvePostTarget(postUri: string): Promise<PostTarget> {
   const params = new URLSearchParams();
   params.append("uris", postUri);
   const res = await fetch(`${APPVIEW}/xrpc/app.bsky.feed.getPosts?${params}`);
@@ -146,7 +146,7 @@ function sessionExpiredError(): BskyWriteError {
   );
 }
 
-export async function withBskyWriter<T>(
+async function withBskyWriter<T>(
   userId: string,
   fn: (writer: BskyWriter) => Promise<T>
 ): Promise<T> {

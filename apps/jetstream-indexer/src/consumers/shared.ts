@@ -6,12 +6,6 @@ import type { Config } from '../config.js'
 
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
-export const chunked = <T>(arr: T[], n: number): T[][] => {
-  const out: T[][] = []
-  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n))
-  return out
-}
-
 export type JetstreamLoopOpts = {
   cfg: Config
   wantedCollections?: string[]

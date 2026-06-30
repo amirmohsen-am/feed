@@ -22,7 +22,7 @@ const ROOT_MARGIN = "-200px 0px -200px 0px";
 const FLUSH_MS = 2000;
 const MAX_BATCH = 200;
 
-export interface SeenTracker {
+interface SeenTracker {
   /** Stable callback ref to attach to each post element, keyed by its uri. */
   register: (uri: string) => (node: HTMLElement | null) => void;
   /**

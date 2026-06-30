@@ -63,11 +63,7 @@ export function bskyUrlFromUri(uri: string): string | undefined {
   return m ? `https://bsky.app/profile/${m[1]}/post/${m[2]}` : undefined;
 }
 
-export function bskyUrlOrNull(uri: string): string | null {
-  return bskyUrlFromUri(uri) ?? null;
-}
-
-export function escapeHtml(s: string): string {
+function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")

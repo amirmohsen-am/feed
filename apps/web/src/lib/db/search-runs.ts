@@ -2,7 +2,7 @@ import { query } from "./connection";
 
 // --- Search runs ---
 
-export interface DbSearchRun {
+interface DbSearchRun {
   id: string;
   user_id: string;
   query: string;

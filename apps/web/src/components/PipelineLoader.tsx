@@ -9,7 +9,7 @@ export type PipelineStage =
   | "ranking"
   | "done";
 
-export interface PipelineLoaderProps {
+interface PipelineLoaderProps {
   stage: PipelineStage;
   // Counts surfaced in the expandable breakdown. Populated from the stream
   // payload on the "thinking" stage and held for subsequent stages.

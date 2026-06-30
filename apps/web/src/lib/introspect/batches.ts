@@ -13,7 +13,7 @@
 import { createHash } from "node:crypto";
 import type { BatchInfo, Engagement, SignalType } from "./types";
 
-export const BATCH_SIZE = 100;
+const BATCH_SIZE = 100;
 
 /** Engagements MUST be sorted newest-first by `ts`. */
 export function composeBatches(engagements: Engagement[]): BatchInfo[] {
