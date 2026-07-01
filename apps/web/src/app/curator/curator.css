@@ -1782,11 +1782,19 @@
    shoves the source down — the source's lift and this grow share a timeline, so
    the post settles below it in one motion. */
 .cur-branch-back-pinned{
-  width: auto;
-  border-bottom: none;
-  padding: 4px 8px 8px;
+  /* Sticks to the top of the feed scrollport so it stays reachable while
+     scrolling through the branch below. Full-width with a paper background +
+     hairline so scrolled posts vanish cleanly under it instead of bleeding
+     past a compact pill. */
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  width: 100%;
+  border-bottom: 1px solid var(--hair);
+  padding: 8px 8px;
   font-size: 12px;
   overflow: hidden;
+  background: var(--paper);
   /* Full height immediately — it just fades in (fast). It must NOT change height
      during the commit lift: it sits ABOVE the post, so any height change would
      shove the post mid-lift (the "up then down"). With its height constant, the
@@ -1799,7 +1807,7 @@
   animation: cur-branch-back-shrink 0.42s cubic-bezier(0.33,1,0.68,1) forwards;
 }
 @keyframes cur-branch-back-shrink{
-  from{ max-height: 2.5em; opacity: 1; padding-top: 4px; padding-bottom: 8px; transform: translateY(0); }
+  from{ max-height: 3.5em; opacity: 1; padding-top: 8px; padding-bottom: 8px; transform: translateY(0); }
   to{ max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; transform: translateY(-4px); }
 }
 @media (prefers-reduced-motion: reduce){
@@ -3621,6 +3629,11 @@
   /* Pull-to-refresh replaces the Refresh button on mobile */
   .cur-ptr-spinner{ display: flex; }
   .cur-feed-posts-header .cur-toolbar{ display: none; }
+
+  /* The document (not .cur-feed-posts) scrolls on mobile, so the sticky branch
+     Back bar must offset below the sticky topbar instead of pinning to viewport
+     top 0 (where it hides behind the topbar). */
+  .cur-branch-back-pinned{ top: var(--cur-header-h); }
 
   /* Chat pane: the full-screen frosted conversation sheet. It fades + rises in
      as one panel (matching the mockup's float sheet) — no separate message
