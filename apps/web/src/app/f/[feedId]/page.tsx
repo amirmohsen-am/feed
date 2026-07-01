@@ -163,7 +163,7 @@ export default async function SharedFeedPage({
         )}
 
         <div className="sf-footer">
-          <p>This feed was curated on amadi — describe what you want to read, and AI builds the feed.</p>
+          <p>This feed was curated on amadi. Describe what you want to read, and AI builds the feed.</p>
           <Link href="/curator" className="sf-cta">
             Make your own feed
           </Link>

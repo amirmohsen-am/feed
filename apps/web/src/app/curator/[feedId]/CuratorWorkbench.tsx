@@ -473,7 +473,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         text: post.text,
       },
     }));
-    void send(message);
+    void send(message, { tailReload: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -612,7 +612,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     };
   }, [feedId, refreshLeaf, springBackPtr]);
 
-  async function send(text: string, opts?: { memoryImport?: boolean }) {
+  async function send(
+    text: string,
+    opts?: { memoryImport?: boolean; tailReload?: boolean }
+  ) {
     if (!text.trim() || loadingRef.current) return;
     setInput("");
     setSelectedOptions(new Set());
@@ -653,12 +656,12 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           feedSignatureRef.current = nextSig;
           if (subsChanged) reloadFeeds();
           if (postsDebounceRef.current) clearTimeout(postsDebounceRef.current);
-          // A mid-session refinement (chat tune, swipe-left "less like this")
-          // recomputes only the tail past the commit point, so the feed the user
-          // is reading isn't yanked. Degrades to a full load when nothing's been
-          // read yet (e.g. still building the feed during onboarding).
+          // A swipe-left "less like this" recomputes only the tail past the
+          // commit point, so the feed the user is reading isn't yanked. A
+          // direct chat update reloads the whole feed.
+          const tail = opts?.tailReload ?? false;
           postsDebounceRef.current = setTimeout(
-            () => rootFeedRef.current?.reload({ tail: true }),
+            () => rootFeedRef.current?.reload(tail ? { tail: true } : undefined),
             600
           );
           willReload = true;
