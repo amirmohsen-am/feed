@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import BranchTopicsHeader from "@/components/BranchTopicsHeader";
@@ -24,8 +24,11 @@ import { FeedFocusProvider, type FeedFocusValue } from "../feedFocus";
 import type { Post, ChatSourcePost } from "../feedTypes";
 import { BlueskyEmbed, bskyUrlFromUri } from "@/components/postCardUtils";
 import FeedView, { type FeedViewHandle, type StreamedConfig } from "./FeedView";
+import FeedUpdateRow from "./FeedUpdateRow";
+import { parseFeedToolCall, type FeedToolCall } from "@/lib/feed-tool-call";
 import OnboardingIntention from "./OnboardingIntention";
 import "../swipe-card.css";
+import "../feed-update.css";
 
 // Passed across client-side navigations so the destination branch feed can
 // show the full set of topic chips without an extra round-trip.
@@ -35,7 +38,14 @@ let incomingBranchOptions: BranchOption[] | null = null;
 // navigating back restores them instantly — avoiding the blank-then-load flash.
 let parentFeedSnapshot: { feedId: string | number; posts: unknown[] } | null = null;
 
-interface Message { role: "user" | "assistant"; content: string; }
+interface Message {
+  id?: number;
+  role: "user" | "assistant";
+  content: string;
+  // Set on assistant turns that ran a tool; drives the in-chat "feed updated"
+  // row. UI-only — never sent to the model.
+  tool_calls?: FeedToolCall | null;
+}
 
 const RIGHT_W_KEY = "curator:rightWidth";
 const RIGHT_MIN = 280;
@@ -647,8 +657,8 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       // sheet) when the user needs to see the agent's reply: either it's asking a
       // follow-up question, or the feed didn't change (otherwise the reply is
       // invisible behind the collapsed capsule and the user is left confused).
-      const last = msgs[msgs.length - 1];
-      const followUp = last?.role === "assistant" && isFollowUpQuestion(parseMessage(last.content));
+      const lastAssistantMsg = [...msgs].reverse().find((m: Message) => m.role === "assistant");
+      const followUp = !!lastAssistantMsg && isFollowUpQuestion(parseMessage(lastAssistantMsg.content));
       if (followUp || !willReload) {
         const alreadyOpen = isMobile ? mobileTab === "chat" : expanded;
         if (alreadyOpen) setOptionsUnread(false);
@@ -1013,8 +1023,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     prevHasCriteriaRef.current = hasCriteria;
   }, [hasCriteria, setMobileTab]);
 
-  const lastMsg = messages[messages.length - 1];
-  const lastParsed = lastMsg?.role === "assistant" ? parseMessage(lastMsg.content) : null;
+  // The last assistant turn drives the options card.
+  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+  const lastParsed = lastAssistant ? parseMessage(lastAssistant.content) : null;
 
   // Structured options card: shown when the latest assistant turn carries
   // numbered options, unless the user dismissed it to type free-form. Reset the
@@ -1337,18 +1348,27 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                     </div>
                   );
                 }
-                return (
-                  <div key={i} className="cur-msg">
-                    {isUser ? (
+                if (isUser) {
+                  return (
+                    <div key={i} className="cur-msg">
                       <div className="cur-msg-user">{msg.content}</div>
-                    ) : (
+                    </div>
+                  );
+                }
+                // Assistant turn: the reply text, then the "feed updated" row if
+                // this turn ran a tool (rendered as its own row beneath).
+                const toolCall = parseFeedToolCall(msg.tool_calls);
+                return (
+                  <Fragment key={i}>
+                    <div className="cur-msg">
                       <div className="cur-msg-assistant">
                         {parsed!.text.split("\n\n").map((para, j) => (
                           <p key={j}>{para}</p>
                         ))}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                    {toolCall && <FeedUpdateRow toolCall={toolCall} />}
+                  </Fragment>
                 );
               })}
               {(loading || chatLoading) && (
