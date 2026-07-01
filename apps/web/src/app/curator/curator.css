@@ -419,6 +419,19 @@
   background: #fff;
   gap: 16px;
 }
+/* During first-run onboarding: hide the sidebar (and its resizer) with the
+   rest of the chrome — same gate as the topbar, via the shell root class. */
+.curator-shell--onboarding .cur-sidebar,
+.curator-shell--onboarding .cur-resizer-sidebar{ display: none; }
+
+/* During onboarding: hide all topbar chrome except the profile button. */
+.cur-topbar--onboarding .cur-topbar-burger,
+.cur-topbar--onboarding .cur-topbar-left,
+.cur-topbar--onboarding .cur-topbar-right,
+.cur-topbar--onboarding .cur-topbar-tune,
+.cur-topbar--onboarding .cur-topbar-publish-bsky { display: none; }
+.cur-topbar--onboarding .cur-topbar-share { margin-left: auto; }
+
 .cur-topbar-left{
   display: flex; align-items: center; gap: 12px;
   flex: 1; min-width: 0;
@@ -712,43 +725,6 @@
   opacity: 0.5; cursor: default;
 }
 .cur-finalize-hint{
-  font-family: var(--rf-body);
-  font-size: 12px;
-  color: var(--ink-3);
-  font-style: normal;
-}
-.cur-mode-row{
-  max-width: 640px;
-  margin: 0 auto 10px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.cur-mode-toggle{
-  display: inline-flex; align-items: center; gap: 6px;
-  font-family: var(--rf-body);
-  font-size: 12px;
-  padding: 5px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--hair);
-  background: transparent;
-  color: var(--ink-2);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.cur-mode-toggle:hover:not(:disabled){
-  border-color: var(--ink-2);
-  color: var(--ink-1);
-}
-.cur-mode-toggle:disabled{
-  opacity: 0.5; cursor: default;
-}
-.cur-mode-toggle.is-active{
-  border-color: rgba(72,96,168,0.4);
-  background: rgba(72,96,168,0.07);
-  color: var(--aurora-deep);
-}
-.cur-mode-hint{
   font-family: var(--rf-body);
   font-size: 12px;
   color: var(--ink-3);
@@ -3820,16 +3796,13 @@
     width: 16px;
     font-size: 9px;
   }
-  .cur-mode-row,
   .cur-finalize-row{
     flex-direction: column;
     align-items: stretch;
     gap: 4px;
     margin-bottom: 6px;
   }
-  .cur-mode-hint,
   .cur-finalize-hint{ display: none; }
-  .cur-mode-toggle,
   .cur-finalize{
     align-self: flex-start;
     font-size: 11px;
@@ -4570,6 +4543,24 @@
   position: absolute; left: 16px; top: 20px;
 }
 .cur-memory-back:hover{ color: var(--ink-1); }
+
+/* Back to the onboarding intention cards — mobile: pill at the top of the
+   chat sheet; desktop: floats top-left over the empty feed pane. */
+.cur-chat-back{
+  display: inline-flex; align-items: center; gap: 5px;
+  background: none; border: none; cursor: pointer;
+  font-family: var(--rf-body); font-size: 12px;
+  color: var(--ink-3); padding: 2px 0; margin: 0 0 4px;
+}
+.cur-chat-back:hover{ color: var(--ink-1); }
+.cur-feed-back{
+  position: absolute; top: 14px; left: 18px; z-index: 6;
+  display: inline-flex; align-items: center; gap: 5px;
+  background: none; border: none; cursor: pointer;
+  font-family: var(--rf-body); font-size: 12px;
+  color: var(--ink-3); padding: 4px 6px;
+}
+.cur-feed-back:hover{ color: var(--ink-1); }
 .cur-memory-inline-title{
   font-family: var(--rf-display, Georgia); font-size: 17px;
   font-weight: 500; color: var(--ink); margin-bottom: 6px;
@@ -4593,23 +4584,6 @@
 }
 .cur-memory-inline-hint{
   font-size: 12px; color: var(--ink-4); margin: 0;
-}
-
-/* Memory button in mode row */
-.cur-memory-btn{
-  display: inline-flex; align-items: center; gap: 6px;
-  font-family: var(--rf-body); font-size: 12px;
-  color: var(--ink-2); background: none;
-  border: 1px solid var(--hair); border-radius: 999px;
-  padding: 6px 14px 6px 12px; cursor: pointer;
-  transition: all 0.2s; white-space: nowrap;
-}
-.cur-memory-btn:hover:not(:disabled){
-  border-color: var(--ink-2); color: var(--ink-1);
-}
-.cur-memory-btn:disabled{ opacity: 0.5; cursor: default; }
-.cur-memory-btn-logos{
-  display: inline-flex; align-items: center; gap: 3px; margin-left: 2px;
 }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -4648,11 +4622,29 @@
 .cur-ob-inner{ width: 100%; max-width: 440px; margin: 0 auto; }
 
 /* phase toggles — brand and options crossfade with a gentle lift */
-.cur-ob[data-phase="brand"] .cur-ob-options{
+.cur-ob[data-phase="brand"] .cur-ob-options,
+.cur-ob[data-phase="prompt"] .cur-ob-options{
   opacity: 0; transform: translateY(22px); pointer-events: none;
 }
 .cur-ob[data-phase="options"] .cur-ob-brand{
   opacity: 0; transform: translateY(-26px); pointer-events: none;
+}
+
+/* "[ tap to start ]" — appears in the brand phase after the wordmark settles */
+.cur-ob-tap-prompt{
+  font-family: var(--rf-mono, monospace);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 32px 0 0;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.cur-ob[data-phase="prompt"] .cur-ob-tap-prompt{
+  opacity: 1;
+  transform: none;
 }
 
 /* ── wordmark: logo stands in for the "a", "madi" set in the display face ── */
@@ -4687,16 +4679,29 @@
 .cur-ob-logochar{ vertical-align: -0.08em; }
 .cur-ob-logochar img{ display: block; height: 0.82em; width: auto; }
 
+.cur-ob-subtitle{
+  font-family: var(--rf-display);
+  font-weight: 500;
+  font-size: clamp(18px, 3.6vw, 23px);
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: -8px 0 0;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.85s cubic-bezier(0.19, 1, 0.22, 1) 0.04s, transform 0.85s cubic-bezier(0.19, 1, 0.22, 1) 0.04s;
+}
+.cur-ob-brand.revealed .cur-ob-subtitle{ opacity: 1; transform: none; }
+
 .cur-ob-q{
   font-family: var(--rf-display);
   font-weight: 500;
   font-size: clamp(18px, 3.6vw, 23px);
   letter-spacing: -0.01em;
   color: var(--ink-3);
-  margin: 0;
+  margin: 28px 0 0;
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 0.7s ease 0.5s, transform 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.5s;
+  transition: opacity 0.7s ease 1.26s, transform 0.7s cubic-bezier(0.22, 1, 0.36, 1) 1.26s;
 }
 .cur-ob-brand.revealed .cur-ob-q{ opacity: 1; transform: none; }
 
@@ -4753,8 +4758,7 @@
   background: linear-gradient(150deg, #eaf0fd, #e7e0f6);
 }
 .cur-ob-ic svg{ width: 20px; height: 20px; stroke: #5a3e9e; }
-.cur-ob-ct b{ display: block; font-weight: 500; font-size: 14.5px; color: var(--ink); margin-bottom: 1px; }
-.cur-ob-ct i{ font-style: normal; font-size: 12px; color: var(--ink-3); line-height: 1.35; }
+.cur-ob-ct b{ display: block; font-weight: 500; font-size: 15px; color: var(--ink); }
 
 /* ── entrance stagger when the options phase arrives ── */
 .cur-ob[data-phase="options"] .cur-ob-head,
