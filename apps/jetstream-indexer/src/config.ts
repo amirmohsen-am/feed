@@ -23,6 +23,9 @@ export const config = {
   engagementBatchMax: parseInt(process.env.ENGAGEMENT_BATCH_MAX ?? '2000', 10),
   profileFlushMs: parseInt(process.env.PROFILE_FLUSH_MS ?? '10000', 10),
   profileBatchMax: parseInt(process.env.PROFILE_BATCH_MAX ?? '50', 10),
+  // Labelers are extremely rare (a few records network-wide per day); flush slowly.
+  labelerFlushMs: parseInt(process.env.LABELER_FLUSH_MS ?? '15000', 10),
+  labelerBatchMax: parseInt(process.env.LABELER_BATCH_MAX ?? '50', 10),
 
   // Retention prune (caps the pgvector HNSW index). Supported feed windows
   // are capped at retentionDays — keep them in sync (web app TimeWindow).

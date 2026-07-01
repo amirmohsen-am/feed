@@ -556,6 +556,9 @@ export default function Landing() {
             </a>
           ))}
         </div>
+        <a className="proto-footer-link" href="/labelers">
+          Labeler directory
+        </a>
         <span>&copy; 2026</span>
       </footer>
     </div>
