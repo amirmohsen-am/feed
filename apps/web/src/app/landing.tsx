@@ -242,14 +242,6 @@ const TEAM = [
     linkedin: "https://www.linkedin.com/in/christian-neizonek-613b9ba0/",
   },
   {
-    name: "Ohm Patel",
-    role: "Engineer",
-    photo: "/images/ohm.jpg",
-    bio: "Former content creator turned engineer. Building better incentive systems for social media, feeds that serve people, not platforms.",
-    bsky: "https://bsky.app/profile/ohmcpatel.bsky.social",
-    linkedin: "https://www.linkedin.com/in/ohm-patel-84856223b/",
-  },
-  {
     name: "Amir Ahanchi",
     role: "Engineer",
     photo: "/images/amir.jpg",
@@ -264,6 +256,17 @@ const TEAM = [
     bio: "UC Berkeley student studying applied mathematics and computer science. Struggles with social media overuse (you don't want to see my iPhone screen time metrics). Excited to be a part of the solution!",
     bsky: "https://bsky.app/profile/tobyleeder.bsky.social",
     linkedin: "https://www.linkedin.com/in/toby-leeder/",
+  },
+];
+
+const CONTRIBUTORS = [
+  {
+    name: "Ohm Patel",
+    role: "Engineer",
+    photo: "/images/ohm.jpg",
+    bio: "Former content creator turned engineer. Building better incentive systems for social media, feeds that serve people, not platforms.",
+    bsky: "https://bsky.app/profile/ohmcpatel.bsky.social",
+    linkedin: "https://www.linkedin.com/in/ohm-patel-84856223b/",
   },
 ];
 
@@ -537,6 +540,46 @@ export default function Landing() {
               </div>
             ))}
           </div>
+          <div className="proto-head p-reveal" style={{ marginTop: "3rem" }}>
+            <span className="hairline" />
+            <span className="label">Contributors</span>
+            <span className="hairline" />
+          </div>
+          <div className="proto-team-grid">
+            {CONTRIBUTORS.map((member, i) => (
+              <div
+                key={member.name}
+                className="proto-team-card p-reveal"
+                style={{ transitionDelay: `${i * 120}ms` }}
+              >
+                <div className="proto-team-photo">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={member.photo} alt={member.name} />
+                </div>
+                <h3>{member.name}</h3>
+                <p className="proto-team-role">{member.role}</p>
+                <div className="proto-team-links">
+                  <a
+                    href={member.bsky}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`${member.name} on Bluesky`}
+                  >
+                    <BlueskyIcon />
+                  </a>
+                  <a
+                    href={member.linkedin}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`${member.name} on LinkedIn`}
+                  >
+                    <LinkedInIcon />
+                  </a>
+                </div>
+                <p className="proto-team-bio">{member.bio}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -556,9 +599,6 @@ export default function Landing() {
             </a>
           ))}
         </div>
-        <a className="proto-footer-link" href="/labelers">
-          Labeler directory
-        </a>
         <span>&copy; 2026</span>
       </footer>
     </div>
