@@ -3,12 +3,15 @@
 import { useState, useEffect, type KeyboardEvent } from "react";
 import type { BranchOption } from "@/lib/branch";
 
+// Accepts either NegativeTopic (description field) or BranchOption (subquery field).
+type FollowupTopic = { label: string; description?: string; subquery?: string };
+
 const LOADING_PHRASES = [
-  "finding similar content",
-  "adventuring into bluesky",
-  "scanning the firehose",
+  "analyzing content",
+  "filtering slop",
+  "fighting shit posts",
+  "identifying bait",
   "reading between the posts",
-  "mapping your interests",
 ];
 
 function LoadingCycler() {
@@ -43,7 +46,7 @@ export default function SwipeFollowupCard({
 }: {
   post: PostSummary;
   /** undefined = not yet fetched/loading, array = done */
-  topics: BranchOption[] | undefined;
+  topics: FollowupTopic[] | BranchOption[] | undefined;
   onChipSend: (reason: string) => void;
   onTextSend: (reason: string) => void;
   onDismiss: () => void;
@@ -51,40 +54,54 @@ export default function SwipeFollowupCard({
   const [text, setText] = useState("");
   const [sentText, setSentText] = useState<string | null>(null);
   const [dismissing, setDismissing] = useState(false);
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(() => new Set());
 
   const author =
     post.author_display_name?.trim() ||
     (post.author_handle ? `@${post.author_handle}` : post.author_did.slice(0, 12) + "\u2026");
 
-  function chipSend(topic: BranchOption) {
-    onChipSend(
-      `I skipped this post by ${author}. I want to see less about \u201c${topic.label}\u201d. Please tune my feed to show less of this.`
-    );
+  const hasPills = selectedIndices.size > 0;
+  const canSubmit = hasPills || text.trim().length > 0;
+
+  function handlePillClick(index: number) {
+    setSelectedIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
   }
 
-  function textSend() {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    const raw = post.text.replace(/\s+/g, " ").trim();
-    const snippet = raw.slice(0, 140) + (raw.length > 140 ? "\u2026" : "");
-    onTextSend(
-      `I skipped this post by ${author}: \u201c${snippet}\u201d. ${trimmed}`
-    );
-    setSentText(trimmed);
+  function submit() {
+    if (!canSubmit) return;
+
+    if (hasPills && topics) {
+      const selected = topics.filter((_, i) => selectedIndices.has(i));
+      const descriptions = selected.map((t) => ("description" in t ? t.description : undefined) ?? ("subquery" in t ? t.subquery : undefined) ?? t.label).join(" ");
+      const extra = text.trim() ? ` ${text.trim()}` : "";
+      onChipSend(
+        `I skipped this post by ${author}. ${descriptions}${extra} Please tune my feed to show less of this.`
+      );
+      const receipt = selected.map((t) => t.label).join(", ");
+      setSentText(text.trim() ? `${receipt} — ${text.trim()}` : receipt);
+    } else {
+      const trimmed = text.trim();
+      const raw = post.text.replace(/\s+/g, " ").trim();
+      const snippet = raw.slice(0, 140) + (raw.length > 140 ? "\u2026" : "");
+      onTextSend(
+        `I skipped this post by ${author}: \u201c${snippet}\u201d. ${trimmed}`
+      );
+      setSentText(trimmed);
+    }
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      textSend();
+      submit();
     }
   }
 
-  function handleDismiss() {
-    setDismissing(true);
-  }
-
-  // Sent state: show a read-only receipt of what was submitted.
   if (sentText !== null) {
     return (
       <div className="cur-swipe-followup cur-swipe-followup-receipt-wrap">
@@ -102,7 +119,7 @@ export default function SwipeFollowupCard({
       <button
         type="button"
         className="cur-swipe-followup-dismiss"
-        onClick={handleDismiss}
+        onClick={() => setDismissing(true)}
         aria-label="Skip feedback"
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
@@ -113,7 +130,6 @@ export default function SwipeFollowupCard({
 
       <p className="cur-swipe-followup-label">what you&rsquo;ll see less of</p>
 
-      {/* Reasons fit on one row when they can, wrapping to a second only if needed. */}
       {topics === undefined ? (
         <LoadingCycler />
       ) : (
@@ -122,9 +138,8 @@ export default function SwipeFollowupCard({
             <button
               key={i}
               type="button"
-              className="cur-swipe-followup-chip"
-              title={t.subquery}
-              onClick={() => chipSend(t)}
+              className={`cur-swipe-followup-chip${selectedIndices.has(i) ? " cur-swipe-followup-chip--selected" : ""}`}
+              onClick={() => handlePillClick(i)}
             >
               {t.label}
             </button>
@@ -134,7 +149,7 @@ export default function SwipeFollowupCard({
 
       <form
         className="cur-swipe-followup-composer"
-        onSubmit={(e) => { e.preventDefault(); textSend(); }}
+        onSubmit={(e) => { e.preventDefault(); submit(); }}
       >
         <textarea
           className="cur-swipe-followup-input"
@@ -147,7 +162,7 @@ export default function SwipeFollowupCard({
         <button
           type="submit"
           className="cur-swipe-followup-send"
-          disabled={!text.trim()}
+          disabled={!canSubmit}
           aria-label="Send"
           title="Send"
         >

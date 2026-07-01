@@ -1,21 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent, Fragment } from "react";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 
 export type SwipeVerdict = "approve" | "reject";
 
-const SWIPE_THRESHOLD = 120;       // right (branch) flick commit power
-const BRANCH_COLLAPSE_DISTANCE = 210; // right fold range (prototype COLLAPSE_DIST)
-const BRANCH_COMMIT = 0.5;         // fraction of the fold at which a release branches
+const SWIPE_THRESHOLD = 120;       // right flick commit power
+const BRANCH_COLLAPSE_DISTANCE = 210; // right rubber-band range
+const BRANCH_COMMIT = 0.5;         // fraction at which a right-drag release approves
+const HOLD_DELAY = 550;            // ms before a stationary press becomes a hold
 const TX_MAX = 224;                // rubber-band asymptote for the rightward ride
 // Left "less like this" reveal-and-confirm (iMessage style): the card parks open
 // to a red dot that mirrors the swipe-right "Dive deeper" dot; tap it or slide
 // all the way to commit.
 const LESS_OPEN = 120;             // parked-open distance — just far enough to reveal the dot + label
 const LESS_FULL = 250;             // slide-all-the-way commit distance
-const LESS_DOT = 46;               // circle diameter at rest / parked (mirrors the branch dot)
-const LESS_CAPW = 230;             // max oval width once stretched past the park
+const LESS_DOT = 46;               // circle diameter (mirrors the branch dot)
 
 const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
 const cl01 = (v: number) => Math.max(0, Math.min(1, v));
@@ -26,25 +26,30 @@ const rubber = (d: number) => TX_MAX * (1 - Math.exp(-d / TX_MAX));
 export default function SwipeableCard({
   children,
   followupContent,
+  approveFollowupContent,
   onSwipe,
   onFirstLeftDrag,
   onFirstRightDrag,
-  onRightProgress,
+  onHoldStart,
+  onBranch,
   disabled = false,
 }: {
   children: ReactNode;
   followupContent?: ReactNode;
+  approveFollowupContent?: ReactNode;
   onSwipe: (v: SwipeVerdict) => void;
   onFirstLeftDrag?: () => void;
+  /** Called on the first rightward drag frame — use to preload approve topics. */
   onFirstRightDrag?: () => void;
-  /** Called on every right-drag frame with t ∈ [0,1] (0 = at rest, 1 = fully folded). */
-  onRightProgress?: (t: number) => void;
+  /** Called when a hold gesture activates — use to preload branch topics. */
+  onHoldStart?: () => void;
+  /** Called when the Dive Deeper button in the hold overlay is tapped. */
+  onBranch?: () => void;
   disabled?: boolean;
 }) {
   // Visual transform we own directly (so the rightward ride can be rubber-banded
   // independently of the raw pointer distance that drives the fold).
   const xv = useMotionValue(0);
-  const scale = useTransform(xv, [-400, 0], [0.92, 1]);
 
   const decidedRef = useRef(false);
   const firstLeftFired = useRef(false);
@@ -65,8 +70,19 @@ export default function SwipeableCard({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const followupRef = useRef<HTMLDivElement>(null);
   const branchActionRef = useRef<HTMLDivElement>(null);
+  const branchIconRef = useRef<HTMLSpanElement>(null);
   const lessActionRef = useRef<HTMLDivElement>(null);
+  const approveFollowupRef = useRef<HTMLDivElement>(null);
   const lessPillRef = useRef<HTMLButtonElement>(null);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdActiveRef = useRef(false);
+  const [holdActive, setHoldActive] = useState(false);
+  // True once the approve panel has been shown — card stays interactive after approve.
+  const approveShownRef = useRef(false);
+  // Incrementing this key force-remounts the approve panel content (e.g. after dismiss).
+  const [approveKey, setApproveKey] = useState(0);
+  // Drives the square-bottom-corner class on the card while the panel is visible.
+  const [approveOpen, setApproveOpen] = useState(false);
 
   // Left "less like this" gesture: whether the card is parked open (iMessage
   // style), and the resting x the next drag builds on (0 normally, -LESS_OPEN
@@ -81,13 +97,41 @@ export default function SwipeableCard({
   // Clear the "release to branch" affordance (used on cancel / Back).
   const clearBranchAction = useCallback(() => {
     const action = branchActionRef.current;
-    if (action) { action.style.opacity = "0"; action.classList.remove("ready"); }
+    if (action) {
+      action.style.opacity = "0";
+      action.style.transition = "";
+      action.classList.remove("ready", "plus-confirming", "plus-filled");
+    }
+    branchIconRef.current?.style.removeProperty("--branch-fill");
   }, []);
 
-  // Imperatively drive the red "less like this" dot from the card's x. It mirrors
-  // the swipe-right branch dot: an outlined red circle that pops solid once you've
-  // pulled far enough to park (.ready), then stretches circle→oval the further you
-  // pull past the park. The label stays underneath throughout.
+  // Keep the approve panel x-aligned with the card on every frame — covers the
+  // initial spring-back, subsequent drags while the panel is visible, and any
+  // left-swipe that moves the card while the panel is still shown.
+  useEffect(() => {
+    return xv.on("change", (x) => {
+      const f = approveFollowupRef.current;
+      if (f && approveShownRef.current) f.style.transform = `translateX(${x}px)`;
+    });
+  }, [xv]);
+
+  // Detect when the approve panel collapses (X button, dismiss, left-swipe) and
+  // restore the card's bottom border-radius regardless of which path closed it.
+  useEffect(() => {
+    const f = approveFollowupRef.current;
+    if (!f) return;
+    let wasOpen = false;
+    const obs = new ResizeObserver(([entry]) => {
+      const isOpen = entry.contentRect.height > 5;
+      if (wasOpen && !isOpen) setApproveOpen(false);
+      wasOpen = isOpen;
+    });
+    obs.observe(f);
+    return () => obs.disconnect();
+  }, []);
+
+  // Imperatively drive the red "less like this" circle from the card's x.
+  // Stays a circle (no oval stretch) — mirrors the "more like this" indicator.
   const paintLessPill = useCallback((x: number) => {
     const wrap = lessActionRef.current;
     const pill = lessPillRef.current;
@@ -97,16 +141,8 @@ export default function SwipeableCard({
     const ready = gap >= readyAt;
     wrap.classList.toggle("ready", ready);
     wrap.style.opacity = String(Math.min(gap / (LESS_OPEN * 0.4), 1));
-    // Past the park the dot stretches leftward into an oval; before it, it stays a
-    // circle that scales in (then pops to 1.08 the moment it goes solid).
-    const over = Math.max(0, gap - LESS_OPEN);
-    const stretch = Math.min(over / (LESS_FULL - LESS_OPEN), 1);
-    const scale = ready ? 1.08 - 0.08 * stretch : 0.7 + Math.min(gap / readyAt, 1) * 0.3;
+    const scale = ready ? 1.08 : 0.7 + Math.min(gap / readyAt, 1) * 0.3;
     pill.style.transform = `scale(${scale})`;
-    // Grow at the same rate the card travels (1:1), so the oval's left edge rides
-    // along with the post's trailing edge instead of outrunning it and tucking
-    // under the card.
-    pill.style.width = `${Math.min(LESS_CAPW, LESS_DOT + over)}px`;
   }, []);
 
   const settleLessPill = useCallback((open: boolean) => {
@@ -118,9 +154,8 @@ export default function SwipeableCard({
       wrap.classList.toggle("ready", open);
     }
     if (pill) {
-      pill.style.transition = "width 0.26s cubic-bezier(0.2,0.8,0.3,1), transform 0.26s, background 0.18s, color 0.18s, border-color 0.18s";
+      pill.style.transition = "transform 0.26s cubic-bezier(0.2,0.8,0.3,1), background 0.18s, color 0.18s, border-color 0.18s";
       pill.style.transform = open ? "scale(1.08)" : "scale(0.7)";
-      pill.style.width = `${LESS_DOT}px`;
     }
   }, []);
 
@@ -135,26 +170,90 @@ export default function SwipeableCard({
     window.setTimeout(() => window.removeEventListener("click", swallow, { capture: true }), 400);
   }, []);
 
+  const bounceApprovePanel = useCallback(() => {
+    const f = approveFollowupRef.current;
+    if (!f) return;
+    const h = f.offsetHeight;
+    // Panel was dismissed by the user (height 0) — reset so the next commitApprove
+    // call will run the full entrance again with a freshly-mounted panel.
+    if (h < 5) {
+      approveShownRef.current = false;
+      setApproveOpen(false);
+      setApproveKey((k) => k + 1);
+      return;
+    }
+    f.style.overflow = "hidden";
+    f.style.height = `${h}px`;
+    void f.offsetHeight;
+    // Quick collapse then re-expand — "repeating the animation" feel.
+    f.style.transition = "height 0.2s cubic-bezier(0.4,0,0.2,1), opacity 0.18s";
+    f.style.height = "0px";
+    f.style.opacity = "0.2";
+    setTimeout(() => {
+      const ff = approveFollowupRef.current;
+      if (!ff) return;
+      ff.style.transition = "height 0.55s cubic-bezier(0.2,0.7,0.3,1), opacity 0.42s";
+      ff.style.height = `${h}px`;
+      ff.style.opacity = "1";
+      setTimeout(() => {
+        const fff = approveFollowupRef.current;
+        if (fff) { fff.style.height = "auto"; fff.style.overflow = "visible"; }
+      }, 580);
+    }, 220);
+  }, []);
+
   const commitApprove = useCallback(() => {
     if (decidedRef.current) return;
-    decidedRef.current = true;
-    branchCommittedRef.current = true;
     swallowNextClick();
-    // The source post folds into a compact pinned preview — but the fold itself is
-    // owned by the parent FeedView (it measures heights + drives the collapse on
-    // commit / chevron / Back). Here we just unlock content so its links stay
-    // clickable and settle the card's rubber-banded ride back to x=0.
     setLocked(false);
+    // Flash the indicator to solid then fade.
     const action = branchActionRef.current;
-    if (action) { action.style.transition = "opacity 0.2s"; action.style.opacity = "0"; }
-    // Settle the rubber-banded ride back to x=0 quickly and decisively — a lazy
-    // spring leaves the card visibly drifting rightward while the parent is
-    // already lifting it to the top, which reads as a two-step "right, then up".
-    // A short ease-out gets the horizontal out of the way so the vertical lift
-    // is the only motion the eye tracks.
-    animate(xv, 0, { duration: 0.2, ease: [0.4, 0, 0.2, 1] });
+    if (action) {
+      action.classList.add("plus-confirming");
+      action.style.transition = "opacity 0.2s";
+      action.style.opacity = "0";
+    }
+    // Snap the card back with a soft spring.
+    animate(xv, 0, { type: "spring", stiffness: 90, damping: 20 });
+
+    if (approveShownRef.current) {
+      // Panel already visible — bounce it to signal the repeated swipe.
+      bounceApprovePanel();
+      return;
+    }
+
+    // First approve: show the panel and stay interactive (no decidedRef lock).
+    approveShownRef.current = true;
+    setApproveOpen(true);
+    const f = approveFollowupRef.current;
+    if (f) {
+      // Negate the card's bottom margin exactly (12px desktop, 8px mobile).
+      const card = wrapperRef.current?.querySelector(".cur-post-card");
+      const cardMarginBottom = card ? parseFloat(getComputedStyle(card).marginBottom) : 12;
+      f.style.marginTop = `-${cardMarginBottom}px`;
+      // Start the panel at the card's current rubber-banded x so it appears
+      // from behind the card rather than from the center of the screen.
+      const startX = xv.get();
+      // Seed the panel at the card's current x; the xv subscription takes over
+      // from here so no CSS transform transition is needed — the panel tracks
+      // the spring exactly on every frame.
+      f.style.transform = `translateX(${startX}px)`;
+      f.style.height = "auto";
+      const target = f.scrollHeight;
+      f.style.height = "0px";
+      f.style.opacity = "0";
+      f.style.overflow = "hidden";
+      void f.offsetHeight;
+      f.style.transition = "height 0.65s cubic-bezier(0.2,0.7,0.3,1), opacity 0.5s";
+      f.style.height = `${target}px`;
+      f.style.opacity = "1";
+      window.setTimeout(() => {
+        const ff = approveFollowupRef.current;
+        if (ff) { ff.style.height = "auto"; ff.style.overflow = "visible"; }
+      }, 680);
+    }
     onSwipe("approve");
-  }, [xv, onSwipe, swallowNextClick]);
+  }, [xv, onSwipe, swallowNextClick, bounceApprovePanel]);
 
   // Release below the park threshold — snap shut and re-arm.
   const closeLess = useCallback(() => {
@@ -182,6 +281,16 @@ export default function SwipeableCard({
     leftOpenRef.current = false;
     swallowNextClick();
     settleLessPill(false);
+    // If the approve panel was visible, slide it away with the card.
+    if (approveShownRef.current) {
+      approveShownRef.current = false;
+      const ap = approveFollowupRef.current;
+      if (ap) {
+        ap.style.transition = "opacity 0.26s, height 0.34s cubic-bezier(0.4,0,0.2,1)";
+        ap.style.opacity = "0";
+        ap.style.height = "0px";
+      }
+    }
     const card = wrapperRef.current;
     if (card) {
       const h = card.scrollHeight;
@@ -215,6 +324,8 @@ export default function SwipeableCard({
     if (!disabled && branchCommittedRef.current) {
       branchCommittedRef.current = false;
       decidedRef.current = false;
+      approveShownRef.current = false;
+      setApproveOpen(false);
       firstRightFired.current = false;
       firstLeftFired.current = false;
       clearBranchAction();
@@ -226,12 +337,16 @@ export default function SwipeableCard({
     if (disabled || decidedRef.current) return;
     draggingRef.current = true;
     engagedRef.current = false;
-    // Re-arm the first-drag latches each gesture. Otherwise a cancelled right
-    // drag leaves firstRightFired=true, so a second right drag never re-fires
-    // onFirstRightDrag → the card isn't re-marked the branch source → it recedes
-    // (slides left + fades) along with the others. (Fetches are idempotent.)
     firstLeftFired.current = false;
     firstRightFired.current = false;
+    // Start hold timer — fires HOLD_DELAY ms after press if no horizontal movement.
+    holdTimerRef.current = setTimeout(() => {
+      if (!draggingRef.current || engagedRef.current) return;
+      holdActiveRef.current = true;
+      setHoldActive(true);
+      onHoldStart?.();
+      draggingRef.current = false; // prevent endDrag from processing a swipe
+    }, HOLD_DELAY);
     startXRef.current = e.clientX;
     startYRef.current = e.clientY;
     dxRef.current = 0;
@@ -254,6 +369,8 @@ export default function SwipeableCard({
 
     if (!engagedRef.current) {
       if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      // Cancel hold timer — user is swiping, not holding.
+      if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
       if (Math.abs(dy) > Math.abs(dx)) { draggingRef.current = false; return; } // vertical scroll
       engagedRef.current = true;
       setLocked(true);
@@ -269,18 +386,17 @@ export default function SwipeableCard({
 
     const baseX = baseXRef.current;
     if (baseX === 0 && dx > 0) {
-      // The card just rides right (rubber-banded) while the other posts recede;
-      // no fold/collapse of its own content.
+      // Card rides right rubber-banded; + indicator fills as you approach the threshold.
       if (!firstRightFired.current) { firstRightFired.current = true; onFirstRightDrag?.(); }
       xv.set(rubber(dx));
       const t = Math.min(1, dx / BRANCH_COLLAPSE_DISTANCE);
-      onRightProgress?.(t);
       const action = branchActionRef.current;
       if (action) {
         const reveal = cl01(dx / 70);
         action.style.opacity = String(reveal);
         action.style.transform = `translateY(-50%) translateX(${lerp(-12, 0, reveal)}px)`;
-        action.classList.toggle("ready", t >= BRANCH_COMMIT);
+        branchIconRef.current?.style.setProperty("--branch-fill", String(Math.min(1, t / BRANCH_COMMIT)));
+        action.classList.toggle("plus-filled", t >= BRANCH_COMMIT);
       }
     } else {
       // Leftward "less of this" reveal — also handles dragging from the parked
@@ -290,12 +406,12 @@ export default function SwipeableCard({
       const over = -x - LESS_FULL;
       if (over > 0) x = -(LESS_FULL + 60 * (1 - Math.exp(-over / 60)));
       xv.set(x);
-      onRightProgress?.(0);
       paintLessPill(x);
     }
   }
 
   function endDrag() {
+    if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
     if (!draggingRef.current) return;
     draggingRef.current = false;
     const dx = dxRef.current;
@@ -308,15 +424,12 @@ export default function SwipeableCard({
 
     const baseX = baseXRef.current;
 
-    // Rightward branch (unchanged).
+    // Rightward "more like this".
     if (baseX === 0 && dx > 0) {
       const power = dx + velRef.current * 90; // velocity is px/ms → weight a flick
       const t = dx / BRANCH_COLLAPSE_DISTANCE;
       if (t >= BRANCH_COMMIT || power > SWIPE_THRESHOLD) { commitApprove(); return; }
-      // Cancel — settle back to rest. Also tell the parent the rightward progress
-      // is back to 0 so the *other* posts (which receded via --branch-progress)
-      // animate back in; without this they stay stuck mid-recede.
-      onRightProgress?.(0);
+      // Cancel — bounce back.
       clearBranchAction();
       animate(xv, 0, { type: "spring", stiffness: 340, damping: 32 });
       if (wrapperRef.current) { wrapperRef.current.style.position = ""; wrapperRef.current.style.zIndex = ""; }
@@ -333,21 +446,50 @@ export default function SwipeableCard({
     closeLess();
   }
 
+  const dismissHold = useCallback(() => {
+    holdActiveRef.current = false;
+    setHoldActive(false);
+  }, []);
+
+  const handleDiveDeeperTap = useCallback(() => {
+    holdActiveRef.current = false;
+    setHoldActive(false);
+    onBranch?.();
+  }, [onBranch]);
+
   return (
     <>
-      <div ref={wrapperRef} style={{ position: "relative" }}>
+      <div ref={wrapperRef} className={[holdActive && "cur-hold-active", approveOpen && "cur-approve-open"].filter(Boolean).join(" ") || undefined} style={{ position: "relative" }}>
         {/* Branch affordance revealed on the left as the card rides right. */}
         <div ref={branchActionRef} className="cur-swipe-branch-action" style={{ opacity: 0 }} aria-hidden>
-          <span className="cur-swipe-branch-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="6" cy="6" r="2.4" />
-              <circle cx="6" cy="18" r="2.4" />
-              <circle cx="18" cy="9" r="2.4" />
-              <path d="M6 8.4v7.2M8.2 7 16 8.6M8 17l8-6.6" />
-            </svg>
+          <span ref={branchIconRef} className="cur-swipe-branch-icon">
+            <span className="cur-swipe-branch-fill" aria-hidden />
+            <span className="cur-swipe-branch-plus">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </span>
           </span>
-          <span className="cur-swipe-branch-label">Dive deeper</span>
+          <span className="cur-swipe-branch-label">More like this</span>
         </div>
+        {/* Hold overlay: appears on long-press, offers Dive Deeper into branch feed. */}
+        {holdActive && (
+          <div className="cur-hold-overlay" onClick={dismissHold} role="dialog" aria-label="Hold options">
+            <button
+              className="cur-hold-branch-btn"
+              onClick={(e) => { e.stopPropagation(); handleDiveDeeperTap(); }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <circle cx="6" cy="6" r="2.4" />
+                <circle cx="6" cy="18" r="2.4" />
+                <circle cx="18" cy="9" r="2.4" />
+                <path d="M6 8.4v7.2M8.2 7 16 8.6M8 17l8-6.6" />
+              </svg>
+              Dive deeper
+            </button>
+          </div>
+        )}
         {/* "less like this" affordance revealed on the right as the card rides
             left, sitting behind the card in the space it vacates. Mirrors the
             "Dive deeper" dot: an outlined red circle with a label underneath that
@@ -372,7 +514,7 @@ export default function SwipeableCard({
         </div>
         <motion.div
           className="cur-swipe-wrap"
-          style={{ x: xv, scale, position: "relative", zIndex: 1 }}
+          style={{ x: xv, position: "relative", zIndex: 1 }}
           onPointerDown={disabled ? undefined : onPointerDown}
           onPointerMove={disabled ? undefined : onPointerMove}
           onPointerUp={disabled ? undefined : endDrag}
@@ -383,6 +525,11 @@ export default function SwipeableCard({
           </div>
         </motion.div>
       </div>
+      {approveFollowupContent != null && (
+        <div ref={approveFollowupRef} style={{ height: 0, overflow: "hidden", opacity: 0 }}>
+          <Fragment key={approveKey}>{approveFollowupContent}</Fragment>
+        </div>
+      )}
       {followupContent != null && (
         <div ref={followupRef} style={{ height: 0, overflow: "hidden", opacity: 0 }}>
           {followupContent}

@@ -86,25 +86,33 @@ interface BranchController {
   branchReturning: boolean;
 
   // ── Per-post render state ──
-  /** URIs swiped away (tuned) — filtered out of the list. */
   swipedUris: Set<string>;
-  /** Once the receded posts are dropped, only the committed source remains. */
   othersCleared: boolean;
   returningSourceUri: string | null;
   pendingBranch: PendingBranch | null;
   followupTopics: Map<string, BranchOption[]>;
+  /** Approve topics indexed by post URI (same API as branch options). */
+  swipeRightTopics: Map<string, BranchOption[] | null>;
   sourceExpanded: boolean;
   setSourceExpanded: (b: boolean) => void;
 
   // ── SwipeableCard wiring ──
   handleCardSwipe: (post: Post, verdict: SwipeVerdict) => void;
   handleRightProgress: (t: number) => void;
-  /** First right-drag frame: mark this post the branch source + fetch topics. */
+  /** First right-drag frame: prefetch approve topics (no branch commit). */
   onFirstRightDrag: (post: Post) => void;
   fetchFollowupTopics: (post: Post) => void;
   handleFollowupChipSend: (post: Post, reason: string) => void;
   handleFollowupTextSend: (post: Post, reason: string) => void;
   handleFollowupDismiss: (uri: string) => void;
+
+  // ── Approve ("more like this") wiring ──
+  handleApproveFollowupChipSend: (post: Post, reason: string) => void;
+  handleApproveFollowupTextSend: (post: Post, reason: string) => void;
+  handleApproveFollowupDismiss: (uri: string) => void;
+
+  // ── Branch-button / hold gesture ──
+  handleHoldBranch: (post: Post) => void;
 
   // ── Back + fold ──
   resetBranch: () => void;
@@ -213,42 +221,43 @@ export function useBranchController({
     (feedInnerRef.current?.querySelector(".cur-post-item-source") as HTMLElement | null) ?? null;
 
   function handleCardSwipe(post: Post, verdict: SwipeVerdict) {
-    if (verdict === "reject") return;
+    // Right swipe is now "more like this" — the approve panel handles it.
+    // Left swipe (reject) is also handled by the followup card via commitLess.
+    void post; void verdict;
+  }
+
+  // First right-drag frame: prefetch approve topics. Does NOT mark the post as the
+  // branch source — right-swipe is "more like this", not branch.
+  function onFirstRightDrag(post: Post) {
+    requestAnimationFrame(() => fetchSwipeRightTopics(post));
+  }
+
+  // Triggered by the branch FAB button or hold gesture. Does the full branch commit:
+  // folds the source post, clears receded posts, creates the branch feed overlay.
+  function handleHoldBranch(post: Post) {
+    const prefetched = swipeRightTopics.get(post.uri);
+    const branchOptions = Array.isArray(prefetched) && prefetched.length > 0 ? prefetched : null;
+    setPendingBranch({ post, options: branchOptions });
+    fetchSwipeRightTopics(post);
     branchCommittedRef.current = true;
     branchDraggingRef.current = false;
     setBranchDragging(false);
     feedInnerRef.current?.style.removeProperty("--branch-progress");
     setCommittedBranchUri(post.uri);
     setOthersCleared(false);
-    // Fold the source into its compact pinned preview (the drag left it part-folded;
-    // ease it the rest of the way) and start it collapsed.
     setSourceExpanded(false);
     settleFold(true);
-    // Drop the receded posts once they've slid out. Capture the source's spot first
-    // so the clearAnchor effect can pin it across the removal (removing the
-    // full-height posts above it would otherwise yank the scroll — "then it goes
-    // down").
     setTimeout(() => {
       const scroller = activeScroller();
       const el = sourceItemEl();
       clearAnchorRef.current = el ? { scroller, top: topWithinScroller(el, scroller) } : null;
       setOthersCleared(true);
     }, 480);
-    const options = swipeRightTopics.get(post.uri);
-    if (Array.isArray(options) && options.length > 0) {
-      void createBranchForOverlay(post, options);
+    if (branchOptions) {
+      void createBranchForOverlay(post, branchOptions);
     } else {
       setBranchPendingUri(post.uri);
     }
-  }
-
-  // First right-drag frame: mark this post the branch source (so it is excluded
-  // from the recede) right away, then fetch its topics off the drag frame.
-  function onFirstRightDrag(post: Post) {
-    const prefetched = swipeRightTopics.get(post.uri);
-    const options = Array.isArray(prefetched) && prefetched.length > 0 ? prefetched : null;
-    setPendingBranch({ post, options });
-    requestAnimationFrame(() => fetchSwipeRightTopics(post));
   }
 
   // Locate the source card's foldable region (the block under the header) + its
@@ -531,6 +540,31 @@ export function useBranchController({
     setSwipedUris((prev) => { const next = new Set(prev); next.add(uri); return next; });
   }
 
+  // ── Approve ("more like this") ──────────────────────────────────
+  function submitApprove(post: Post, reason: string) {
+    const token = `\u27e6swipe:approve:${post.uri}\u27e7`;
+    const message = `${token} ${reason} Update my feed to show more of this.`;
+    if (onTune) {
+      onTune(message, post);
+    } else {
+      void authedFetch("/api/chat", {
+        method: "POST",
+        body: JSON.stringify({ message, feedId }),
+      })
+        .then(() => loadPosts({ tail: true }))
+        .catch(() => {});
+    }
+  }
+  function handleApproveFollowupChipSend(post: Post, reason: string) {
+    submitApprove(post, reason);
+  }
+  function handleApproveFollowupTextSend(post: Post, reason: string) {
+    submitApprove(post, reason);
+  }
+  function handleApproveFollowupDismiss(_uri: string) {
+    // Dismissing the approve panel just hides it — post stays in the feed.
+  }
+
   return {
     branchDragging,
     committedBranchUri,
@@ -540,6 +574,7 @@ export function useBranchController({
     returningSourceUri,
     pendingBranch,
     followupTopics,
+    swipeRightTopics,
     sourceExpanded,
     setSourceExpanded,
     handleCardSwipe,
@@ -549,6 +584,10 @@ export function useBranchController({
     handleFollowupChipSend,
     handleFollowupTextSend,
     handleFollowupDismiss,
+    handleApproveFollowupChipSend,
+    handleApproveFollowupTextSend,
+    handleApproveFollowupDismiss,
+    handleHoldBranch,
     resetBranch,
     settleFold,
   };

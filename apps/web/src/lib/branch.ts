@@ -19,6 +19,13 @@ export interface BranchOption {
   kind: "deeper" | "adjacent";
 }
 
+// A feature extracted from a skipped post for the swipe-left "see less of" flow.
+// `description` is the full feature sent to the chat agent; `label` is the compressed pill.
+export interface NegativeTopic {
+  label: string;
+  description: string;
+}
+
 /**
  * Render a source post into a compact, readable block for prompting. Includes
  * everything the LLM needs to read the vibe + topic: author, text, image alt
