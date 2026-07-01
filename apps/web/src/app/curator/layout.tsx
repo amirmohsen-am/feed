@@ -578,7 +578,7 @@ function CuratorShell({
         registerOpenTune: (fn: () => void) => { openTuneRef.current = fn; },
       }}
     >
-      <div className="curator-shell">
+      <div className={`curator-shell${(!configReady || showOnboarding) ? " curator-shell--onboarding" : ""}`}>
         {sidebarOpen && (
           <div
             className="cur-sidebar-backdrop"

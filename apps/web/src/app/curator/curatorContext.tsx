@@ -50,7 +50,8 @@ interface CuratorContextValue {
   /** True once the feed's first load has settled — gates topbar chrome to avoid the flash. */
   configReady: boolean;
   setConfigReady: (b: boolean) => void;
-  /** True while the onboarding intention surface is visible — hides non-essential chrome. */
+  /** True while the page load's FIRST onboarding surface is visible — hides
+      non-essential chrome. Later onboardings (new topics) keep the topbar. */
   showOnboarding: boolean;
   setShowOnboarding: (b: boolean) => void;
   openPublish: () => void;

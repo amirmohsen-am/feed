@@ -3,23 +3,29 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * First-run surface shown inside the feed pane while a feed has no criteria yet.
+ * Onboarding surface shown inside the feed pane while a feed has no criteria yet.
  * Three phases:
  *   brand  — wordmark + "What's your intention?" reveal
  *   prompt — brand stays; "[tap to start]" fades in. User must tap to proceed.
  *   options — options cards slide in.
+ *
+ * The brand/prompt moment plays only when `intro` is set — the workbench grants
+ * that to the browser's first-ever onboarding (persisted in localStorage).
+ * Everything else lands straight on the options cards. `introPlayed` guards
+ * against a same-mount replay (e.g. "back to options" remounts the surface).
  */
 
 let introPlayed = false;
 
 interface Props {
+  intro: boolean;
   onDescribe: () => void;
   onMemory: () => void;
   onGuided: () => void;
 }
 
-export default function OnboardingIntention({ onDescribe, onMemory, onGuided }: Props) {
-  const shouldPlayRef = useRef(!introPlayed);
+export default function OnboardingIntention({ intro, onDescribe, onMemory, onGuided }: Props) {
+  const shouldPlayRef = useRef(intro && !introPlayed);
   const shouldPlay = shouldPlayRef.current;
   const [phase, setPhase] = useState<"brand" | "prompt" | "options">(shouldPlay ? "brand" : "options");
   const [revealed, setRevealed] = useState(!shouldPlay);
@@ -90,8 +96,7 @@ export default function OnboardingIntention({ onDescribe, onMemory, onGuided }: 
                 </svg>
               </span>
               <span className="cur-ob-ct">
-                <b>Describe what you want to read</b>
-                <i>Tell amadi and it builds the feed</i>
+                <b>Describe what you want</b>
               </span>
             </button>
 
@@ -102,8 +107,7 @@ export default function OnboardingIntention({ onDescribe, onMemory, onGuided }: 
                 </svg>
               </span>
               <span className="cur-ob-ct">
-                <b>Bring your ChatGPT memory</b>
-                <i>Start from what you already told it</i>
+                <b>Start from my AI assistant&apos;s memory</b>
               </span>
             </button>
 
@@ -115,8 +119,7 @@ export default function OnboardingIntention({ onDescribe, onMemory, onGuided }: 
                 </svg>
               </span>
               <span className="cur-ob-ct">
-                <b>Help me figure it out</b>
-                <i>Answer a few quick questions</i>
+                <b>Help me build my feed</b>
               </span>
             </button>
           </div>
