@@ -103,6 +103,8 @@ export default function CuratorTour() {
   const lastPos = useRef({ x: -40, y: -40 });
 
   useEffect(() => {
+    // Never auto-run the feature tour in local dev — it just gets in the way.
+    if (process.env.NODE_ENV === "development") return;
     try {
       if (window.localStorage.getItem(TOUR_DONE_KEY)) return;
     } catch { /* ignore */ }

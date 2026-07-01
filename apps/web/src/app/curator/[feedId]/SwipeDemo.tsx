@@ -49,6 +49,8 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
   const [shouldRun, setShouldRun] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // Never auto-run the feature onboarding in local dev — it just gets in the way.
+    if (process.env.NODE_ENV === "development") return;
     if (window.innerWidth >= 768) return;
     try { if (window.localStorage.getItem(DEMO_DONE_KEY)) return; } catch { /* */ }
 

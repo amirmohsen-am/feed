@@ -87,6 +87,8 @@ export default function CuratorMobileTour() {
   // Only activate on mobile
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // Never auto-run the feature tour in local dev — it just gets in the way.
+    if (process.env.NODE_ENV === "development") return;
     if (window.innerWidth >= 768) return;
     try { if (window.localStorage.getItem(TOUR_DONE_KEY)) return; } catch { /* */ }
     const t = setTimeout(() => setActive(true), 1400);

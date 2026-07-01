@@ -200,11 +200,11 @@ function FeedViewImpl(
     }
     const isTail = frozen.length > 0;
 
-    // A fresh-entry load (feed switch, branch mount, chat-driven full recompute)
-    // drops the prior posts so the skeleton shows. Forced loads (Refresh, pull-
-    // to-refresh) and tail recomputes keep posts on screen — forced dims the whole
-    // list via .refreshing; tail keeps the frozen prefix crisp and recomputes
-    // below the commit point.
+    // A full load (feed switch, branch mount, chat-driven recompute, AND explicit
+    // Refresh / pull-to-refresh) drops the prior posts so the skeleton shows while
+    // it loads — including cache hits, which still take a beat to arrive. Tail
+    // recomputes keep the frozen prefix on screen and recompute only below the
+    // commit point.
     if (isTail) {
       setTailCommitIndex(frozen.length - 1);
     } else {
@@ -212,10 +212,8 @@ function FeedViewImpl(
       // results are all freshly trackable.
       seenTracker.reset();
       setTailCommitIndex(null);
-      if (!force) {
-        setPosts([]);
-        setPostCount(0);
-      }
+      setPosts([]);
+      setPostCount(0);
     }
     setPostsLoading(true);
     // Don't optimistically show "searching" — drive the loader purely off the
