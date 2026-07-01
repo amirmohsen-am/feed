@@ -246,7 +246,9 @@ export function useBranchController({
     setCommittedBranchUri(post.uri);
     setOthersCleared(false);
     setSourceExpanded(false);
-    settleFold(true);
+    // The fold runs in the committedBranchUri layout effect below, not here: the
+    // branch button fires with no preceding drag, so at this instant no element
+    // carries .cur-post-item-source yet — settleFold would find nothing and no-op.
     setTimeout(() => {
       const scroller = activeScroller();
       const el = sourceItemEl();
@@ -338,6 +340,17 @@ export function useBranchController({
     setBranchReturning(true);
     setTimeout(() => { setBranchReturning(false); setReturningSourceUri(null); clearFoldInline(); }, 520);
   }, [committedBranchUri, isRoot, postCount, setActivePostCount, settleFold, clearFoldInline]);
+
+  // On commit, fold the source into its compact pinned preview. This has to run
+  // after the commit render (not inside handleHoldBranch): the branch button/hold
+  // fires without a drag having marked the post, so when the handler runs no DOM
+  // node has .cur-post-item-source yet and settleFold can't find the foldable.
+  // Here the class is committed to the DOM and the measure + collapse start
+  // before paint.
+  useIsoLayoutEffect(() => {
+    if (!committedBranchUri) return;
+    settleFold(true);
+  }, [committedBranchUri, settleFold]);
 
   // On commit, ease the source up to the top as the other posts recede — but only
   // as far as it can actually REST once those posts are unmounted. The source rises
