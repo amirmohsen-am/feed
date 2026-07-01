@@ -26,6 +26,7 @@ import { BlueskyEmbed, bskyUrlFromUri } from "@/components/postCardUtils";
 import FeedView, { type FeedViewHandle, type StreamedConfig } from "./FeedView";
 import FeedUpdateRow from "./FeedUpdateRow";
 import { parseFeedToolCall, type FeedToolCall } from "@/lib/feed-tool-call";
+import OnboardingIntention from "./OnboardingIntention";
 import "../swipe-card.css";
 import "../feed-update.css";
 
@@ -218,6 +219,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // changing; cleared when the root feed finishes (re)loading.
   const [feedRefreshing, setFeedRefreshing] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
+  // Set once the root feed's first load settles, so the onboarding surface only
+  // decides to show after we know whether this feed actually has criteria (no
+  // flash of onboarding over a configured feed while it loads).
+  const [configReady, setConfigReady] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
 
   // ── Feed configuration (owned here; read by the Tune panel + chat, applied
@@ -408,6 +413,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // Fires whenever the root feed settles a load: clear the chat-driven fade.
   const handleRootLoaded = useCallback(() => {
     setFeedRefreshing(false);
+    setConfigReady(true);
   }, []);
 
   // Swipe-left tune from the root feed: stamp the post into the swipe cache
@@ -827,6 +833,25 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     send("Actually, let's just chat — no more options lists.");
   }
 
+  // ── Onboarding intents (the first-run "intention" cards) ──
+  // Describe: open the conversation and drop the cursor in the composer.
+  function onboardDescribe() {
+    openConversation();
+    setTimeout(() => inputRef.current?.focus(), 60);
+  }
+  // ChatGPT memory: flip the chat into memory-import mode (same as the existing
+  // "Build with my chat memory" affordance) and open the conversation.
+  function onboardMemory() {
+    setMemoryImportMode(true);
+    openConversation();
+  }
+  // Help me figure it out: open the conversation and kick off the guided
+  // interview turn.
+  function onboardGuided() {
+    openConversation();
+    askForQuestions();
+  }
+
   function submitChat() {
     const lastOptions = lastParsed?.options || [];
     const picks = lastOptions.filter((opt) => selectedOptions.has(opt.key));
@@ -878,8 +903,13 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   const hasCriteria = subqueries.length > 0;
 
-  // The last assistant turn — not messages[last], since a feed_update row is
-  // persisted after the assistant reply and would otherwise mask its options.
+  // First-run "intention" surface: a brand-new / unconfigured feed the user
+  // hasn't started shaping yet. Gate on configReady so it never flashes over a
+  // configured feed while its first load is still in flight.
+  const showOnboarding =
+    configReady && !hasCriteria && messages.length === 0 && !chatLoading;
+
+  // The last assistant turn drives the options card.
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
   const lastParsed = lastAssistant ? parseMessage(lastAssistant.content) : null;
 
@@ -949,6 +979,13 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               onLoaded={handleRootLoaded}
             />
           </FeedFocusProvider>
+          {showOnboarding && (
+            <OnboardingIntention
+              onDescribe={onboardDescribe}
+              onMemory={onboardMemory}
+              onGuided={onboardGuided}
+            />
+          )}
         </div>{/* /.cur-feed-posts */}
 
           {/* ════ THE CAPSULE — floating, input-only curator (desktop + mobile) ════ */}

@@ -13,6 +13,7 @@ import {
 } from "react";
 import SwipeableCard from "@/components/SwipeableCard";
 import SwipeFollowupCard from "@/components/SwipeFollowupCard";
+import SwipeApproveCard from "@/components/SwipeApproveCard";
 import BranchTopicsHeader from "@/components/BranchTopicsHeader";
 import PipelineLoader, { type PipelineStage } from "@/components/PipelineLoader";
 import { FeedSkeleton } from "@/components/FeedSkeleton";
@@ -125,15 +126,9 @@ function FeedViewImpl(
   const [pipelineSeenFiltered, setPipelineSeenFiltered] = useState<number | undefined>();
 
   // ── Loading → posts reveal choreography ("Settle") ──────────────
-  // Hold the skeleton one beat so it can animate OUT (scale + fade) before the
-  // posts spring IN. prevShowSkelRef marks the skeleton being on screen so we
-  // only choreograph the skeleton→posts edge, not every posts change.
   const prevShowSkelRef = useRef(false);
   const [skelExiting, setSkelExiting] = useState(false);
   const [postsEntering, setPostsEntering] = useState(false);
-  // Timers live in a ref and are cleared only on unmount — NOT via an effect
-  // cleanup, since postsLoading flips false right after setPosts and would
-  // otherwise re-run the effect and cancel the in-flight handoff mid-animation.
   const revealTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => () => { revealTimersRef.current.forEach(clearTimeout); }, []);
 
@@ -142,9 +137,6 @@ function FeedViewImpl(
     const reduce =
       typeof window !== "undefined" &&
       !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    // Skeleton was up and posts just arrived → exit the skeleton, then enter
-    // posts. Guarded by prevShowSkelRef (only the real edge) and re-armed only
-    // when the skeleton shows again, so streaming/loading flips can't retrigger.
     if (prevShowSkelRef.current && posts.length > 0 && !reduce) {
       revealTimersRef.current.forEach(clearTimeout);
       setSkelExiting(true);
@@ -451,11 +443,12 @@ function FeedViewImpl(
       className={`cur-feed-posts-inner${refreshing && tailCommitIndex === null ? " refreshing" : ""}${branch.branchDragging ? " cur-branch-dragging" : ""}${branch.committedBranchUri ? " cur-branching" : ""}${branch.branchReturning ? " cur-branch-returning" : ""}${postsEntering ? " cur-feed-entering" : ""}`}
     >
       {onBack && (
-        <button type="button" className="cur-branch-back" onClick={onBack} aria-label="Back">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <polyline points="15 18 9 12 15 6" />
+        <button type="button" className="cur-branch-back cur-feed-home" onClick={onBack} aria-label="Home">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M3 10.5 12 3l9 7.5" />
+            <path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" />
           </svg>
-          Back
+          Home
         </button>
       )}
 
@@ -608,7 +601,16 @@ function FeedViewImpl(
                     onSwipe={(v) => branch.handleCardSwipe(post, v)}
                     onFirstLeftDrag={() => branch.fetchFollowupTopics(post)}
                     onFirstRightDrag={() => branch.onFirstRightDrag(post)}
-                    onRightProgress={branch.handleRightProgress}
+                    onBranch={() => branch.handleHoldBranch(post)}
+                    approveFollowupContent={
+                      <SwipeApproveCard
+                        post={post}
+                        topics={branch.swipeRightTopics.get(post.uri) ?? undefined}
+                        onChipSend={(reason) => branch.handleApproveFollowupChipSend(post, reason)}
+                        onTextSend={(reason) => branch.handleApproveFollowupTextSend(post, reason)}
+                        onDismiss={() => branch.handleApproveFollowupDismiss(post.uri)}
+                      />
+                    }
                     followupContent={
                       <SwipeFollowupCard
                         post={post}
@@ -630,6 +632,7 @@ function FeedViewImpl(
                         branch.setSourceExpanded(next);
                         branch.settleFold(!next);
                       }}
+                      onBranch={!isCommittedSource ? () => branch.handleHoldBranch(post) : undefined}
                     />
                   </SwipeableCard>
                 </div>
