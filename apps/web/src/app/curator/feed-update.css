@@ -1,0 +1,186 @@
+/* The in-chat "feed updated" row: a compact, tappable summary of a curator
+   turn's config change that expands into a two-level diff accordion. Topics and
+   the ranking steer stay folded and reveal on a second tap. Rendered inside the
+   conversation transcript (see FeedUpdateRow.tsx); relies on curator.css tokens
+   (--ink, --hair, --aurora-deep, --paper-2, --ease-out). */
+
+.cur-fu {
+  align-self: flex-start;
+  max-width: min(440px, 94%);
+  /* diff-line accent colors, tuned to sit on the curator paper theme */
+  --fu-add: #4a7c59;
+  --fu-rem: #b5623f;
+  --fu-chg: #8a6d2f;
+  --fu-updated-bg: #e8ecf5;
+  --fu-updated-line: rgba(72, 96, 168, 0.42);
+}
+
+/* collapsed row (button when tappable, static div otherwise) */
+.cur-fu-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 11px 7px 8px;
+  border-radius: 11px;
+  background: var(--paper-2);
+  border: 1px solid var(--hair);
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s var(--ease-out), background 0.18s var(--ease-out);
+}
+.cur-fu-row.cur-fu-static { cursor: default; }
+button.cur-fu-row:hover { border-color: var(--aurora-deep); background: #fff; }
+button.cur-fu-row:focus-visible { outline: 2px solid var(--aurora-deep); outline-offset: 2px; }
+.cur-fu[data-open] > .cur-fu-row {
+  background: #fff;
+  border-color: var(--fu-updated-line);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.cur-fu-tick {
+  display: inline-grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--aurora-deep);
+  color: #fff;
+  flex: none;
+}
+.cur-fu-tick svg { width: 10px; height: 10px; }
+
+.cur-fu-summ {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cur-fu-summ b { color: var(--ink); font-weight: 600; }
+.cur-fu-sep { color: var(--ink-4); margin: 0 5px; }
+.cur-fu-more { color: var(--aurora-deep); }
+
+.cur-fu-caret {
+  color: var(--ink-4);
+  flex: none;
+  display: inline-flex;
+  transition: transform 0.22s var(--ease-out);
+}
+.cur-fu-caret svg { width: 13px; height: 13px; }
+.cur-fu[data-open] > .cur-fu-row .cur-fu-caret { transform: rotate(90deg); color: var(--aurora-deep); }
+
+/* level-1 accordion panel. Border only when open — otherwise its side/bottom
+   borders would collapse into a 1px line under the row at max-height:0. */
+.cur-fu-panel {
+  overflow: hidden;
+  max-height: 0;
+  background: #fff;
+  transition: max-height 0.3s var(--ease-out);
+}
+.cur-fu[data-open] > .cur-fu-panel {
+  max-height: 720px;
+  border: 1px solid var(--fu-updated-line);
+  border-top: 0;
+  border-radius: 0 0 11px 11px;
+}
+.cur-fu-panel-in {
+  padding: 11px 13px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cur-fu-gt {
+  font-family: var(--rf-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.cur-fu-grp .cur-fu-gt { margin-bottom: 5px; }
+
+.cur-fu-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 1px 0;
+}
+.cur-fu-m {
+  font-family: var(--rf-mono, ui-monospace, monospace);
+  font-weight: 700;
+  font-size: 13px;
+  width: 12px;
+  text-align: center;
+  flex: none;
+}
+.cur-fu-item.add .cur-fu-m { color: var(--fu-add); }
+.cur-fu-item.remove .cur-fu-m { color: var(--fu-rem); }
+.cur-fu-item.change .cur-fu-m { color: var(--fu-chg); }
+.cur-fu-item.set .cur-fu-m { color: var(--ink-4); }
+.cur-fu-item.add .cur-fu-v { color: var(--ink); }
+.cur-fu-item.remove .cur-fu-v { color: var(--ink-4); text-decoration: line-through; }
+.cur-fu-item.change .cur-fu-v { color: var(--ink); }
+.cur-fu-item.set .cur-fu-v { color: var(--ink); }
+.cur-fu-was { color: var(--ink-4); text-decoration: line-through; margin-right: 2px; }
+.cur-fu-arrow { color: var(--ink-4); margin: 0 5px; }
+
+/* level-2 folded sections (topics / ranking steer) */
+.cur-fu-sub-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.cur-fu-sub-row:focus-visible { outline: 2px solid var(--aurora-deep); outline-offset: 2px; border-radius: 4px; }
+.cur-fu-state { color: var(--aurora-deep); font-weight: 500; }
+.cur-fu-count {
+  font-family: var(--rf-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--ink-4);
+}
+.cur-fu-sub-row .cur-fu-caret { margin-left: auto; }
+.cur-fu-sub-row .cur-fu-caret svg { width: 12px; height: 12px; }
+.cur-fu-sub[data-open] > .cur-fu-sub-row .cur-fu-caret { transform: rotate(90deg); color: var(--aurora-deep); }
+
+.cur-fu-sub-panel {
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.26s var(--ease-out);
+}
+.cur-fu-sub[data-open] > .cur-fu-sub-panel { max-height: 420px; }
+.cur-fu-sub-panel-in {
+  padding: 6px 0 2px 10px;
+  margin-left: 2px;
+  border-left: 2px solid var(--hair);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cur-fu-prompt { font-size: 12.5px; line-height: 1.5; }
+.cur-fu-plabel {
+  display: block;
+  font-family: var(--rf-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin-bottom: 2px;
+}
+.cur-fu-old { color: var(--ink-4); text-decoration: line-through; }
+.cur-fu-new { color: var(--ink); }

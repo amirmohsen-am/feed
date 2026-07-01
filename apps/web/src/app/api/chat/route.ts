@@ -15,6 +15,7 @@ import { logLlmCall } from "@/lib/llm-log";
 import { hydratePostByUri, type VectorHit } from "@/lib/vector-search";
 import { normalizeRankingBias } from "@/lib/defaults";
 import type { MechanicalFilters } from "@/lib/types";
+import { buildFeedToolCall, type FeedToolArgs } from "@/lib/feed-tool-call";
 
 let _client: Anthropic | null = null;
 async function client(): Promise<Anthropic> {
@@ -276,6 +277,8 @@ export async function POST(req: NextRequest) {
     } else {
       await addChatMessage(feedId, "user", message);
       const updatedHistory = await getChatMessages(feedId);
+      // The model takes only role + content; the tool_calls column is a UI-only
+      // artifact and is never sent.
       apiMessages = updatedHistory.map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
@@ -305,8 +308,11 @@ export async function POST(req: NextRequest) {
     // Tool calls are server-side side-effects; we do NOT persist tool_use
     // blocks into chat_messages, so subsequent turns never need tool_result
     // blocks — the model sees the latest state via the system prompt instead.
+    // We DO record what the turn set into `toolArgs`, stored on the assistant
+    // message (tool_calls column) to render the in-chat "feed updated" row.
     let assistantText = "";
     const updates: Parameters<typeof updateFeed>[1] = {};
+    const toolArgs: FeedToolArgs = { finalize: false };
     let optionsToShow: string[] | null = null;
     let isDone = false;
 
@@ -318,22 +324,29 @@ export async function POST(req: NextRequest) {
           const args = block.input as UpdateFeedConfigArgs;
           if (typeof args.name === "string" && args.name.trim()) {
             updates.name = args.name.trim();
+            toolArgs.name = updates.name;
           }
           if (Array.isArray(args.subqueries)) {
             const cleaned = args.subqueries
               .filter((s): s is string => typeof s === "string")
               .map((s) => s.trim())
               .filter((s) => s.length > 0);
-            if (cleaned.length > 0) updates.subqueries = cleaned;
+            if (cleaned.length > 0) {
+              updates.subqueries = cleaned;
+              toolArgs.subqueries = cleaned;
+            }
           }
           if (typeof args.rerank_prompt === "string") {
             updates.rerank_prompt = args.rerank_prompt;
+            toolArgs.rerank_prompt = args.rerank_prompt;
           }
           if (args.mechanical_filters && typeof args.mechanical_filters === "object") {
             updates.mechanical_filters = {
               ...feed.mechanical_filters,
               ...args.mechanical_filters,
             };
+            // Keep the raw partial (just the fields the agent touched) for the row.
+            toolArgs.mechanical_filters = args.mechanical_filters;
           }
           // Ranking-bias knobs: clamp + joint relevance-floor cap via the same
           // helper the Tune-panel PATCH uses, so the agent can't push the blend
@@ -341,12 +354,15 @@ export async function POST(req: NextRequest) {
           const bias = normalizeRankingBias(args, feed);
           if (bias.engagement_weight !== undefined) {
             updates.engagement_weight = bias.engagement_weight;
+            toolArgs.engagement_weight = bias.engagement_weight;
           }
           if (bias.recency_weight !== undefined) {
             updates.recency_weight = bias.recency_weight;
+            toolArgs.recency_weight = bias.recency_weight;
           }
           if (bias.recency_halflife_h !== undefined) {
             updates.recency_halflife_h = bias.recency_halflife_h;
+            toolArgs.recency_halflife_h = bias.recency_halflife_h;
           }
         } else if (block.name === "present_options") {
           const args = block.input as { options?: unknown };
@@ -360,6 +376,7 @@ export async function POST(req: NextRequest) {
           }
         } else if (block.name === "finalize_feed") {
           isDone = true;
+          toolArgs.finalize = true;
         }
       }
     }
@@ -374,6 +391,11 @@ export async function POST(req: NextRequest) {
       await updateFeed(feedId, updates);
     }
 
+    // What the tool set this turn, for the in-chat "feed updated" row. Stored on
+    // the assistant message (tool_calls column); null on a pure chat/question
+    // turn that set nothing and didn't finalize.
+    const toolCall = buildFeedToolCall(toolArgs);
+
     // Embed options as numbered lines in the stored message so the client's
     // existing chip-rendering can pick them up after refresh without a sidecar.
     let finalText = assistantText.trim();
@@ -382,7 +404,7 @@ export async function POST(req: NextRequest) {
       finalText = finalText ? `${finalText}\n\n${lines}` : lines;
     }
 
-    await addChatMessage(feedId, "assistant", finalText);
+    await addChatMessage(feedId, "assistant", finalText, toolCall);
 
     const allMessages = await getChatMessages(feedId);
     const updatedFeed = await getFeed(feedId);

@@ -47,6 +47,13 @@ interface CuratorContextValue {
   setUnavailableCount: (n: number) => void;
   sidebarOpen: boolean;
   setSidebarOpen: (b: boolean) => void;
+  /** True once the feed's first load has settled — gates topbar chrome to avoid the flash. */
+  configReady: boolean;
+  setConfigReady: (b: boolean) => void;
+  /** True while the page load's FIRST onboarding surface is visible — hides
+      non-essential chrome. Later onboardings (new topics) keep the topbar. */
+  showOnboarding: boolean;
+  setShowOnboarding: (b: boolean) => void;
   openPublish: () => void;
   openTune: () => void;
   registerOpenTune: (fn: () => void) => void;
