@@ -96,21 +96,15 @@ function PostCard({
   collapsible = false,
   collapsed = false,
   onToggleCollapse,
+  onBranch,
 }: {
   post: Post;
-  // The source post a branch is being / was made from: marked by a "Branched from"
-  // banner at the top. The banner grows out of the post in lockstep with the
-  // swipe-right drag (driven by --branch-progress in CSS) and stays once the branch
-  // commits. The post body itself folds into a compact preview — that fold is
-  // driven imperatively by FeedView (see driveFold/settleFold there).
   branchBanner?: boolean;
-  // True while returning (Back): the banner shrinks back out.
   branchLeaving?: boolean;
-  // The committed source post: shows a chevron to expand/collapse the folded body.
   collapsible?: boolean;
-  // Chevron state — false = folded (chevron points down to expand).
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  onBranch?: () => void;
 }) {
   const { showDebug } = useCurator();
   const { quotedPosts, aiLabels, openLightbox } = useFeedActions();
@@ -139,6 +133,22 @@ function PostCard({
 
   return (
     <article className="cur-post-card">
+      {onBranch && (
+        <button
+          type="button"
+          className="cur-post-branch-fab"
+          onClick={(e) => { e.stopPropagation(); onBranch(); }}
+          aria-label="Dive deeper into this post"
+          title="Dive deeper"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="6" cy="6" r="2.4" />
+            <circle cx="6" cy="18" r="2.4" />
+            <circle cx="18" cy="9" r="2.4" />
+            <path d="M6 8.4v7.2M8.2 7 16 8.6M8 17l8-6.6" />
+          </svg>
+        </button>
+      )}
       {branchBanner && (
         <div className={`cur-post-branch-banner${branchLeaving ? " cur-post-branch-banner-leaving" : ""}`}>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

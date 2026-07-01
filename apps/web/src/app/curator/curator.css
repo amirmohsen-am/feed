@@ -881,7 +881,15 @@
   border: 1px solid var(--hair);
   background: #fff;
   box-shadow: 0 1px 0 rgba(24,22,20,0.02);
-  transition: border-color 0.18s, box-shadow 0.18s, transform 0.18s;
+  transition: border-color 0.18s, box-shadow 0.18s, transform 0.18s,
+              border-bottom-left-radius 0.2s cubic-bezier(0.4,0,0.2,1),
+              border-bottom-right-radius 0.2s cubic-bezier(0.4,0,0.2,1);
+}
+.cur-approve-open .cur-post-card,
+.cur-approve-open .cur-post-card:hover {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-color: rgba(85, 88, 184, 0.35);
 }
 .cur-post-card:hover{
   border-color: var(--hair-strong);

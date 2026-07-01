@@ -19,9 +19,8 @@
   z-index: 1;
 }
 
-/* "release to branch" affordance revealed on the LEFT as the card rides right,
-   sitting behind the card in the space it vacates. Goes solid past the commit
-   threshold (.ready). Opacity + translate driven imperatively from x. */
+/* "+ More like this" affordance revealed on the LEFT as the card rides right.
+   Opacity + translate driven imperatively. Fill circle grows 0→1 as drag progresses. */
 .cur-swipe-branch-action {
   position: absolute;
   left: 20px;
@@ -35,6 +34,7 @@
   pointer-events: none;
 }
 .cur-swipe-branch-icon {
+  position: relative;
   width: 46px;
   height: 46px;
   border-radius: 50%;
@@ -45,6 +45,22 @@
   justify-content: center;
   background: rgba(136, 144, 216, 0.14);
   transition: background 0.18s, color 0.18s, transform 0.18s;
+  overflow: hidden;
+}
+/* Fill circle grows from center as drag progresses (--branch-fill: 0→1). */
+.cur-swipe-branch-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(85, 88, 184, 0.55);
+  transform: scale(var(--branch-fill, 0));
+  pointer-events: none;
+}
+.cur-swipe-branch-plus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
 }
 .cur-swipe-branch-label {
   font-family: var(--rf-mono, monospace);
@@ -55,17 +71,62 @@
   white-space: nowrap;
   font-weight: 600;
 }
-.cur-swipe-branch-action.ready .cur-swipe-branch-icon {
+/* Past the commit threshold: fill is complete, snap to solid purple + white +.
+   Gives a clear "you can release now" signal before the actual commit. */
+.cur-swipe-branch-action.plus-filled .cur-swipe-branch-fill { display: none; }
+.cur-swipe-branch-action.plus-filled .cur-swipe-branch-icon {
+  background: var(--aurora-deep);
+  color: #fff;
+}
+/* On commit: hold that solid state, scale up briefly, then the action div fades. */
+.cur-swipe-branch-action.plus-confirming .cur-swipe-branch-fill { display: none; }
+.cur-swipe-branch-action.plus-confirming .cur-swipe-branch-icon {
   background: var(--aurora-deep);
   color: #fff;
   transform: scale(1.1);
+  transition: none;
 }
 
-/* "less like this" affordance revealed on the RIGHT as the card rides left,
-   sitting behind the card in the space it vacates. Mirrors the "Dive deeper" dot:
-   an outlined red circle with a label underneath. It goes solid red past the park
-   (.ready), then stretches circle→oval the further you pull. width + scale +
-   opacity + .ready driven imperatively from x. */
+/* ── Hold gesture overlay ─────────────────────────────────────────────────────
+   Activated by long-press. Card content shrinks, a Dive Deeper button appears
+   centered over the card. Tapping outside dismisses; tapping the button branches. */
+.cur-hold-active .cur-swipe-content {
+  transform: scale(0.92);
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.cur-hold-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cur-hold-branch-btn {
+  background: var(--aurora-deep);
+  color: #fff;
+  border: none;
+  border-radius: 28px;
+  padding: 14px 26px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--rf-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 8px 28px -6px rgba(85, 88, 184, 0.55);
+  animation: cur-hold-btn-in 0.2s cubic-bezier(0.3, 0.8, 0.3, 1) both;
+}
+@keyframes cur-hold-btn-in {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* "less like this" affordance revealed on the RIGHT as the card rides left.
+   Stays a circle throughout — mirrors the "more like this" indicator. */
 .cur-swipe-less-action {
   position: absolute;
   right: 20px;
@@ -81,32 +142,30 @@
 .cur-swipe-less-icon {
   width: 46px;
   height: 46px;
-  border-radius: 23px;
-  border: 1.5px solid var(--rose, #cc4848);
+  border-radius: 50%;
+  border: 1.5px solid #c05050;
   padding: 0;
-  background: rgba(204, 72, 72, 0.14);
-  color: var(--rose, #cc4848);
+  background: rgba(192, 80, 80, 0.12);
+  color: #c05050;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  transform-origin: right center;
   cursor: pointer;
   pointer-events: auto;
   transition: background 0.18s, color 0.18s, border-color 0.18s, box-shadow 0.18s;
 }
 .cur-swipe-less-action.ready .cur-swipe-less-icon {
-  background: var(--rose, #cc4848);
+  background: #c05050;
   color: #fff;
-  border-color: var(--rose, #cc4848);
-  box-shadow: 0 8px 20px -6px rgba(168, 58, 58, 0.6);
+  border-color: #c05050;
+  box-shadow: 0 8px 20px -6px rgba(160, 64, 64, 0.45);
 }
 .cur-swipe-less-label {
   font-family: var(--rf-mono, monospace);
   font-size: 9px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--rose, #cc4848);
+  color: #c05050;
   white-space: nowrap;
   font-weight: 600;
 }
@@ -209,7 +268,7 @@
   margin: 10px 12px;
   padding: 15px 16px 16px;
   background: #fff;
-  border: 1.5px solid var(--rose, #cc4848);
+  border: 1.5px solid rgba(192, 80, 80, 0.45);
   border-radius: 22px;
 }
 .cur-swipe-followup-out{
@@ -256,12 +315,14 @@
   border-radius: 999px;
   border: none;
   cursor: pointer;
-  color: #a83a3a;
-  background: rgba(204, 72, 72, 0.13);
+  color: #a84848;
+  background: rgba(192, 80, 80, 0.11);
   font-family: inherit;
   transition: background 0.13s, color 0.13s;
 }
-.cur-swipe-followup-chip:hover{ background: rgba(204, 72, 72, 0.26); color: #fff; }
+.cur-swipe-followup-chip:hover{ background: rgba(192, 80, 80, 0.22); color: #fff; }
+.cur-swipe-followup-chip--selected{ background: rgba(192, 80, 80, 0.75); color: #fff; }
+.cur-swipe-followup-chip--selected:hover{ background: rgba(192, 80, 80, 0.6); }
 
 .cur-swipe-followup-loading{
   margin-bottom: 14px;
@@ -297,8 +358,8 @@
   transition: border-color 0.18s, box-shadow 0.18s;
 }
 .cur-swipe-followup-composer:focus-within{
-  border-color: var(--rose, #cc4848);
-  box-shadow: 0 0 0 3px rgba(204, 72, 72, 0.12);
+  border-color: #c05050;
+  box-shadow: 0 0 0 3px rgba(192, 80, 80, 0.12);
 }
 .cur-swipe-followup-input{
   flex: 1;
@@ -322,15 +383,15 @@
   height: 34px;
   border-radius: 50%;
   border: none;
-  background: var(--rose, #cc4848);
+  background: #c05050;
   color: #fff;
   display: grid;
   place-items: center;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(168, 58, 58, 0.4);
+  box-shadow: 0 2px 8px rgba(160, 64, 64, 0.35);
   transition: background 0.18s, box-shadow 0.18s, transform 0.18s, opacity 0.18s;
 }
-.cur-swipe-followup-send:hover:not(:disabled){ background: #a83a3a; transform: scale(1.06); box-shadow: 0 3px 12px rgba(168, 58, 58, 0.5); }
+.cur-swipe-followup-send:hover:not(:disabled){ background: #a84040; transform: scale(1.06); box-shadow: 0 3px 12px rgba(160, 64, 64, 0.45); }
 .cur-swipe-followup-send:active:not(:disabled){ transform: scale(0.94); }
 .cur-swipe-followup-send:disabled{ opacity: 0.35; cursor: default; box-shadow: none; }
 
@@ -341,14 +402,125 @@
 .cur-swipe-followup-receipt{
   font-size: 13px;
   color: var(--ink-2);
-  background: rgba(204, 72, 72, 0.08);
-  border: 1px solid rgba(204, 72, 72, 0.28);
+  background: rgba(192, 80, 80, 0.07);
+  border: 1px solid rgba(192, 80, 80, 0.24);
   border-radius: 10px;
   padding: 8px 13px;
   line-height: 1.45;
 }
 
+/* ── "More like this" approve panel ──────────────────────────────────────────
+   Appears below the card (card stays visible). Starts compact ("What did you
+   like?" + chevron); chevron tap expands to the full chip+input panel. */
+.cur-swipe-approve {
+  /* max-width + auto mirrors .cur-post-card's centering. margin-top is set
+     imperatively to -12px on commit to close the gap without fighting overflow:hidden. */
+  max-width: calc(600px * 0.85);
+  width: 100%;
+  margin: 0 auto 10px;
+  background: #fff;
+  border: 1px solid rgba(85, 88, 184, 0.35);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  overflow: hidden;
+}
+/* Compact header row — always visible */
+.cur-swipe-approve-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  gap: 10px;
+  text-align: left;
+}
+.cur-swipe-approve-header-text {
+  font-family: var(--rf-mono, monospace);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--aurora-deep);
+  font-weight: 600;
+}
+.cur-swipe-approve-chevron {
+  flex-shrink: 0;
+  color: var(--aurora-deep);
+  transition: transform 0.36s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.cur-swipe-approve--expanded .cur-swipe-approve-chevron {
+  transform: rotate(180deg);
+}
+/* Body — height + transition driven entirely by JS (openBody/closeBody/handleDismiss).
+   Initial state is collapsed; JS measures and animates to actual scrollHeight. */
+.cur-swipe-approve-body {
+  height: 0;
+  overflow: hidden;
+}
+.cur-swipe-approve-body-inner {
+  padding: 0 16px 16px;
+  position: relative;
+}
+/* Label inside expanded body */
+.cur-swipe-approve-label {
+  font-family: var(--rf-mono, monospace);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 10px;
+}
+/* Receipt state */
+.cur-swipe-approve-receipt-wrap { padding-bottom: 16px; }
+.cur-swipe-approve-receipt {
+  font-size: 13px;
+  color: var(--ink-2);
+  background: rgba(85, 88, 184, 0.08);
+  border: 1px solid rgba(85, 88, 184, 0.28);
+  border-radius: 10px;
+  padding: 8px 13px;
+  line-height: 1.45;
+}
+/* Chips — reuse followup-chip layout, aurora-blue tint */
+.cur-swipe-approve .cur-swipe-followup-chip {
+  color: var(--aurora-deep);
+  background: rgba(85, 88, 184, 0.13);
+}
+.cur-swipe-approve .cur-swipe-followup-chip:hover { background: rgba(85, 88, 184, 0.26); color: #fff; }
+.cur-swipe-approve .cur-swipe-followup-chip--selected { background: rgba(85, 88, 184, 0.82); color: #fff; }
+.cur-swipe-approve .cur-swipe-followup-chip--selected:hover { background: rgba(85, 88, 184, 0.65); }
+/* Composer — aurora-blue focus ring and send button */
+.cur-swipe-approve .cur-swipe-followup-composer:focus-within {
+  border-color: var(--aurora-deep);
+  box-shadow: 0 0 0 3px rgba(85, 88, 184, 0.12);
+}
+.cur-swipe-approve .cur-swipe-followup-send {
+  background: var(--aurora-deep);
+  box-shadow: 0 2px 8px rgba(85, 88, 184, 0.4);
+}
+.cur-swipe-approve .cur-swipe-followup-send:hover:not(:disabled) {
+  background: #4446a0;
+  transform: scale(1.06);
+  box-shadow: 0 3px 12px rgba(85, 88, 184, 0.5);
+}
+
 @media (max-width: 767px){
+  /* Approve panel: match .cur-post-card's full-width mobile layout.
+     margin-top is overridden imperatively to -8px (matching card's 8px bottom margin). */
+  .cur-swipe-approve {
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    border-radius: 0 0 12px 12px;
+  }
+  .cur-swipe-approve-header {
+    padding: 10px 14px;
+  }
+  .cur-swipe-approve-body-inner {
+    padding: 0 14px 14px;
+  }
   .cur-swipe-followup{
     margin: 6px 12px;
     padding: 14px 16px 16px;
