@@ -3,16 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * Onboarding surface shown inside the feed pane while a feed has no criteria yet.
- * Three phases:
+ * Onboarding surface shown inside the feed pane while a feed has no criteria
+ * yet — it IS the pane's empty state, staying mounted (cards interactive) while
+ * the user chats, until the first config lands. Three phases:
  *   brand  — wordmark + "What's your intention?" reveal
  *   prompt — brand stays; "[tap to start]" fades in. User must tap to proceed.
  *   options — options cards slide in.
  *
  * The brand/prompt moment plays only when `intro` is set — the workbench grants
- * that to the browser's first-ever onboarding (persisted in localStorage).
- * Everything else lands straight on the options cards. `introPlayed` guards
- * against a same-mount replay (e.g. "back to options" remounts the surface).
+ * that until the browser has created its first feed config (localStorage flag,
+ * written on first criteria). `introPlayed` guards against a same-page-load
+ * replay if the surface remounts.
  */
 
 let introPlayed = false;
