@@ -1273,22 +1273,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               {messages.length === 0 && !sourcePost && !chatLoading && !loading && (
                 memoryImportMode ? (
                   <div className="cur-memory-inline">
-                    <button
-                      type="button"
-                      className="cur-memory-back"
-                      onClick={() => {
-                        // Back to the intention cards: drop the memory intent
-                        // and close the conversation — the cards are the feed
-                        // pane underneath. The transcript (none yet on this
-                        // path) is left alone.
-                        setMemoryImportMode(false);
-                        if (isMobile) setMobileTab("feed");
-                        else setExpanded(false);
-                      }}
-                      aria-label="Back"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></svg>
-                    </button>
                     <p className="cur-memory-inline-title">Export your memory</p>
                     <p className="cur-memory-inline-desc">
                       We&rsquo;ll ask your AI to summarize what it knows about you. Pick one:

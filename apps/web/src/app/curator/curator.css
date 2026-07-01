@@ -4537,12 +4537,6 @@
   max-width: 340px; margin: 0 auto;
   text-align: center;
 }
-.cur-memory-back{
-  background: none; border: none; color: var(--ink-3); cursor: pointer;
-  padding: 2px; display: flex; align-items: center;
-  position: absolute; left: 16px; top: 20px;
-}
-.cur-memory-back:hover{ color: var(--ink-1); }
 .cur-memory-inline-title{
   font-family: var(--rf-display, Georgia); font-size: 17px;
   font-weight: 500; color: var(--ink); margin-bottom: 6px;
