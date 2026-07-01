@@ -3,17 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * First-run surface shown inside the feed pane while a feed has no criteria yet
- * (new feed / first visit). Opens with the brand "intention" moment — the logo
- * stands in for the "a" in "amadi" and the wordmark reveals per-character, the
- * same treatment as the landing headline — then lifts away into three ways in:
- * describe it, bring your ChatGPT memory, or answer a few questions.
- *
- * The full moment plays only the first time the surface appears in a session;
- * after that the options show directly (the animation is a welcome, not a gate).
+ * First-run surface shown inside the feed pane while a feed has no criteria yet.
+ * Three phases:
+ *   brand  — wordmark + "What's your intention?" reveal
+ *   prompt — brand stays; "[tap to start]" fades in. User must tap to proceed.
+ *   options — options cards slide in.
  */
 
-// Module-scoped so it survives the per-feed remount of the workbench.
 let introPlayed = false;
 
 interface Props {
@@ -25,7 +21,7 @@ interface Props {
 export default function OnboardingIntention({ onDescribe, onMemory, onGuided }: Props) {
   const shouldPlayRef = useRef(!introPlayed);
   const shouldPlay = shouldPlayRef.current;
-  const [phase, setPhase] = useState<"brand" | "options">(shouldPlay ? "brand" : "options");
+  const [phase, setPhase] = useState<"brand" | "prompt" | "options">(shouldPlay ? "brand" : "options");
   const [revealed, setRevealed] = useState(!shouldPlay);
 
   useEffect(() => {
@@ -36,21 +32,30 @@ export default function OnboardingIntention({ onDescribe, onMemory, onGuided }: 
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduce) {
       setRevealed(true);
-      setPhase("options");
+      setPhase("prompt");
       return;
     }
-    const t0 = setTimeout(() => setRevealed(true), 80); // release the char reveal
-    const t1 = setTimeout(() => setPhase("options"), 2600); // hold, then lift out
+    const t0 = setTimeout(() => setRevealed(true), 80);
+    const t1 = setTimeout(() => setPhase("prompt"), 2520);
     return () => {
       clearTimeout(t0);
       clearTimeout(t1);
     };
   }, [shouldPlay]);
 
+  function handleBrandTap() {
+    if (phase === "prompt") setPhase("options");
+  }
+
   return (
     <div className="cur-ob" data-phase={phase}>
-      {/* ── brand moment ── */}
-      <div className={`cur-ob-brand${revealed ? " revealed" : ""}`} aria-hidden={phase === "options"}>
+      {/* ── brand + prompt moment ── */}
+      <div
+        className={`cur-ob-brand${revealed ? " revealed" : ""}`}
+        aria-hidden={phase === "options"}
+        onClick={handleBrandTap}
+        style={{ cursor: phase === "prompt" ? "pointer" : undefined }}
+      >
         <h1 className="cur-ob-word" aria-label="amadi">
           <span className="cur-ob-mask">
             <span className="cur-ob-char cur-ob-logochar">
@@ -64,11 +69,13 @@ export default function OnboardingIntention({ onDescribe, onMemory, onGuided }: 
             ))}
           </span>
         </h1>
+        <p className="cur-ob-subtitle">means intention.</p>
         <p className="cur-ob-q">What&apos;s your intention?</p>
+        <p className="cur-ob-tap-prompt" aria-hidden>[ tap to start ]</p>
       </div>
 
       {/* ── options ── */}
-      <div className="cur-ob-options" aria-hidden={phase === "brand"}>
+      <div className="cur-ob-options" aria-hidden={phase !== "options"}>
         <div className="cur-ob-inner">
           <div className="cur-ob-head">
             {/* eslint-disable-next-line @next/next/no-img-element */}

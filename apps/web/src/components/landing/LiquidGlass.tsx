@@ -525,6 +525,7 @@ export default function LiquidGlass({
       // frosted copy — blur radius scales with pane width
       blurCanvas.width = contentCanvas.width;
       blurCanvas.height = contentCanvas.height;
+      if (!blurCanvas.width || !blurCanvas.height) return;
       bctx.setTransform(1, 0, 0, 1, 0, 0);
       bctx.filter = `blur(${(cfg.blurPx * (w / 1000) * dpr).toFixed(1)}px)`;
       bctx.drawImage(contentCanvas, 0, 0);

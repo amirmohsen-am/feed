@@ -33,7 +33,7 @@ function tweenValue(
  * so users learn the gesture exists. Mobile only, shown once.
  */
 export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
-  const { setMobileTab } = useCurator();
+  const { setMobileTab, showOnboarding } = useCurator();
   const [phase, setPhase] = useState<
     "waiting" | "swipe-left" | "hold-left" | "return-left" |
     "swipe-right" | "hold-right" | "return-right" | "done"
@@ -49,8 +49,6 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
   const [shouldRun, setShouldRun] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    // Never auto-run the feature onboarding in local dev — it just gets in the way.
-    if (process.env.NODE_ENV === "development") return;
     if (window.innerWidth >= 768) return;
     try { if (window.localStorage.getItem(DEMO_DONE_KEY)) return; } catch { /* */ }
 
@@ -99,7 +97,6 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
       lessAction.style.transition = "none";
       lessPill.style.transform = `scale(${0.7 + grow * 0.3})`;
       lessPill.style.transition = "none";
-      lessPill.style.width = "140px";
     } else if (lessAction) {
       lessAction.style.opacity = "0";
     }
@@ -123,7 +120,7 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
     const { wrap, lessAction, lessPill, branchAction } = getCardEls();
     if (wrap) wrap.style.transform = "";
     if (lessAction) { lessAction.style.opacity = "0"; lessAction.style.transition = ""; }
-    if (lessPill) { lessPill.style.transform = ""; lessPill.style.transition = ""; lessPill.style.width = ""; }
+    if (lessPill) { lessPill.style.transform = ""; lessPill.style.transition = ""; }
     if (branchAction) {
       branchAction.style.opacity = "0";
       branchAction.style.transition = "";
@@ -141,7 +138,7 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
 
   // Sequence the animation phases
   useEffect(() => {
-    if (!shouldRun || !postsLoaded) return;
+    if (!shouldRun || !postsLoaded || showOnboarding) return;
     activeRef.current = true;
 
     // Ensure feed tab is visible (not the chat overlay) so the demo is seen
@@ -167,11 +164,13 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
       cleanup();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldRun, postsLoaded]);
+  }, [shouldRun, postsLoaded, showOnboarding]);
 
   // Run each phase
   useEffect(() => {
     if (!shouldRun || phase === "waiting" || phase === "done") return;
+    // If posts cleared mid-demo (feed refreshing), abort cleanly.
+    if (!postsLoaded) { cleanup(); setPhase("waiting"); return; }
     let alive = true;
 
     switch (phase) {
@@ -202,7 +201,7 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
         break;
 
       case "swipe-right":
-        setTipText("Swipe right to dive deeper");
+        setTipText("Swipe right to see more");
         setTipVisible(true);
         timerRef.current = setTimeout(() => {
           if (!alive) return;
@@ -235,7 +234,7 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, shouldRun]);
+  }, [phase, shouldRun, postsLoaded]);
 
 
   function handleGotIt() {

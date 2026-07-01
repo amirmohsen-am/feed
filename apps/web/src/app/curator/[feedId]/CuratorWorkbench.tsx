@@ -97,6 +97,8 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     setMobileTab,
     setOptionsUnread,
     registerOpenTune,
+    setShowOnboarding,
+    setConfigReady: setContextConfigReady,
   } = useCurator();
 
   const [rightPane, setRightPane] = useState<"chat" | "tune">("chat");
@@ -824,20 +826,24 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   }
 
   // ── Onboarding intents (the first-run "intention" cards) ──
-  // Describe: open the conversation and drop the cursor in the composer.
+  const ONBOARDING_STARTED_KEY = "curator:onboardingStarted";
+
+  function markOnboardingStarted() {
+    try { sessionStorage.setItem(ONBOARDING_STARTED_KEY, "1"); } catch { /* */ }
+  }
+
   function onboardDescribe() {
+    markOnboardingStarted();
     openConversation();
     setTimeout(() => inputRef.current?.focus(), 60);
   }
-  // ChatGPT memory: flip the chat into memory-import mode (same as the existing
-  // "Build with my chat memory" affordance) and open the conversation.
   function onboardMemory() {
+    markOnboardingStarted();
     setMemoryImportMode(true);
     openConversation();
   }
-  // Help me figure it out: open the conversation and kick off the guided
-  // interview turn.
   function onboardGuided() {
+    markOnboardingStarted();
     openConversation();
     askForQuestions();
   }
@@ -896,8 +902,22 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // First-run "intention" surface: a brand-new / unconfigured feed the user
   // hasn't started shaping yet. Gate on configReady so it never flashes over a
   // configured feed while its first load is still in flight.
+  const onboardingAlreadyStarted =
+    typeof window !== "undefined" &&
+    !!sessionStorage.getItem("curator:onboardingStarted");
   const showOnboarding =
-    configReady && !hasCriteria && messages.length === 0 && !chatLoading;
+    configReady && !hasCriteria && messages.length === 0 && !chatLoading && !onboardingAlreadyStarted;
+  useEffect(() => { setShowOnboarding(showOnboarding); }, [showOnboarding, setShowOnboarding]);
+  useEffect(() => { if (configReady) setContextConfigReady(true); }, [configReady, setContextConfigReady]);
+  // Close the chat pane when the first feed criteria arrive (onboarding complete).
+  const prevHasCriteriaRef = useRef(hasCriteria);
+  useEffect(() => {
+    if (!prevHasCriteriaRef.current && hasCriteria) {
+      setExpanded(false);
+      setMobileTab("feed");
+    }
+    prevHasCriteriaRef.current = hasCriteria;
+  }, [hasCriteria, setMobileTab]);
 
   const lastMsg = messages[messages.length - 1];
   const lastParsed = lastMsg?.role === "assistant" ? parseMessage(lastMsg.content) : null;
@@ -954,6 +974,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
             loader, and the inline nested branch. Workbench drives the initial load
             and reads config/posts/loading back via the callbacks below. */}
         <div className="cur-feed-posts" ref={feedPaneRef} style={{ position: "relative" }}>
+          {/* Veil covers the feed until configReady so neither "No posts yet" nor
+              a half-loaded feed flashes before we know whether to show onboarding. */}
+          {!configReady && (
+            <div style={{ position: "absolute", inset: 0, background: "var(--paper)", zIndex: 5, pointerEvents: "none" }} aria-hidden />
+          )}
           <FeedFocusProvider value={feedFocusValue}>
             <FeedView
               ref={rootFeedRef}

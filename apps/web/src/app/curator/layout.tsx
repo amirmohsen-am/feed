@@ -156,6 +156,8 @@ function CuratorShell({
   const activeFeedId = params?.feedId ?? null;
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [configReady, setConfigReady] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [sidebarWidth, startSidebarDrag] = useResizable(
     SIDEBAR_W_KEY, 264, SIDEBAR_MIN, SIDEBAR_MAX, "left"
   );
@@ -567,6 +569,10 @@ function CuratorShell({
         setUnavailableCount,
         sidebarOpen,
         setSidebarOpen,
+        configReady,
+        setConfigReady,
+        showOnboarding,
+        setShowOnboarding,
         openPublish: () => setShowPublish(true),
         openTune: () => openTuneRef.current?.(),
         registerOpenTune: (fn: () => void) => { openTuneRef.current = fn; },
@@ -800,7 +806,7 @@ function CuratorShell({
         {/* MAIN — topbar + page workbench + mobile tabs all live in cur-main
             so the data-mobile-tab CSS selectors can scope which pane shows. */}
         <div className="cur-main" data-mobile-tab={mobileTab}>
-          <div className="cur-topbar">
+          <div className={`cur-topbar${(!configReady || showOnboarding) ? " cur-topbar--onboarding" : ""}`}>
             <button
               className="cur-topbar-burger"
               onClick={() => setSidebarOpen(true)}
