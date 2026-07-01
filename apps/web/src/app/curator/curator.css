@@ -4537,30 +4537,6 @@
   max-width: 340px; margin: 0 auto;
   text-align: center;
 }
-.cur-memory-back{
-  background: none; border: none; color: var(--ink-3); cursor: pointer;
-  padding: 2px; display: flex; align-items: center;
-  position: absolute; left: 16px; top: 20px;
-}
-.cur-memory-back:hover{ color: var(--ink-1); }
-
-/* Back to the onboarding intention cards — mobile: pill at the top of the
-   chat sheet; desktop: floats top-left over the empty feed pane. */
-.cur-chat-back{
-  display: inline-flex; align-items: center; gap: 5px;
-  background: none; border: none; cursor: pointer;
-  font-family: var(--rf-body); font-size: 12px;
-  color: var(--ink-3); padding: 2px 0; margin: 0 0 4px;
-}
-.cur-chat-back:hover{ color: var(--ink-1); }
-.cur-feed-back{
-  position: absolute; top: 14px; left: 18px; z-index: 6;
-  display: inline-flex; align-items: center; gap: 5px;
-  background: none; border: none; cursor: pointer;
-  font-family: var(--rf-body); font-size: 12px;
-  color: var(--ink-3); padding: 4px 6px;
-}
-.cur-feed-back:hover{ color: var(--ink-1); }
 .cur-memory-inline-title{
   font-family: var(--rf-display, Georgia); font-size: 17px;
   font-weight: 500; color: var(--ink); margin-bottom: 6px;

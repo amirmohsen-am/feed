@@ -97,11 +97,12 @@ function parseSwipeMessage(content: string): {
 }
 
 // The immersive first-run treatment (brand intro, tap to start, hidden topbar
-// and sidebar chrome) shows ONCE ever per browser: marked seen in localStorage
-// the moment it's claimed, and claimable by only one feed's onboarding per page
-// load. Every later onboarding (new topics, revisits) shows the intention cards
-// with normal chrome. Idempotent per feed so StrictMode double-effects and
-// "back to options" re-claims resolve to the same answer.
+// and sidebar chrome) plays until the user has actually created a first feed
+// config: it's marked seen in localStorage only when a feed first gains
+// criteria (see markIntroSeen), so a visitor who bounces before configuring
+// anything gets the full intro again next visit. Claimable by only one feed's
+// onboarding per page load; idempotent per feed so StrictMode double renders
+// resolve to the same answer.
 const INTRO_SEEN_KEY = "curator:onboardingIntroSeen";
 let introClaimedByFeed: number | null = null;
 let introFirstRun = false;
@@ -110,11 +111,17 @@ function claimFirstRunIntro(feedId: number): boolean {
     introClaimedByFeed = feedId;
     let seen = false;
     try { seen = !!window.localStorage.getItem(INTRO_SEEN_KEY); } catch { /* */ }
-    if (!seen) { try { window.localStorage.setItem(INTRO_SEEN_KEY, "1"); } catch { /* */ } }
     introFirstRun = !seen;
   }
   return introClaimedByFeed === feedId && introFirstRun;
 }
+function markIntroSeen() {
+  try { window.localStorage.setItem(INTRO_SEEN_KEY, "1"); } catch { /* */ }
+}
+
+// The guided path's opening turn — sent on card pick, or deferred until a
+// canceled in-flight turn settles (see send()'s finally).
+const GUIDED_KICKOFF = "Help me build my feed — walk me through it step by step.";
 
 export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const {
@@ -148,7 +155,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // full side-chat input bar.
   const [capInput, setCapInput] = useState("");
   const [memoryImportMode, setMemoryImportMode] = useState(false);
-  // Bumped when the user backs out of onboarding mid-turn: send() drops the
+  // Bumped when the user picks a new intention card mid-turn: send() drops the
   // result of any turn started under an older epoch.
   const chatEpochRef = useRef(0);
   // Set alongside an epoch bump while a turn is in flight — tells send()'s
@@ -183,6 +190,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const [input, setInput] = useState(() => promptParam ?? "");
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const [loading, setLoading] = useState(false);
+  // Mirrors `loading` for callers that run outside the render cycle (the
+  // deferred guided kick-off fires from a stale closure whose `loading` still
+  // reads true after the canceled turn was released).
+  const loadingRef = useRef(false);
 
   // The root feed lives in a FeedView; the workbench drives its initial load,
   // reloads, and post snapshot through this handle.
@@ -251,6 +262,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // decides to show after we know whether this feed actually has criteria (no
   // flash of onboarding over a configured feed while it loads).
   const [configReady, setConfigReady] = useState(false);
+  // Set once the chat transcript has loaded — it carries sourcePost, which the
+  // onboarding decision needs (branched feeds never onboard).
+  const [chatReady, setChatReady] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
 
   // ── Feed configuration (owned here; read by the Tune panel + chat, applied
@@ -394,6 +408,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       return { sourcePost: null, messages: [] };
     } finally {
       setChatLoading(false);
+      setChatReady(true);
     }
   }, []);
 
@@ -470,6 +485,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       if (snap && String(snap.feedId) === String(feedId)) {
         parentFeedSnapshot = null;
         rootFeedRef.current?.setPosts(snap.posts as Post[]);
+        // The restored snapshot IS this feed's settled load — without this the
+        // decision veil (gated on configReady) never lifts on the back path.
+        setConfigReady(true);
         await loadChat(feedId);
         return;
       }
@@ -595,10 +613,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   }, [feedId, refreshLeaf, springBackPtr]);
 
   async function send(text: string, opts?: { memoryImport?: boolean }) {
-    if (!text.trim() || loading) return;
+    if (!text.trim() || loadingRef.current) return;
     setInput("");
     setSelectedOptions(new Set());
     setMessages(prev => [...prev, { role: "user", content: text.trim() }]);
+    loadingRef.current = true;
     setLoading(true);
     setFeedRefreshing(true);
     let willReload = false;
@@ -670,12 +689,21 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       }
     } finally {
       if (epoch === chatEpochRef.current) {
+        loadingRef.current = false;
         setLoading(false);
         if (!willReload) setFeedRefreshing(false);
       }
       if (pendingResetRef.current) {
         pendingResetRef.current = false;
-        resetChatTranscript();
+        // Serialize: let the canceled turn's transcript reset land before a
+        // deferred guided kick-off starts a fresh one, so the two turns can't
+        // interleave rows server-side.
+        await resetChatTranscript();
+        if (pendingGuidedEpochRef.current === chatEpochRef.current) {
+          pendingGuidedEpochRef.current = null;
+          interviewModeRef.current = true;
+          void send(GUIDED_KICKOFF);
+        }
       }
     }
   }
@@ -853,7 +881,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   function askForQuestions() {
     if (loading) return;
     interviewModeRef.current = true;
-    send("Help me build my feed — walk me through it step by step.");
+    send(GUIDED_KICKOFF);
   }
 
   function handleMemoryImport(memoryText: string) {
@@ -872,67 +900,72 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     send("Actually, let's just chat — no more options lists.");
   }
 
-  // ── Onboarding intents (the first-run "intention" cards) ──
-  // Per-feed (the workbench remounts on feedId) so a freshly created topic gets
-  // its own onboarding; held in state so "back" from memory import can re-show
-  // the surface within the same feed.
-  const onboardingStartedKey = `curator:onboardingStarted:${feedId}`;
-  const [onboardingStarted, setOnboardingStarted] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try { return !!sessionStorage.getItem(`curator:onboardingStarted:${feedId}`); } catch { return false; }
-  });
+  // ── Onboarding intents (the "intention" cards) ──
+  // The cards ARE the feed pane's empty state: they show whenever the feed has
+  // no criteria yet (branched feeds excepted) and stay put — still interactive —
+  // while the user chats beside/over them. Closing the chat lands back on the
+  // cards with the transcript preserved; picking a card again starts that path
+  // fresh.
+  // Set once the user picks a card this mount — returns the layout chrome that
+  // the first-ever intro hides (topbar/sidebar) while they chat.
+  const [obEngaged, setObEngaged] = useState(false);
 
-  function markOnboardingStarted() {
-    setOnboardingStarted(true);
-    try { sessionStorage.setItem(onboardingStartedKey, "1"); } catch { /* */ }
-  }
-
-  function resetChatTranscript() {
-    void authedFetch("/api/chat", {
+  function resetChatTranscript(): Promise<void> {
+    return authedFetch("/api/chat", {
       method: "POST",
       body: JSON.stringify({ feedId, reset: true }),
-    }).catch(() => { /* best-effort; local state is already cleared */ });
+    }).then(() => undefined)
+      .catch(() => { /* best-effort; local state is already cleared */ });
   }
 
-  // Back out of any onboarding intent (describe / memory / guided) to the
-  // intention cards. Usable even while a turn is in flight (guided fires one
-  // immediately): the epoch bump makes send() drop that turn's result, and the
-  // server-side transcript reset is deferred until it settles so the completed
-  // turn can't resurrect the messages it persists.
-  function returnToOnboarding() {
+  // Guided kick-off deferred past an in-flight turn's settle + transcript
+  // reset (see send()'s finally); tagged with the epoch that scheduled it so a
+  // later card pick invalidates it.
+  const pendingGuidedEpochRef = useRef<number | null>(null);
+
+  // Picking a card starts its path fresh: any in-flight turn is canceled (the
+  // epoch bump makes send() drop its result; the server-side transcript reset
+  // is deferred until it settles so the completed turn can't resurrect the
+  // messages it persists) and any prior draft conversation is discarded.
+  function startFreshPath(): "ready" | "deferred" {
+    setObEngaged(true);
     setMemoryImportMode(false);
     interviewModeRef.current = false;
-    setOnboardingStarted(false);
-    try { sessionStorage.removeItem(onboardingStartedKey); } catch { /* */ }
-    // The onboarding surface lives in the feed pane — close the conversation.
-    if (isMobile) setMobileTab("feed");
-    else setExpanded(false);
+    pendingGuidedEpochRef.current = null;
     if (loading) {
       chatEpochRef.current++;
       pendingResetRef.current = true;
+      loadingRef.current = false;
       setLoading(false);
       setFeedRefreshing(false);
       setMessages([]);
-    } else if (messages.length > 0) {
-      setMessages([]);
-      resetChatTranscript();
+      return "deferred";
     }
+    if (messages.length > 0) {
+      setMessages([]);
+      void resetChatTranscript();
+    }
+    return "ready";
   }
 
   function onboardDescribe() {
-    markOnboardingStarted();
+    startFreshPath();
     openConversation();
     setTimeout(() => inputRef.current?.focus(), 60);
   }
   function onboardMemory() {
-    markOnboardingStarted();
+    startFreshPath();
     setMemoryImportMode(true);
     openConversation();
   }
   function onboardGuided() {
-    markOnboardingStarted();
+    const readiness = startFreshPath();
     openConversation();
-    askForQuestions();
+    if (readiness === "deferred") {
+      pendingGuidedEpochRef.current = chatEpochRef.current;
+    } else {
+      askForQuestions();
+    }
   }
 
   function submitChat() {
@@ -950,6 +983,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // Auto-fire the branch-init turn: on a branched feed with no chat yet, ask
   // the agent to write the rerank prompt + name from the embedded source post.
   const branchInit = useCallback(async () => {
+    loadingRef.current = true;
     setLoading(true);
     try {
       const res = await authedFetch("/api/chat", {
@@ -969,6 +1003,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       }
     } catch { /* ignore — user can still chat normally */ }
     finally {
+      loadingRef.current = false;
       setLoading(false);
       // branchInit owns the first post load for a branched feed — run it after
       // the rerank prompt is written so the query reflects the final config.
@@ -986,18 +1021,16 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   const hasCriteria = subqueries.length > 0;
 
-  // The "intention" surface shows on an unconfigured feed the user hasn't
-  // started shaping yet. Whether it will is undecided until the config AND the
-  // transcript have loaded (an empty transcript is a precondition, so a feed
-  // that might onboard must also wait on chatLoading). While undecided, the
-  // feed pane stays veiled and the layout chrome stays hidden — otherwise the
-  // empty "no posts" feed paints for a frame before onboarding covers it.
-  const onboardingDecisionPending =
-    !configReady ||
-    (chatLoading && !hasCriteria && messages.length === 0 && !onboardingStarted);
-  const showOnboarding =
-    !onboardingDecisionPending &&
-    !hasCriteria && messages.length === 0 && !chatLoading && !onboardingStarted;
+  // The "intention" surface is the feed pane's content for ANY feed without
+  // criteria (branched feeds excepted — branch-init writes their config), so
+  // the empty "no posts" state never shows for an unconfigured feed. It stays
+  // up while the user chats and only clears when the first config lands.
+  // Undecided until both the feed's first load and the chat transcript (which
+  // carries sourcePost) settle; while undecided the feed pane stays veiled and
+  // the layout chrome stays hidden — otherwise the empty feed paints for a
+  // frame before onboarding covers it.
+  const onboardingDecisionPending = !configReady || !chatReady;
+  const showOnboarding = !onboardingDecisionPending && !hasCriteria && !sourcePost;
   // Resolve whether THIS onboarding is the browser's first ever (the immersive
   // intro, with topbar + sidebar chrome hidden via context). Resolved as a
   // render-phase update — an effect would let the bare feed paint for a frame
@@ -1007,15 +1040,21 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   if (showOnboarding && firstRunIntro === null) {
     setFirstRunIntro(claimFirstRunIntro(feedId));
   }
+  // Chrome stays hidden only through the first-ever intro's card phase; the
+  // moment the user picks a card (obEngaged) the topbar/sidebar return, even
+  // though the intention surface itself stays up until criteria land.
   useEffect(() => {
-    setShowOnboarding(showOnboarding && firstRunIntro === true);
-  }, [showOnboarding, firstRunIntro, setShowOnboarding]);
+    setShowOnboarding(showOnboarding && firstRunIntro === true && !obEngaged);
+  }, [showOnboarding, firstRunIntro, obEngaged, setShowOnboarding]);
   useEffect(() => {
     if (!onboardingDecisionPending) setContextConfigReady(true);
   }, [onboardingDecisionPending, setContextConfigReady]);
-  // Close the chat pane when the first feed criteria arrive (onboarding complete).
+  // First feed criteria arriving = onboarding complete: close the chat pane so
+  // the fresh feed shows, and only now mark the once-ever intro as seen — a
+  // visitor who bounced before configuring anything replays it next visit.
   const prevHasCriteriaRef = useRef(hasCriteria);
   useEffect(() => {
+    if (hasCriteria) markIntroSeen();
     if (!prevHasCriteriaRef.current && hasCriteria) {
       setExpanded(false);
       setMobileTab("feed");
@@ -1084,18 +1123,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               onboarding surface (or the real feed) is ready to paint. */}
           {onboardingDecisionPending && (
             <div style={{ position: "absolute", inset: 0, background: "var(--paper)", zIndex: 5, pointerEvents: "none" }} aria-hidden />
-          )}
-          {/* DESKTOP: back to the intention cards from any onboarding intent —
-              floats over the (still empty) feed while the chat pane is open. */}
-          {!isMobile && onboardingStarted && !hasCriteria && !sourcePost && (
-            <button
-              type="button"
-              className="cur-feed-back"
-              onClick={returnToOnboarding}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></svg>
-              Back
-            </button>
           )}
           <FeedFocusProvider value={feedFocusValue}>
             <FeedView
@@ -1206,19 +1233,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           </button>
           <div className="cur-chat-area">
             <div className="cur-chat-inner">
-              {/* MOBILE: back to the intention cards from the describe / guided
-                  intents (the memory panel carries its own back arrow). On
-                  desktop the equivalent affordance floats in the feed pane. */}
-              {isMobile && onboardingStarted && !hasCriteria && !sourcePost && !memoryImportMode && (
-                <button
-                  type="button"
-                  className="cur-chat-back"
-                  onClick={returnToOnboarding}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></svg>
-                  Back
-                </button>
-              )}
               {sourcePost && (
                 <div className="cur-branch-source">
                   <div className="cur-branch-source-label">
@@ -1259,14 +1273,6 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
               {messages.length === 0 && !sourcePost && !chatLoading && !loading && (
                 memoryImportMode ? (
                   <div className="cur-memory-inline">
-                    <button
-                      type="button"
-                      className="cur-memory-back"
-                      onClick={returnToOnboarding}
-                      aria-label="Back"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></svg>
-                    </button>
                     <p className="cur-memory-inline-title">Export your memory</p>
                     <p className="cur-memory-inline-desc">
                       We&rsquo;ll ask your AI to summarize what it knows about you. Pick one:
