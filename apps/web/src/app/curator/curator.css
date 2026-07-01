@@ -4587,3 +4587,168 @@
 .cur-memory-btn-logos{
   display: inline-flex; align-items: center; gap: 3px; margin-left: 2px;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   ONBOARDING — the "intention" first-run surface, rendered as an overlay
+   inside the feed pane (.cur-feed-posts) while a feed has no criteria yet.
+   Opens with the brand moment (logo-as-"a" wordmark, landing char reveal),
+   then lifts away into the option cards. Works on both breakpoints.
+   ════════════════════════════════════════════════════════════════════════ */
+.cur-ob{
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: var(--paper);
+  overflow: hidden;
+}
+.cur-ob-brand,
+.cur-ob-options{
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cur-ob-brand{
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.cur-ob-options{
+  align-items: center;
+  justify-content: center;
+  padding: 28px 22px calc(96px + env(safe-area-inset-bottom));
+  transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.cur-ob-inner{ width: 100%; max-width: 440px; margin: 0 auto; }
+
+/* phase toggles — brand and options crossfade with a gentle lift */
+.cur-ob[data-phase="brand"] .cur-ob-options{
+  opacity: 0; transform: translateY(22px); pointer-events: none;
+}
+.cur-ob[data-phase="options"] .cur-ob-brand{
+  opacity: 0; transform: translateY(-26px); pointer-events: none;
+}
+
+/* ── wordmark: logo stands in for the "a", "madi" set in the display face ── */
+.cur-ob-word{
+  font-family: var(--rf-display); /* Space Grotesk, as on the landing */
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.02;
+  color: var(--ink);
+  margin: 0 0 18px;
+  font-size: clamp(52px, 11vw, 76px);
+}
+.cur-ob-mask{
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: top;
+  padding-bottom: 0.14em;
+  margin-bottom: -0.14em;
+}
+.cur-ob-char{
+  display: inline-block;
+  transform: translateY(120%);
+  transition: transform 0.85s cubic-bezier(0.19, 1, 0.22, 1);
+  will-change: transform;
+}
+.cur-ob-brand.revealed .cur-ob-char{ transform: translateY(0); }
+.cur-ob-brand.revealed .cur-ob-char:nth-child(1){ transition-delay: 0.04s; }
+.cur-ob-brand.revealed .cur-ob-char:nth-child(2){ transition-delay: 0.12s; }
+.cur-ob-brand.revealed .cur-ob-char:nth-child(3){ transition-delay: 0.20s; }
+.cur-ob-brand.revealed .cur-ob-char:nth-child(4){ transition-delay: 0.28s; }
+.cur-ob-brand.revealed .cur-ob-char:nth-child(5){ transition-delay: 0.36s; }
+.cur-ob-logochar{ vertical-align: -0.08em; }
+.cur-ob-logochar img{ display: block; height: 0.82em; width: auto; }
+
+.cur-ob-q{
+  font-family: var(--rf-display);
+  font-weight: 500;
+  font-size: clamp(18px, 3.6vw, 23px);
+  letter-spacing: -0.01em;
+  color: var(--ink-3);
+  margin: 0;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.7s ease 0.5s, transform 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.5s;
+}
+.cur-ob-brand.revealed .cur-ob-q{ opacity: 1; transform: none; }
+
+/* ── options header (question rides along, smaller) ── */
+.cur-ob-head{
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 20px;
+  opacity: 0;
+}
+.cur-ob-mk{ width: 28px; height: 28px; flex: none; display: block; }
+.cur-ob-hq{
+  font-family: var(--rf-display);
+  font-weight: 500;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  line-height: 1.05;
+}
+
+/* ── the small cards ── */
+.cur-ob-cards{ display: flex; flex-direction: column; gap: 11px; }
+.cur-ob-card{
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  text-align: left;
+  width: 100%;
+  background: #fff;
+  border: 1px solid var(--hair-strong);
+  border-radius: 16px;
+  padding: 14px 15px;
+  cursor: pointer;
+  font-family: var(--rf-body);
+  opacity: 0;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.cur-ob-card:hover{
+  transform: translateY(-2px);
+  border-color: var(--aurora);
+  box-shadow: 0 10px 22px -14px rgba(72, 96, 168, 0.45);
+}
+.cur-ob-card:focus-visible{
+  outline: none;
+  border-color: var(--aurora-deep);
+  box-shadow: 0 0 0 3px rgba(72, 96, 168, 0.25);
+}
+.cur-ob-card:active{ transform: translateY(0); }
+.cur-ob-ic{
+  width: 42px; height: 42px; flex: none;
+  border-radius: 12px;
+  display: grid; place-items: center;
+  background: linear-gradient(150deg, #eaf0fd, #e7e0f6);
+}
+.cur-ob-ic svg{ width: 20px; height: 20px; stroke: #5a3e9e; }
+.cur-ob-ct b{ display: block; font-weight: 500; font-size: 14.5px; color: var(--ink); margin-bottom: 1px; }
+.cur-ob-ct i{ font-style: normal; font-size: 12px; color: var(--ink-3); line-height: 1.35; }
+
+/* ── entrance stagger when the options phase arrives ── */
+.cur-ob[data-phase="options"] .cur-ob-head,
+.cur-ob[data-phase="options"] .cur-ob-card{
+  animation: cur-ob-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.cur-ob[data-phase="options"] .cur-ob-head{ animation-delay: 0.02s; }
+.cur-ob[data-phase="options"] .cur-ob-card:nth-child(1){ animation-delay: 0.10s; }
+.cur-ob[data-phase="options"] .cur-ob-card:nth-child(2){ animation-delay: 0.18s; }
+.cur-ob[data-phase="options"] .cur-ob-card:nth-child(3){ animation-delay: 0.26s; }
+@keyframes cur-ob-rise{
+  from{ opacity: 0; transform: translateY(16px); }
+  to{ opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce){
+  .cur-ob-char{ transform: none !important; transition: none !important; }
+  .cur-ob-q{ opacity: 1 !important; transform: none !important; }
+  .cur-ob-head,
+  .cur-ob-card{ animation: none !important; opacity: 1 !important; }
+}
