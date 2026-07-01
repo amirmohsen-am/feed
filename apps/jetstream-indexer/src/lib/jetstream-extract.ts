@@ -186,6 +186,14 @@ export type IdentityRecord = {
   time_us: number
 }
 
+// app.bsky.labeler.service is one record per labeler account (rkey always
+// 'self'). For directory discovery we only need the DID — profile + like count
+// are enriched from the AppView on the read side.
+export type LabelerServiceRecord = {
+  did: string
+  time_us: number
+}
+
 // ----- Helpers -----
 
 const safeHostname = (raw: string): string | null => {
@@ -427,6 +435,12 @@ export const extractProfile = (ev: JetstreamCommitEvent): ProfileRecord | null =
     profile_rev: ev.commit.rev ?? null,
     time_us: ev.time_us,
   }
+}
+
+export const extractLabelerService = (ev: JetstreamCommitEvent): LabelerServiceRecord | null => {
+  if (ev.commit.collection !== 'app.bsky.labeler.service') return null
+  if (ev.commit.operation === 'delete') return null
+  return { did: ev.did, time_us: ev.time_us }
 }
 
 export const extractIdentity = (ev: JetstreamIdentityEvent): IdentityRecord => ({

@@ -589,6 +589,16 @@
   gap: 22px;
 }
 
+.proto-footer-link {
+  color: #9b7836;
+  text-decoration: none;
+  transition: color 0.25s ease;
+}
+
+.proto-footer-link:hover {
+  color: var(--p-ink);
+}
+
 .proto-footer-socials a {
   display: inline-flex;
   color: #9b7836;

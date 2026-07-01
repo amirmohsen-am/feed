@@ -1,7 +1,8 @@
-// Orchestrates four loops in a single Node process on one Cloud Run instance:
+// Orchestrates several loops in a single Node process on one Cloud Run instance:
 //   - postConsumer       (app.bsky.feed.post creates + deletes)
 //   - engagementConsumer (app.bsky.feed.like + app.bsky.feed.repost creates)
 //   - profileConsumer    (app.bsky.actor.profile + identity events)
+//   - labelerConsumer    (app.bsky.labeler.service creates + updates + deletes)
 //   - prune              (daily retention sweep on bsky.posts)
 //
 // Cloud Run: --no-cpu-throttling --min=1 --max=1 --concurrency=1, CPU=2, memory=2Gi.
@@ -9,6 +10,7 @@
 import http from 'http'
 import { config } from './config.js'
 import { startEngagementConsumer } from './consumers/engagement-consumer.js'
+import { startLabelerConsumer } from './consumers/labeler-consumer.js'
 import { startPostConsumer } from './consumers/post-consumer.js'
 import { startProfileConsumer } from './consumers/profile-consumer.js'
 import { startPrune } from './consumers/prune.js'
@@ -51,18 +53,20 @@ const main = async () => {
 
   await runMigrations()
 
-  const [postCursor, engCursor, profCursor] = await Promise.all([
+  const [postCursor, engCursor, profCursor, labelerCursor] = await Promise.all([
     cursorOrNow('post'),
     cursorOrNow('engagement'),
     cursorOrNow('profile'),
+    cursorOrNow('labeler'),
   ])
 
-  // Run all four loops concurrently. None of them ever resolve under normal
+  // Run all loops concurrently. None of them ever resolve under normal
   // operation; if any rejects we crash the process so Cloud Run restarts us.
   await Promise.all([
     startPostConsumer(cfg, WORKER_ID, postCursor),
     startEngagementConsumer(cfg, WORKER_ID, engCursor),
     startProfileConsumer(cfg, WORKER_ID, profCursor),
+    startLabelerConsumer(cfg, WORKER_ID, labelerCursor),
     startPrune(cfg),
   ])
 }
