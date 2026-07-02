@@ -100,7 +100,15 @@ function FeedViewImpl(
     setUnavailableCount,
     openPublish,
     profile,
+    feeds,
   } = useCurator();
+
+  // Branching goes one level deep only: it's offered on the root feed, and never
+  // from a feed that is itself a branch — neither inline (nested FeedView, not
+  // root) nor when a branch feed is opened directly from the sidebar (root, but
+  // with a parent).
+  const isBranchFeed = feeds.some((f) => f.id === String(feedId) && f.parentFeedId != null);
+  const canBranch = isRoot && !isBranchFeed;
   const { trackPosts } = useFeedActions();
   const { registerLeaf } = useFeedFocus();
 
@@ -432,6 +440,10 @@ function FeedViewImpl(
   }, [viewMode, posts]);
 
   const showSkeleton = posts.length === 0 && postsLoading;
+  // Refresh stays available on an empty feed (e.g. every post already seen —
+  // "No more posts" would otherwise strand desktop, which has no pull-to-refresh);
+  // it only hides during the initial skeleton, where a second trigger is useless.
+  const showRefresh = posts.length > 0 || !postsLoading;
   // While a tail recompute is in flight, render only the frozen prefix; the old
   // tail is replaced by a boundary loader so it can't flash stale-then-swap.
   const renderPosts =
@@ -454,7 +466,7 @@ function FeedViewImpl(
 
       {headerContent}
 
-      {((pipelineStage !== "idle" && tailCommitIndex === null) || (posts.length > 0 && !branch.committedBranchUri)) && (
+      {((pipelineStage !== "idle" && tailCommitIndex === null) || (showRefresh && !branch.committedBranchUri)) && (
         <div className="cur-feed-pl-row">
           {pipelineStage !== "idle" && tailCommitIndex === null && (
             <div className="cur-feed-pl">
@@ -472,7 +484,7 @@ function FeedViewImpl(
           )}
           {/* Hidden while this feed has an open inline branch — the branch in view
               shows its own Refresh, so the parent's would refresh the wrong feed. */}
-          {posts.length > 0 && !branch.committedBranchUri && (
+          {showRefresh && !branch.committedBranchUri && (
             <button
               type="button"
               className={`cur-feed-refresh${postsLoading ? " busy" : ""}`}
@@ -608,7 +620,7 @@ function FeedViewImpl(
                     onSwipe={(v) => branch.handleCardSwipe(post, v)}
                     onFirstLeftDrag={() => branch.fetchFollowupTopics(post)}
                     onFirstRightDrag={() => branch.onFirstRightDrag(post)}
-                    onBranch={() => branch.handleHoldBranch(post)}
+                    onBranch={canBranch ? () => branch.handleHoldBranch(post) : undefined}
                     approveFollowupContent={
                       <SwipeApproveCard
                         post={post}
@@ -639,7 +651,7 @@ function FeedViewImpl(
                         branch.setSourceExpanded(next);
                         branch.settleFold(!next);
                       }}
-                      onBranch={!isCommittedSource ? () => branch.handleHoldBranch(post) : undefined}
+                      onBranch={canBranch && !isCommittedSource ? () => branch.handleHoldBranch(post) : undefined}
                     />
                   </SwipeableCard>
                 </div>
