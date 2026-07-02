@@ -33,7 +33,7 @@ function PlainGroup({ label, lines }: { label: string; lines: string[] }) {
   );
 }
 
-// A folded section (topics / ranking steer): label + "updated" that reveals its
+// A folded section (topics / ranking instruction): label + "updated" that reveals its
 // detail on a second tap.
 function Sub({
   label,
@@ -112,7 +112,7 @@ export default function FeedUpdateRow({ toolCall }: { toolCall: FeedToolCall }) 
               </Sub>
             )}
             {toolCall.steer !== undefined && (
-              <Sub label="Ranking steer" state="updated">
+              <Sub label="Ranking instruction" state="updated">
                 <div className="cur-fu-prompt">
                   <span className="cur-fu-new">
                     {toolCall.steer.trim() === "" ? "Rerank disabled." : toolCall.steer}

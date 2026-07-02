@@ -148,7 +148,7 @@ export function feedToolCallHeadline(tc: FeedToolCall): { tokens: string[]; more
   }
   if (tc.filters) for (const f of tc.filters) leaves.push(f);
   if (tc.ranking) for (const r of tc.ranking) leaves.push(r);
-  if (tc.steer !== undefined) leaves.push("ranking steer");
+  if (tc.steer !== undefined) leaves.push("ranking instruction");
 
   const tokens = leaves.slice(0, 2);
   return { tokens, more: leaves.length - tokens.length };
