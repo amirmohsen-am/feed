@@ -143,9 +143,15 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
       if (!activeRef.current) return;
       const { wrap } = getCardEls();
       if (!wrap) {
-        // No card found, give up
         document.body.style.overflow = prevOverflowRef.current;
         try { window.localStorage.setItem(DEMO_DONE_KEY, "1"); } catch { /* */ }
+        setPhase("done");
+        return;
+      }
+      // Don't start if the user already has a followup panel open — it means
+      // they're mid-interaction and the demo would overlap existing UI.
+      if (document.querySelector(".cur-swipe-followup, .cur-swipe-approve")) {
+        document.body.style.overflow = prevOverflowRef.current;
         setPhase("done");
         return;
       }
@@ -260,6 +266,12 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
     if (timerRef.current) clearTimeout(timerRef.current);
     setShowButton(false);
     setTipVisible(false);
+    // Mark done immediately when the user confirms the right-swipe step — the
+    // return animation is cosmetic and its onDone callback can be interrupted
+    // by navigation, which would leave the key unset and re-trigger next session.
+    if (phase === "swipe-right" || phase === "hold-right") {
+      try { window.localStorage.setItem(DEMO_DONE_KEY, "1"); } catch { /* */ }
+    }
     setTimeout(() => {
       if (phase === "swipe-left" || phase === "hold-left") setPhase("return-left");
       else if (phase === "swipe-right" || phase === "hold-right") setPhase("return-right");
