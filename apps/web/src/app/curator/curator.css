@@ -4288,7 +4288,7 @@
   .cur-workbench[data-right-pane="chat"] .ctrl-tower,
   .cur-workbench .ctrl-tower{ display: flex; flex-direction: column; }
   .ctrl-tower{
-    position: fixed; top: calc(var(--cur-header-h) + 10px); right: 10px; bottom: 10px;
+    position: fixed; top: 10px; right: 10px; bottom: 10px;
     width: min(360px, calc(100vw - 20px)); height: auto;
     background: #fff;
     border: 1px solid var(--hair); border-radius: 18px;
@@ -4363,7 +4363,7 @@
   .ctrl-tower{
     display: flex; flex-direction: column;
     position: fixed; left: auto;
-    top: calc(var(--cur-header-h) + 8px); right: 8px; bottom: 8px;
+    top: 8px; right: 8px; bottom: 8px;
     width: min(360px, calc(100vw - 16px)); height: auto;
     background: #fff;
     border: 1px solid var(--hair); border-radius: 18px;
