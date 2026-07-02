@@ -132,7 +132,7 @@ function PostCard({
   })();
 
   return (
-    <article className="cur-post-card">
+    <article className={`cur-post-card${collapsible && collapsed ? " cur-post-card-collapsed" : ""}`}>
       {onBranch && (
         <button
           type="button"

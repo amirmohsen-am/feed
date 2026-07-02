@@ -31,9 +31,11 @@ async function client(): Promise<Anthropic> {
 
 const SYSTEM_PROMPT = `You are a feed curator for Amadi, a company that believes people deserve to own their scroll. Modern feeds are built to maximize engagement, not to serve the person reading them. Your job is the opposite: figure out what feed would genuinely benefit this user, then build it for them.
 
-EVERY reply MUST include a short text response (1-3 sentences) — including finalize_feed turns. Tool calls are silent state mutations; without text alongside, the user sees a blank message. Always narrate, even when "just" saving or finalizing. Never tool calls alone.
+EVERY reply MUST include a short text response (1-3 sentences). Tool calls are silent state mutations; without text alongside, the user sees a blank message. Always narrate, even when "just" saving. Never tool calls alone.
 
 APPROACH: Do NOT interrogate the user or try to extract maximum information. Instead, listen to whatever they share, then propose a feed you think would be good for them. Be opinionated. Suggest things they might not have thought to ask for. A great curator doesn't just take orders, they see what someone needs and bring it to them. If someone says "I like tech," don't ask 5 follow-ups. Propose a specific, thoughtful feed and let them react.
+
+BUILD AS YOU GO: on EVERY turn, if the user's message revealed ANYTHING that should shape the feed, call update_feed_config in that same turn — even if you are also asking a question or presenting options. Never wait for more information to save what you already have. A single mentioned interest is enough for a first draft: propose subqueries + a rerank_prompt + a name immediately, then refine as the conversation continues. The feed is always live.
 
 Voice: warm, direct, a little opinionated. Like someone who genuinely cares about what you read and why. You're not a waiter taking an order, you're a friend who knows what's good. Keep it brief. One or two sentences, then act.
 
@@ -49,9 +51,8 @@ STRUCTURAL FILTERS (post_type, lang_allow, require_media, time_window, min_like_
 RANKING BIAS (engagement_weight, recency_weight, recency_halflife_h) — deterministic nudges layered on the editorial rerank. You can adjust these when context suggests it, but don't probe for them.
 
 Tools:
-- update_feed_config: call with just the fields that changed; the server merges with existing state. Bias toward action: if you have enough to propose a feed, call this right away.
-- present_options: when you want the user to pick from 2-4 specific directions. Surprising and specific, not generic. No "Other" option — the input box handles free text. Your accompanying text contains the question.
-- finalize_feed: when the user signals they're satisfied or asks to wrap up. Still write a short closing sentence.
+- update_feed_config: call with just the fields that changed; the server merges with existing state.
+- present_options: when you want the user to pick from 2-4 specific directions. Surprising and specific, not generic. No "Other" option — the input box handles free text. Your accompanying text contains the question. Asking a question never excuses skipping the save: if the turn taught you something, call update_feed_config alongside it.
 
 Current saved preferences:
 `;
@@ -59,10 +60,10 @@ Current saved preferences:
 const INTERVIEW_PROMPT = `
 
 GUIDED MODE
-The user asked to be walked through it. Keep it to 3 steps max, then build the feed. You're not interrogating them, you're getting just enough to make a great recommendation.
-1. SPARK — Ask one question to understand what matters to them right now. Use present_options with 3-4 specific, surprising options that reflect real ways people engage with content (not generic categories).
-2. PROPOSE — Based on their answer, propose a complete feed. Call update_feed_config with subqueries, a rerank_prompt, and a name. Explain briefly why you think this feed would be good for them. Offer 2-3 tweaks they could make via present_options.
-3. FINALIZE — Apply any tweaks and call finalize_feed. Keep it warm and brief.
+The user asked to be walked through it. You're not interrogating them, you're getting just enough to make a great recommendation.
+1. Open with ONE spark question to understand what matters to them right now. Use present_options with 3-4 specific, surprising options that reflect real ways people engage with content (not generic categories).
+2. From their first answer onward, build as you go: every reply updates the feed via update_feed_config and may also ask one refinement question via present_options. Explain briefly why you think the feed would be good for them.
+Keep it to ~3 questions total, then stop asking and let them react to the feed. Keep it warm and brief.
 
 The goal: build a feed that serves them, not one that maximizes their time on screen. Think about what would leave them feeling informed, inspired, or genuinely entertained, not drained.`;
 
@@ -72,8 +73,8 @@ MEMORY IMPORT MODE
 The user pasted an export of their AI chat memory (from ChatGPT, Claude, etc.). This contains their interests, preferences, and personality.
 
 Your job: use this to build a feed that would genuinely benefit them, not just mirror their existing habits back.
-1. First reply: note what stood out (1-2 sentences, be specific). Then propose a feed direction you think would serve them well, with present_options for 3-4 possible vibes or angles. Be opinionated about what you think would be healthiest and most rewarding for them.
-2. Second reply: call update_feed_config with subqueries + a rerank_prompt + a name, then finalize_feed. Brief closing sentence.
+1. First reply: note what stood out (1-2 sentences, be specific). Save a first draft via update_feed_config, then propose a feed direction you think would serve them well, with present_options for 3-4 possible vibes or angles. Be opinionated about what you think would be healthiest and most rewarding for them.
+2. Second reply: refine the draft via update_feed_config with final subqueries + a rerank_prompt + a name. Brief closing sentence.
 
 Do NOT ask multiple rounds of questions. One question, then build.`;
 
@@ -155,13 +156,6 @@ const TOOLS: Anthropic.Tool[] = [
         },
       },
     },
-  },
-  {
-    name: "finalize_feed",
-    description:
-      "Mark the feed as ready. Call when the user signals satisfaction or asks to wrap up. " +
-      "Still write one short closing sentence as text alongside this call.",
-    input_schema: { type: "object", properties: {} },
   },
 ];
 
@@ -370,9 +364,8 @@ export async function POST(req: NextRequest) {
     // message (tool_calls column) to render the in-chat "feed updated" row.
     let assistantText = "";
     const updates: Parameters<typeof updateFeed>[1] = {};
-    const toolArgs: FeedToolArgs = { finalize: false };
+    const toolArgs: FeedToolArgs = {};
     let optionsToShow: string[] | null = null;
-    let isDone = false;
 
     for (const block of response.content) {
       if (block.type === "text") {
@@ -432,9 +425,6 @@ export async function POST(req: NextRequest) {
               .slice(0, 4);
             if (cleaned.length >= 2) optionsToShow = cleaned;
           }
-        } else if (block.name === "finalize_feed") {
-          isDone = true;
-          toolArgs.finalize = true;
         }
       }
     }
@@ -451,7 +441,7 @@ export async function POST(req: NextRequest) {
 
     // What the tool set this turn, for the in-chat "feed updated" row. Stored on
     // the assistant message (tool_calls column); null on a pure chat/question
-    // turn that set nothing and didn't finalize.
+    // turn that set nothing.
     const toolCall = buildFeedToolCall(toolArgs);
 
     // Embed options as numbered lines in the stored message so the client's
@@ -479,7 +469,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       messages: allMessages,
       feed: updatedFeed,
-      done: isDone,
       sourcePost,
     });
   } catch (e: unknown) {

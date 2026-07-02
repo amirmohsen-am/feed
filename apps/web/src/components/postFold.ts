@@ -37,8 +37,10 @@ export function settleFoldEls(
     ? "none"
     : `max-height ${FOLD_DUR}ms ${ease}, -webkit-mask-image ${FOLD_DUR}ms, mask-image ${FOLD_DUR}ms`;
   foldable.style.overflow = "hidden";
+  // Collapsed, the fade starts a quarter of the way down — the first line reads,
+  // the rest visibly dissolves to nothing at the card border.
   foldable.style.maxHeight = (collapsed ? Math.min(FOLD_MIN, full) : full) + "px";
-  foldable.style.webkitMaskImage = foldable.style.maskImage = foldMask(collapsed ? 52 : 100);
+  foldable.style.webkitMaskImage = foldable.style.maskImage = foldMask(collapsed ? 25 : 100);
   if (avatar) {
     avatar.style.transition = reduce ? "none" : `width ${FOLD_DUR}ms ${ease}, height ${FOLD_DUR}ms ${ease}`;
     const a = (collapsed ? AVA_MIN : AVA_FULL) + "px";

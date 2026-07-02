@@ -663,13 +663,8 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           willReload = true;
         }
       }
-      if (d.done) {
-        rootFeedRef.current?.reload();
-        reloadFeeds();
-        willReload = true;
-      }
-      // The feed config actually changed this turn (signature change or
-      // finalize) → let the capsule flash "Feed updated".
+      // The feed config actually changed this turn (signature change) → let
+      // the capsule flash "Feed updated".
       feedChangedRef.current = willReload;
       // Auto pop out the conversation (desktop right sidebar / mobile full-screen
       // sheet) when the user needs to see the agent's reply: either it's asking a
@@ -871,10 +866,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     };
   }, []);
 
-  function finalizeNow() {
+  function buildFeedNow() {
     if (loading) return;
     interviewModeRef.current = false;
-    send("Go ahead and finalize the feed now with what you've got — pick reasonable defaults for anything we haven't covered.");
+    send("Build the feed now with what you've got — pick reasonable defaults for anything we haven't covered.");
   }
 
   function askForQuestions() {
@@ -1084,7 +1079,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   const questionCount = messages.filter(
     (m) => m.role === "assistant" && parseMessage(m.content).options.length > 0
   ).length;
-  const showFinalize = questionCount >= 3 && !hasCriteria;
+  const showBuildNow = questionCount >= 3 && !hasCriteria;
 
   // Root feed Back affordance: a branched route can go back to its parent.
   const thisFeed = feeds.find((f) => f.id === String(feedId));
@@ -1396,17 +1391,17 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
           </div>
 
           <div className="cur-input-bar">
-            {showFinalize && (
-              <div className="cur-finalize-row">
+            {showBuildNow && (
+              <div className="cur-build-now-row">
                 <button
                   type="button"
-                  className="cur-finalize"
-                  onClick={finalizeNow}
+                  className="cur-build-now"
+                  onClick={buildFeedNow}
                   disabled={loading}
                 >
                   ✦ Make this feed now
                 </button>
-                <span className="cur-finalize-hint">
+                <span className="cur-build-now-hint">
                   skip the rest — Claude will use sensible defaults
                 </span>
               </div>
