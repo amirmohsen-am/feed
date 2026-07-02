@@ -3,7 +3,9 @@
 /**
  * Bluesky-style placeholder cards shown while a feed is curating and there are
  * no posts on screen yet (initial open, feed switch, chat-driven re-curation,
- * branch load). Sits below the PipelineLoader note. An in-place refresh of a
+ * branch load). Cache hits skip it entirely — FeedView only mounts this once a
+ * pipeline stage event arrives, and cached serves emit none; the posts animate
+ * straight in. Sits below the PipelineLoader note. An in-place refresh of a
  * feed that already has posts dims the existing posts instead (see FeedView),
  * so this never replaces visible results.
  *
