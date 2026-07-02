@@ -54,6 +54,7 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
   const [shouldRun, setShouldRun] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (process.env.NEXT_PUBLIC_SKIP_TOURS === "1") return;
     try { if (window.localStorage.getItem(DEMO_DONE_KEY)) return; } catch { /* */ }
     const mq = window.matchMedia("(max-width: 767px)");
     const activate = () => { if (mq.matches) setShouldRun(true); };

@@ -105,6 +105,7 @@ export default function CuratorTour() {
   useEffect(() => {
     // Never auto-run the feature tour in local dev — it just gets in the way.
     if (process.env.NODE_ENV === "development") return;
+    if (process.env.NEXT_PUBLIC_SKIP_TOURS === "1") return;
     try {
       if (window.localStorage.getItem(TOUR_DONE_KEY)) return;
     } catch { /* ignore */ }

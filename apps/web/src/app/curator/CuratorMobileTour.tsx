@@ -89,6 +89,7 @@ export default function CuratorMobileTour() {
     if (typeof window === "undefined") return;
     // Never auto-run the feature tour in local dev — it just gets in the way.
     if (process.env.NODE_ENV === "development") return;
+    if (process.env.NEXT_PUBLIC_SKIP_TOURS === "1") return;
     if (window.innerWidth >= 768) return;
     try { if (window.localStorage.getItem(TOUR_DONE_KEY)) return; } catch { /* */ }
     const t = setTimeout(() => setActive(true), 1400);
