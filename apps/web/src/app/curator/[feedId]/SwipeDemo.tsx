@@ -57,7 +57,7 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
     try { if (window.localStorage.getItem(DEMO_DONE_KEY)) return; } catch { /* */ }
     const mq = window.matchMedia("(max-width: 767px)");
     const activate = () => { if (mq.matches) setShouldRun(true); };
-    activate(); // fire immediately if already mobile
+    activate();
     mq.addEventListener("change", activate);
     return () => mq.removeEventListener("change", activate);
   }, []);
@@ -132,10 +132,8 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
     if (!shouldRun || !postsLoaded || showOnboarding) return;
     activeRef.current = true;
 
-    // Ensure feed tab is visible (not the chat overlay) so the demo is seen
     setMobileTab("feed");
 
-    // Freeze scroll right away — before the 1500ms wait — so the card can't drift.
     prevOverflowRef.current = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
@@ -148,20 +146,19 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
         setPhase("done");
         return;
       }
-      // Don't start if the user already has a followup panel open — it means
-      // they're mid-interaction and the demo would overlap existing UI.
-      if (document.querySelector(".cur-swipe-followup, .cur-swipe-approve")) {
+      // Check wrapper parent height — inner elements report natural height even
+      // when clipped by a height:0;overflow:hidden parent wrapper.
+      const followupVisible = [...document.querySelectorAll<HTMLElement>(".cur-swipe-followup, .cur-swipe-approve")]
+        .some(el => (el.parentElement?.offsetHeight ?? 0) > 0);
+      if (followupVisible) {
         document.body.style.overflow = prevOverflowRef.current;
         setPhase("done");
         return;
       }
-      // Center the card then measure its settled position for the spotlight.
       const card = wrap.querySelector(".cur-post-card") as HTMLElement | null;
       (card ?? wrap).scrollIntoView({ block: "center" });
       const rect = (card ?? wrap).getBoundingClientRect();
       setCardBand({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
-
-      // Disable pointer events during demo
       wrap.style.pointerEvents = "none";
       setPhase("swipe-left");
     }, 1500);
