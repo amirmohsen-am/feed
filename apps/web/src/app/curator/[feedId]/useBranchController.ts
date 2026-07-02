@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { SwipeVerdict } from "@/components/SwipeableCard";
+import { settleFoldEls } from "@/components/postFold";
 import { authedFetch } from "@/lib/authed-fetch";
 import { type BranchOption, type NegativeTopic } from "@/lib/branch";
 import { useCurator } from "../curatorContext";
@@ -61,16 +62,9 @@ function easeScrollTop(scroller: HTMLElement | Window, to: number, dur = 460) {
 }
 
 // ── Source-post fold (swipe-right "dive deeper") ──
-// The source post folds into a compact pinned preview as you drag right: the body
-// region collapses to a couple of lines whose text dissolves to transparent (a
-// mask, not a white overlay — no hard clip), and the avatar shrinks. Heights are
-// measured (not guessable in CSS), so the fold is driven imperatively here.
-const FOLD_MIN = 48;      // collapsed body height (≈ 2 lines + the fade)
-const AVA_FULL = 40, AVA_MIN = 30;
-const FOLD_DUR = 440;     // ms — matches the recede/lift timing on commit & Back
-const foldMask = (stopPct: number) => `linear-gradient(to bottom,#000 ${stopPct}%,transparent)`;
-const prefersReducedMotion = () =>
-  typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+// The source post folds into a compact pinned preview as you drag right. The
+// fold treatment itself (measured max-height + dissolve mask + avatar shrink)
+// lives in components/postFold.ts, shared with the chat's swiped-post cards.
 
 interface PendingBranch {
   post: Post;
@@ -279,29 +273,7 @@ export function useBranchController({
   const settleFold = useCallback((collapsed: boolean) => {
     const { foldable, avatar } = sourceFoldEls();
     if (!foldable) return;
-    const prevMax = foldable.style.maxHeight;
-    foldable.style.transition = "none";
-    foldable.style.maxHeight = "none";
-    const full = foldable.scrollHeight;
-    foldFullRef.current = full;
-    foldable.style.maxHeight = prevMax || full + "px";
-    void foldable.offsetHeight; // reflow so the change below animates from here
-    const reduce = prefersReducedMotion();
-    const ease = "cubic-bezier(0.4,0,0.2,1)";
-    foldable.style.transition = reduce
-      ? "none"
-      : `max-height ${FOLD_DUR}ms ${ease}, -webkit-mask-image ${FOLD_DUR}ms, mask-image ${FOLD_DUR}ms`;
-    foldable.style.overflow = "hidden";
-    // Collapsed, the fade starts a quarter of the way down — the first line reads,
-    // the rest visibly dissolves to nothing at the card border.
-    foldable.style.maxHeight = (collapsed ? Math.min(FOLD_MIN, full) : full) + "px";
-    foldable.style.webkitMaskImage = foldable.style.maskImage = foldMask(collapsed ? 25 : 100);
-    if (avatar) {
-      avatar.style.transition = reduce ? "none" : `width ${FOLD_DUR}ms ${ease}, height ${FOLD_DUR}ms ${ease}`;
-      const a = (collapsed ? AVA_MIN : AVA_FULL) + "px";
-      avatar.style.width = a;
-      avatar.style.height = a;
-    }
+    foldFullRef.current = settleFoldEls(foldable, avatar, collapsed);
   }, [sourceFoldEls]);
 
   // Strip the inline fold styles so the card returns to a plain post (after Back, or
