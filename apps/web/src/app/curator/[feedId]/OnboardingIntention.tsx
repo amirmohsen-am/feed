@@ -97,7 +97,7 @@ export default function OnboardingIntention({ intro, onDescribe, onMemory, onGui
                 </svg>
               </span>
               <span className="cur-ob-ct">
-                <b>Describe what you want</b>
+                <b>Describe what you want in your feed</b>
               </span>
             </button>
 

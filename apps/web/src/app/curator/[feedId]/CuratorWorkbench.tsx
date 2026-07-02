@@ -1161,6 +1161,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         </div>{/* /.cur-feed-posts */}
 
           {/* ════ THE CAPSULE — floating, input-only curator (desktop + mobile) ════ */}
+          {!(onboardingDecisionPending || showOnboarding) && (
           <Capsule
             value={capInput}
             onValueChange={setCapInput}
@@ -1180,6 +1181,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
             onUpdatedOpen={openConversation}
             inputRef={capInputRef}
           />
+          )}
           {/* gooey filter for the metaballs progress style */}
           <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden>
             <defs>
