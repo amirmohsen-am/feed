@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError } from "@/lib/auth";
-import { getFeedForUser, createBranchedFeed } from "@/lib/pg";
+import {
+  getFeedForUser,
+  getBranchedFeedForPost,
+  createBranchedFeed,
+} from "@/lib/pg";
 import { MAX_BRANCH_TOPICS } from "@/lib/branch";
 import { jsonError } from "@/lib/api";
 
@@ -35,6 +39,19 @@ export async function POST(req: NextRequest) {
         { error: "Parent feed not found" },
         { status: 404 }
       );
+    }
+
+    // Re-branching the same post reuses its existing branch feed: the stable
+    // feed id keeps the server-side preview cache warm (no pipeline rerun) and
+    // the sidebar doesn't accumulate duplicates. The submitted subqueries are
+    // ignored on reuse — the feed keeps the topics (+ any tuning) it already has.
+    const existing = await getBranchedFeedForPost(
+      auth.userId,
+      parentFeedId,
+      sourcePostUri
+    );
+    if (existing) {
+      return NextResponse.json({ feed: existing, reused: true });
     }
 
     const cleanSubs = (Array.isArray(subqueries) ? subqueries : [])

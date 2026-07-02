@@ -73,6 +73,18 @@ interface PendingBranch {
   branchFeedName?: string;
 }
 
+// Session cache of branch feeds created this page-load, keyed by
+// `${parentFeedId}|${postUri}`. Re-branching the same post reopens the same
+// feed with its topics immediately — no topics LLM call, no create round trip
+// — and the nested FeedView's post load hits the server's preview result
+// cache (stable feed id). Module-level so it survives FeedView remounts (feed
+// switches). Across page reloads the server dedups instead (/api/feeds/branch
+// returns the existing feed for parent+post), so only the topics call reruns.
+const branchFeedCache = new Map<
+  string,
+  { branchFeedId: number; branchFeedName?: string; options: BranchOption[] }
+>();
+
 interface BranchController {
   // ── Container-class flags ──
   branchDragging: boolean;
@@ -205,7 +217,13 @@ export function useBranchController({
       });
       const d = await res.json();
       if (d.feed?.id) {
-        reloadFeeds();
+        branchFeedCache.set(`${feedId}|${post.uri}`, {
+          branchFeedId: d.feed.id,
+          branchFeedName: d.feed.name,
+          options: effective,
+        });
+        // A reused feed is already in the sidebar — nothing to reload.
+        if (!d.reused) reloadFeeds();
         setPendingBranch((prev) => prev ? { ...prev, branchFeedId: d.feed.id, branchFeedName: d.feed.name } : prev);
       }
     } catch { /* panel still shows topics; can retry */ }
@@ -229,10 +247,23 @@ export function useBranchController({
   // Triggered by the branch FAB button or hold gesture. Does the full branch commit:
   // folds the source post, clears receded posts, creates the branch feed overlay.
   function handleHoldBranch(post: Post) {
-    const prefetched = swipeRightTopics.get(post.uri);
-    const branchOptions = Array.isArray(prefetched) && prefetched.length > 0 ? prefetched : null;
-    setPendingBranch({ post, options: branchOptions });
-    fetchSwipeRightTopics(post);
+    // Re-branch of a post already branched this session: reopen its cached
+    // feed + topics directly (no topics LLM call, no create round trip). The
+    // nested FeedView still mounts fresh, but its load is a server cache hit.
+    const cached = branchFeedCache.get(`${feedId}|${post.uri}`);
+    if (cached) {
+      setPendingBranch({ post, ...cached });
+    } else {
+      const prefetched = swipeRightTopics.get(post.uri);
+      const branchOptions = Array.isArray(prefetched) && prefetched.length > 0 ? prefetched : null;
+      setPendingBranch({ post, options: branchOptions });
+      fetchSwipeRightTopics(post);
+      if (branchOptions) {
+        void createBranchForOverlay(post, branchOptions);
+      } else {
+        setBranchPendingUri(post.uri);
+      }
+    }
     branchCommittedRef.current = true;
     branchDraggingRef.current = false;
     setBranchDragging(false);
@@ -249,11 +280,6 @@ export function useBranchController({
       clearAnchorRef.current = el ? { scroller, top: topWithinScroller(el, scroller) } : null;
       setOthersCleared(true);
     }, 480);
-    if (branchOptions) {
-      void createBranchForOverlay(post, branchOptions);
-    } else {
-      setBranchPendingUri(post.uri);
-    }
   }
 
   // Locate the source card's foldable region (the block under the header) + its
