@@ -151,6 +151,26 @@ export async function ensureHomeFeed(userId: string): Promise<DbFeed> {
 }
 
 /**
+ * The existing branch feed for (parent feed, source post), if one was already
+ * created — branching the same post twice reuses it instead of inserting a
+ * duplicate (and a stable feed id keeps the preview result cache warm). Picks
+ * the newest when historical duplicates exist.
+ */
+export async function getBranchedFeedForPost(
+  userId: string,
+  parentFeedId: number,
+  sourcePostUri: string
+): Promise<DbFeed | null> {
+  const res = await query(
+    `SELECT * FROM feeds
+     WHERE user_id = $1 AND parent_feed_id = $2 AND source_post_uri = $3
+     ORDER BY id DESC LIMIT 1`,
+    [userId, parentFeedId, sourcePostUri]
+  );
+  return res.rows[0] ? rowToFeed(res.rows[0]) : null;
+}
+
+/**
  * Create a feed by branching off a post. Seeds the picked categories as
  * subqueries and records lineage (parent_feed_id + source_post_uri). The
  * rerank_prompt + a polished name are filled later by the seeded chat agent
