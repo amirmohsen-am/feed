@@ -2912,6 +2912,95 @@
   letter-spacing: 0;
   font-weight: 600;
 }
+.ctrl-label-text{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Info tip: circular "?" that reveals an explainer popover. */
+.ctrl-infotip{
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.ctrl-infotip-btn{
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--hair-strong);
+  background: transparent;
+  color: var(--ink-3);
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.ctrl-infotip-btn:hover{
+  color: var(--aurora-deep);
+  border-color: var(--aurora-deep);
+}
+/* Doubled-up selector so these survive broader rules like
+   `.ctrl-mini-field span` (mono, uppercase, nowrap). Coordinates come from
+   the component (position:fixed, viewport-clamped) since .ctrl-tower clips
+   overflow; z-index must beat the mobile slide-over's 80. */
+.ctrl-infotip .ctrl-infotip-pop{
+  position: fixed;
+  z-index: 120;
+  width: 230px;
+  max-width: calc(100vw - 16px);
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--hair-strong);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(24,22,20,0.14);
+  font-family: var(--rf-body);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* Collapsible section header (e.g. Safety): looks like a ctrl-label with a
+   flipping chevron and an inline status value. */
+.ctrl-collapse-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--rf-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 600;
+  transition: color 0.15s;
+}
+.ctrl-collapse-head:hover{ color: var(--ink); }
+.ctrl-collapse-meta{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ctrl-collapse-head svg{
+  transition: transform 0.2s var(--ease-spring);
+}
+.ctrl-collapse-head.open svg{ transform: rotate(180deg); }
 .ctrl-hint{
   font-family: var(--rf-body);
   font-size: 12px;
@@ -2969,7 +3058,13 @@
   font-family: var(--rf-body);
   padding: 8px 0;
 }
-.ctrl-toggle-label{ flex: 1; min-width: 0; }
+.ctrl-toggle-label{
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .ctrl-switch{
   width: 36px;
   height: 21px;
@@ -3028,6 +3123,44 @@
 }
 .ctrl-mini-field input:focus,
 .ctrl-mini-field select:focus{ border-color: var(--aurora-deep); }
+
+/* Stacked mini fields whose inputs should line up (e.g. Min likes/reposts/replies):
+   fixed label column so every input starts at the same x. */
+.ctrl-field-rows{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ctrl-field-rows .ctrl-mini-field span{
+  flex: 0 0 84px;
+}
+
+/* Advanced section toggle: same tinted track as the segmented control, with a
+   chevron that flips when open. */
+.ctrl-advanced-toggle{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 9px 12px;
+  background: rgba(72,96,168,0.10);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: var(--rf-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--ink-3);
+  transition: color 0.15s, background 0.15s;
+}
+.ctrl-advanced-toggle:hover{ color: var(--ink); }
+.ctrl-advanced-toggle svg{
+  flex-shrink: 0;
+  transition: transform 0.2s var(--ease-spring);
+}
+.ctrl-advanced-toggle.open svg{ transform: rotate(180deg); }
 
 /* Tag inputs */
 .ctrl-tag-input{
