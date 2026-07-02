@@ -265,55 +265,118 @@
 /* ── Swipe Demo tooltip ───── */
 
 @media (min-width: 768px){
-  .swipe-demo-tip{ display: none !important; }
+  .swipe-demo-tip, .swipe-demo-actions, .swipe-demo-spotlight, .swipe-demo-blocker { display: none !important; }
 }
 
+
+/* Full-screen interaction blocker — sits below the spotlight and tip, captures
+   all pointer events so nothing behind the demo overlay is reachable. */
+.swipe-demo-blocker{
+  position: fixed;
+  inset: 0;
+  z-index: 97;
+  pointer-events: auto;
+}
+
+/* Spotlight — positioned exactly over the active card.
+   box-shadow with a huge spread dims everything outside the card's rounded rect. */
+.swipe-demo-spotlight{
+  position: fixed;
+  z-index: 98;
+  border-radius: 12px; /* matches .cur-post-card */
+  box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+/* Instruction bubble — top set inline (below the card); centered horizontally */
 .swipe-demo-tip{
   position: fixed;
-  left: 0;
-  right: 0;
+  left: 50%;
+  transform: translateX(-50%) translateY(6px);
   z-index: 100;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  font-family: var(--rf-mono, monospace);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  color: #fff;
-  background: rgba(107, 99, 184, 0.92);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(136, 144, 216, 0.3);
-  border-radius: 14px;
-  margin: 0 20px;
-  padding: 14px 16px;
+  width: min(360px, calc(100vw - 32px));
   opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition: opacity 0.25s ease, transform 0.25s ease;
   pointer-events: none;
 }
 .swipe-demo-tip.visible{
   opacity: 1;
-  transform: translateY(0);
+  transform: translateX(-50%) translateY(0);
   pointer-events: auto;
 }
-.swipe-demo-btn{
-  flex-shrink: 0;
+
+/* White pill bubble with directional arrow + instruction text */
+.swipe-demo-bubble{
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   background: #fff;
-  color: rgba(107, 99, 184, 1);
+  border-radius: 999px;
+  padding: 14px 22px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.22);
+}
+.swipe-demo-bubble svg{ flex-shrink: 0; color: #0b1814; }
+.swipe-demo-bubble-text{
+  font-family: var(--rf-mono, monospace);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: #0b1814;
+}
+
+/* Action buttons — fixed above the card (header bar dead space); centered */
+.swipe-demo-actions{
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: max-content;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+}
+.swipe-demo-actions.visible{
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+/* Primary: "Got it" — advances to next step */
+.swipe-demo-got-it{
+  background: #0b1814;
+  color: #fff;
   border: none;
   font-family: var(--rf-mono, monospace);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 7px 16px;
+  padding: 8px 20px;
   border-radius: 999px;
   cursor: pointer;
-  transition: background 0.15s, transform 0.15s;
+  transition: background 0.15s;
 }
-.swipe-demo-btn:active{
-  transform: scale(0.95);
-  background: rgba(255, 255, 255, 0.85);
+.swipe-demo-got-it:active{ background: #1a3028; transform: scale(0.97); }
+/* Secondary: "Dismiss tutorial" — exits the whole demo */
+.swipe-demo-dismiss{
+  background: rgba(255,255,255,0.9);
+  color: #0b1814;
+  border: none;
+  font-family: var(--rf-mono, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 20px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s;
 }
+.swipe-demo-dismiss:active{ background: #fff; transform: scale(0.97); }

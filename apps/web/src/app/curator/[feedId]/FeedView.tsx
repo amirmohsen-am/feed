@@ -496,10 +496,17 @@ function FeedViewImpl(
       ) : skelExiting ? (
         <FeedSkeleton exiting />
       ) : posts.length === 0 ? (
-        <div className="cur-empty">
-          <p>No posts yet.</p>
-          <p className="sub">Try Refresh, or refine the subqueries in chat or the Tune panel.</p>
-        </div>
+        pipelineSeenFiltered ? (
+          <div className="cur-empty">
+            <p>No more posts.</p>
+            <p className="sub">Drag down to refresh, or refine your interests in chat or the Tune panel.</p>
+          </div>
+        ) : (
+          <div className="cur-empty">
+            <p>No posts yet.</p>
+            <p className="sub">Drag down to refresh, or refine your interests in chat or the Tune panel.</p>
+          </div>
+        )
       ) : viewMode === "embed" ? (
         renderPosts.map((post, idx) => {
           const bskyUrl = (() => {
