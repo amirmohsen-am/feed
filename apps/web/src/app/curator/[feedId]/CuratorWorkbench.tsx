@@ -1288,7 +1288,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                     </p>
                     <div className="cur-memory-links">
                       <a
-                        href={`https://chatgpt.com/?q=${encodeURIComponent("Please give me a bullet-point summary of what you know about me from our conversations — my interests, hobbies, what I like to read about, my profession, topics I'm curious about, opinions I've shared, and anything else that would help someone build a personalized content feed for me. This is for feed customization, so withhold sensitive information that would be unhelpful for topical browsing.")}`}
+                        href={`https://chatgpt.com/?q=${encodeURIComponent("Please give me a bullet-point summary of what you know about me from our conversations — my interests, hobbies, what I like to read about, my profession, topics I'm curious about, opinions I've shared, and anything else that would help me build a personalized content feed for me. This is for feed customization, so withhold anything sensitive that wouldn't be relevant to content browsing.")}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="cur-memory-link"
@@ -1300,7 +1300,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                         ChatGPT
                       </a>
                       <a
-                        href={`https://claude.ai/new?q=${encodeURIComponent("Please give me a bullet-point summary of what you know about me from our conversations — my interests, hobbies, what I like to read about, my profession, topics I'm curious about, opinions I've shared, and anything else that would help someone build a personalized content feed for me. This is for feed customization, so withhold sensitive information that would be unhelpful for topical browsing.")}`}
+                        href={`https://claude.ai/new?q=${encodeURIComponent("Please give me a bullet-point summary of what you know about me from our conversations — my interests, hobbies, what I like to read about, my profession, topics I'm curious about, opinions I've shared, and anything else that would help me build a personalized content feed for me. This is for feed customization, so withhold anything sensitive that wouldn't be relevant to content browsing.")}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="cur-memory-link"
