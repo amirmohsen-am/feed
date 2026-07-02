@@ -158,8 +158,14 @@ function FeedViewImpl(
   const revealTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => () => { revealTimersRef.current.forEach(clearTimeout); }, []);
 
+  // Skeleton is gated on a visible pipeline stage, not on the load being in
+  // flight: a cache hit emits no stage events (only the final done{cached}),
+  // so cached loads never mount the skeleton — the posts animate straight in
+  // (entrance triggered from the done handler). A real recompute emits
+  // "searching" almost immediately, which mounts the skeleton.
+  const showSkeleton = posts.length === 0 && postsLoading && pipelineStage !== "idle";
+
   useEffect(() => {
-    const showSkel = posts.length === 0 && postsLoading;
     const reduce =
       typeof window !== "undefined" &&
       !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -172,8 +178,8 @@ function FeedViewImpl(
         setTimeout(() => setPostsEntering(false), 300 + 850),
       ];
     }
-    prevShowSkelRef.current = showSkel;
-  }, [posts.length, postsLoading]);
+    prevShowSkelRef.current = showSkeleton;
+  }, [posts.length, showSkeleton]);
 
   const postsRef = useRef<Post[]>([]);
   useEffect(() => {
@@ -265,10 +271,11 @@ function FeedViewImpl(
     const isTail = frozen.length > 0;
 
     // A full load (feed switch, branch mount, chat-driven recompute, AND explicit
-    // Refresh / pull-to-refresh) drops the prior posts so the skeleton shows while
-    // it loads — including cache hits, which still take a beat to arrive. Tail
-    // recomputes keep the frozen prefix on screen and recompute only below the
-    // commit point.
+    // Refresh / pull-to-refresh) drops the prior posts while it loads. The
+    // skeleton only mounts once a pipeline stage event arrives, so cache hits
+    // (which emit no stage events and arrive fast) skip it and the posts
+    // animate straight in. Tail recomputes keep the frozen prefix on screen
+    // and recompute only below the commit point.
     if (isTail) {
       setTailCommitIndex(frozen.length - 1);
     } else {
@@ -397,6 +404,17 @@ function FeedViewImpl(
               setPosts(next);
               setPostCount(nextCount);
               setTailCommitIndex(null);
+              // Cached snapshot on a full load: the skeleton never mounted (no
+              // stage events preceded this), so run the posts-entrance
+              // animation directly instead of the skeleton-exit handoff.
+              if (!isTail && ev.cached && incoming.length > 0) {
+                revealTimersRef.current.forEach(clearTimeout);
+                setSkelExiting(false);
+                setPostsEntering(true);
+                revealTimersRef.current = [
+                  setTimeout(() => setPostsEntering(false), 850),
+                ];
+              }
               if (isRoot) setActivePostCount(nextCount);
               onConfigLoaded?.({
                 mechanical_filters: ev.mechanical_filters,
@@ -528,7 +546,6 @@ function FeedViewImpl(
     return () => ac.abort();
   }, [viewMode, posts]);
 
-  const showSkeleton = posts.length === 0 && postsLoading;
   // Refresh stays available on an empty feed (e.g. every post already seen —
   // "No more posts" would otherwise strand desktop, which has no pull-to-refresh);
   // it only hides during the initial skeleton, where a second trigger is useless.
@@ -597,7 +614,12 @@ function FeedViewImpl(
       ) : skelExiting ? (
         <FeedSkeleton exiting />
       ) : posts.length === 0 ? (
-        pipelineSeenFiltered ? (
+        postsLoading ? (
+          // Load in flight but no stage event yet — could be a cache hit about
+          // to land, so hold blank rather than flashing the skeleton or the
+          // empty state.
+          null
+        ) : pipelineSeenFiltered ? (
           <div className="cur-empty">
             <p>No more posts.</p>
             <p className="sub">Drag down to refresh, or refine your interests in chat or the Tune panel.</p>
