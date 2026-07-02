@@ -41,7 +41,7 @@ export interface StreamedConfig {
 }
 
 // How a reload mutates the feed:
-//   full  — replace the whole list (Refresh button, feed switch, finalize)
+//   full  — replace the whole list (Refresh button, feed switch)
 //   tail  — keep the frozen prefix (read + look-ahead) and recompute only the
 //           posts past the commit point, splicing the result in place. Used by
 //           refinement signals (chat tune, swipe-left "less like this") so the

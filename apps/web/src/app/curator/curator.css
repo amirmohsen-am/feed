@@ -700,14 +700,14 @@
   border-top: 1px solid var(--hair);
   background: var(--paper-2);
 }
-.cur-finalize-row{
+.cur-build-now-row{
   max-width: 640px;
   margin: 0 auto 12px;
   display: flex;
   align-items: center;
   gap: 12px;
 }
-.cur-finalize{
+.cur-build-now{
   display: inline-flex; align-items: center; gap: 6px;
   font-family: var(--rf-mono);
   font-size: 11px; letter-spacing: 0.1em;
@@ -720,14 +720,14 @@
   cursor: pointer;
   transition: all 0.2s;
 }
-.cur-finalize:hover:not(:disabled){
+.cur-build-now:hover:not(:disabled){
   background: rgba(72,96,168,0.14);
   border-color: var(--aurora-deep);
 }
-.cur-finalize:disabled{
+.cur-build-now:disabled{
   opacity: 0.5; cursor: default;
 }
-.cur-finalize-hint{
+.cur-build-now-hint{
   font-family: var(--rf-body);
   font-size: 12px;
   color: var(--ink-3);
@@ -3805,14 +3805,14 @@
     width: 16px;
     font-size: 9px;
   }
-  .cur-finalize-row{
+  .cur-build-now-row{
     flex-direction: column;
     align-items: stretch;
     gap: 4px;
     margin-bottom: 6px;
   }
-  .cur-finalize-hint{ display: none; }
-  .cur-finalize{
+  .cur-build-now-hint{ display: none; }
+  .cur-build-now{
     align-self: flex-start;
     font-size: 11px;
     padding: 6px 12px;

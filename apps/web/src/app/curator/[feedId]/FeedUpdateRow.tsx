@@ -64,14 +64,8 @@ export default function FeedUpdateRow({ toolCall }: { toolCall: FeedToolCall }) 
   const [open, setOpen] = useState(false);
   const hasDetail = feedToolCallHasDetail(toolCall);
   const { tokens, more } = feedToolCallHeadline(toolCall);
-  const label = toolCall.finalize ? "Feed finalized" : "Feed updated";
-
-  const summary =
-    tokens.length > 0
-      ? tokens.join(", ")
-      : toolCall.finalize
-        ? "ready to view"
-        : "";
+  const label = "Feed updated";
+  const summary = tokens.join(", ");
 
   return (
     <div className="cur-msg cur-fu" data-open={open || undefined}>
