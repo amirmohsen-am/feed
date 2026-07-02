@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { SwipeVerdict } from "@/components/SwipeableCard";
 import { authedFetch } from "@/lib/authed-fetch";
-import { type BranchOption } from "@/lib/branch";
+import { type BranchOption, type NegativeTopic } from "@/lib/branch";
 import { useCurator } from "../curatorContext";
 import type { Post } from "../feedTypes";
 
@@ -90,7 +90,7 @@ interface BranchController {
   othersCleared: boolean;
   returningSourceUri: string | null;
   pendingBranch: PendingBranch | null;
-  followupTopics: Map<string, BranchOption[]>;
+  followupTopics: Map<string, NegativeTopic[]>;
   /** Approve topics indexed by post URI (same API as branch options). */
   swipeRightTopics: Map<string, BranchOption[] | null>;
   sourceExpanded: boolean;
@@ -141,7 +141,7 @@ export function useBranchController({
 
   // ── Swipe-to-tune (left) + swipe-to-branch (right) state ──
   const [swipedUris, setSwipedUris] = useState<Set<string>>(() => new Set());
-  const [followupTopics, setFollowupTopics] = useState<Map<string, BranchOption[]>>(() => new Map());
+  const [followupTopics, setFollowupTopics] = useState<Map<string, NegativeTopic[]>>(() => new Map());
   const fetchingFollowupRef = useRef(new Set<string>());
   const [swipeRightTopics, setSwipeRightTopics] = useState<Map<string, BranchOption[] | null>>(() => new Map());
   const [branchPendingUri, setBranchPendingUri] = useState<string | null>(null);
@@ -489,15 +489,15 @@ export function useBranchController({
     if (followupTopics.has(post.uri)) return;
     if (fetchingFollowupRef.current.has(post.uri)) return;
     fetchingFollowupRef.current.add(post.uri);
-    void authedFetch("/api/branch/options", {
+    void authedFetch("/api/swipe/negative", {
       method: "POST",
       body: JSON.stringify({ feedId, postUri: post.uri }),
     })
       .then(async (res) => {
         fetchingFollowupRef.current.delete(post.uri);
         const d = await res.json();
-        const topics: BranchOption[] = Array.isArray(d.options)
-          ? (d.options as BranchOption[]).filter((o) => o.kind === "deeper")
+        const topics: NegativeTopic[] = Array.isArray(d.topics)
+          ? (d.topics as NegativeTopic[])
           : [];
         setFollowupTopics((prev) => { const next = new Map(prev); next.set(post.uri, topics); return next; });
       })
