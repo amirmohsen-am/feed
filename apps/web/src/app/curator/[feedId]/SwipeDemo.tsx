@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useCurator } from "../curatorContext";
 
 const DEMO_DONE_KEY = "curator:swipeDemoDone";
@@ -36,7 +37,8 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
   const { setMobileTab, showOnboarding } = useCurator();
   const [phase, setPhase] = useState<
     "waiting" | "swipe-left" | "hold-left" | "return-left" |
-    "swipe-right" | "hold-right" | "return-right" | "done"
+    "swipe-right" | "hold-right" | "return-right" |
+    "show-branch" | "done"
   >("waiting");
   const [showButton, setShowButton] = useState(false);
   const [tipText, setTipText] = useState("");
@@ -44,32 +46,20 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
   const cancelRef = useRef<(() => void) | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeRef = useRef(true);
+  const prevOverflowRef = useRef("");
+  // Bounding rect of the active card — used for the spotlight overlay.
+  const [cardBand, setCardBand] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
 
   // Gate: mobile only, not already seen, and tour must be finished first
   const [shouldRun, setShouldRun] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (window.innerWidth >= 768) return;
     try { if (window.localStorage.getItem(DEMO_DONE_KEY)) return; } catch { /* */ }
-
-    // If the tour is already done, start immediately
-    try {
-      if (window.localStorage.getItem(TOUR_DONE_KEY)) {
-        setShouldRun(true);
-        return;
-      }
-    } catch { /* */ }
-
-    // Otherwise poll until the tour finishes (it sets the key on dismiss/complete)
-    const poll = setInterval(() => {
-      try {
-        if (window.localStorage.getItem(TOUR_DONE_KEY)) {
-          clearInterval(poll);
-          setShouldRun(true);
-        }
-      } catch { /* */ }
-    }, 500);
-    return () => clearInterval(poll);
+    const mq = window.matchMedia("(max-width: 767px)");
+    const activate = () => { if (mq.matches) setShouldRun(true); };
+    activate(); // fire immediately if already mobile
+    mq.addEventListener("change", activate);
+    return () => mq.removeEventListener("change", activate);
   }, []);
 
   // Find the first card's DOM elements
@@ -118,7 +108,7 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
   // Reset card to neutral
   function resetCard() {
     const { wrap, lessAction, lessPill, branchAction } = getCardEls();
-    if (wrap) wrap.style.transform = "";
+    if (wrap) { wrap.style.transform = ""; wrap.style.pointerEvents = ""; }
     if (lessAction) { lessAction.style.opacity = "0"; lessAction.style.transition = ""; }
     if (lessPill) { lessPill.style.transform = ""; lessPill.style.transition = ""; }
     if (branchAction) {
@@ -136,7 +126,8 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
     resetCard();
   }
 
-  // Sequence the animation phases
+  // Sequence the animation phases. Lock scroll immediately (before the centering
+  // delay) so the user can't shift the layout between queuing and starting.
   useEffect(() => {
     if (!shouldRun || !postsLoaded || showOnboarding) return;
     activeRef.current = true;
@@ -144,16 +135,26 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
     // Ensure feed tab is visible (not the chat overlay) so the demo is seen
     setMobileTab("feed");
 
-    // Wait for posts to render
+    // Freeze scroll right away — before the 1500ms wait — so the card can't drift.
+    prevOverflowRef.current = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
     timerRef.current = setTimeout(() => {
       if (!activeRef.current) return;
       const { wrap } = getCardEls();
       if (!wrap) {
         // No card found, give up
+        document.body.style.overflow = prevOverflowRef.current;
         try { window.localStorage.setItem(DEMO_DONE_KEY, "1"); } catch { /* */ }
         setPhase("done");
         return;
       }
+      // Center the card then measure its settled position for the spotlight.
+      const card = wrap.querySelector(".cur-post-card") as HTMLElement | null;
+      (card ?? wrap).scrollIntoView({ block: "center" });
+      const rect = (card ?? wrap).getBoundingClientRect();
+      setCardBand({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+
       // Disable pointer events during demo
       wrap.style.pointerEvents = "none";
       setPhase("swipe-left");
@@ -161,6 +162,8 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
 
     return () => {
       activeRef.current = false;
+      document.body.style.overflow = prevOverflowRef.current;
+      setCardBand(null);
       cleanup();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -177,6 +180,7 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
       case "swipe-left":
         setTipText("Swipe left to see less of this");
         setTipVisible(true);
+        setShowButton(true);
         timerRef.current = setTimeout(() => {
           if (!alive) return;
           cancelRef.current = tweenValue(0, -SLIDE_LEFT, 700, driveCard, () => {
@@ -186,8 +190,6 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
         break;
 
       case "hold-left":
-        // Wait for user to tap the "Got it" button
-        setShowButton(true);
         break;
 
       case "return-left":
@@ -203,6 +205,7 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
       case "swipe-right":
         setTipText("Swipe right to see more");
         setTipVisible(true);
+        setShowButton(true);
         timerRef.current = setTimeout(() => {
           if (!alive) return;
           cancelRef.current = tweenValue(0, SLIDE_RIGHT, 600, driveCard, () => {
@@ -212,8 +215,6 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
         break;
 
       case "hold-right":
-        // Wait for user to tap the "Got it" button
-        setShowButton(true);
         break;
 
       case "return-right":
@@ -222,10 +223,25 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
           const { wrap } = getCardEls();
           if (wrap) wrap.style.pointerEvents = "";
           resetCard();
-          try { window.localStorage.setItem(DEMO_DONE_KEY, "1"); } catch { /* */ }
-          setPhase("done");
+          if (alive) setPhase("show-branch");
         });
         break;
+
+      case "show-branch": {
+        // Spotlight the always-visible branch FAB in the card's top-right corner
+        const { wrap } = getCardEls();
+        const fab = wrap?.closest(".cur-post-item")?.querySelector(".cur-post-branch-fab") as HTMLElement | null;
+        if (fab) {
+          const rect = fab.getBoundingClientRect();
+          // Add a small halo so the box-shadow ring has breathing room
+          const pad = 6;
+          setCardBand({ top: rect.top - pad, left: rect.left - pad, width: rect.width + pad * 2, height: rect.height + pad * 2 });
+        }
+        setTipText("Branch a topic to dive deeper");
+        setTipVisible(true);
+        setShowButton(true);
+        break;
+      }
     }
 
     return () => {
@@ -238,27 +254,97 @@ export default function SwipeDemo({ postsLoaded }: { postsLoaded: boolean }) {
 
 
   function handleGotIt() {
+    // Cancel any in-flight tween/timer but do NOT reset the card —
+    // the return phase tweens from the card's current held position back to 0.
+    cancelRef.current?.();
+    if (timerRef.current) clearTimeout(timerRef.current);
     setShowButton(false);
     setTipVisible(false);
     setTimeout(() => {
-      if (phase === "hold-left") setPhase("return-left");
-      else if (phase === "hold-right") setPhase("return-right");
+      if (phase === "swipe-left" || phase === "hold-left") setPhase("return-left");
+      else if (phase === "swipe-right" || phase === "hold-right") setPhase("return-right");
+      else if (phase === "show-branch") {
+        document.body.style.overflow = prevOverflowRef.current;
+        try { window.localStorage.setItem(DEMO_DONE_KEY, "1"); } catch { /* */ }
+        setCardBand(null);
+        setPhase("done");
+      }
     }, 300);
+  }
+
+  function handleDismiss() {
+    document.body.style.overflow = prevOverflowRef.current;
+    cleanup();
+    const { wrap } = getCardEls();
+    if (wrap) wrap.style.pointerEvents = "";
+    try { window.localStorage.setItem(DEMO_DONE_KEY, "1"); } catch { /* */ }
+    setCardBand(null);
+    setPhase("done");
   }
 
   if (!shouldRun || phase === "done" || phase === "waiting") return null;
 
-  return (
-    <div
-      className={`swipe-demo-tip${tipVisible ? " visible" : ""}`}
-      style={{ top: 70 }}
-    >
-      <span>{tipText}</span>
-      {showButton && (
-        <button className="swipe-demo-btn" onClick={handleGotIt}>
-          Got it
-        </button>
+  const isBranchPhase = phase === "show-branch";
+  const arrowLeft = !isBranchPhase && (phase === "swipe-left" || phase === "hold-left" || phase === "return-left");
+  const tipTop = cardBand ? cardBand.top + cardBand.height + 24 : undefined;
+  // Buttons sit above the card/spotlight in the header dead-space.
+  const btnBottom = cardBand ? window.innerHeight - cardBand.top + 12 : undefined;
+
+  // Portal to body so position:fixed is relative to the true viewport,
+  // not broken by ancestor CSS transforms (which happen during card animation).
+  return createPortal(
+    <>
+      {/* Full-screen blocker — captures all taps; tapping the dim = "Got it" fallback */}
+      <div className="swipe-demo-blocker" onClick={handleGotIt} />
+      {/* Spotlight — card-shaped normally, circular for the branch-button step */}
+      {cardBand && (
+        <div
+          className="swipe-demo-spotlight"
+          style={{
+            top: cardBand.top,
+            left: cardBand.left,
+            width: cardBand.width,
+            height: cardBand.height,
+            ...(isBranchPhase && { borderRadius: "50%" }),
+          }}
+        />
       )}
-    </div>
+
+      {/* Instruction bubble — below the spotlight */}
+      <div
+        className={`swipe-demo-tip${tipVisible ? " visible" : ""}`}
+        style={tipTop !== undefined ? { top: tipTop } : undefined}
+      >
+        <div className="swipe-demo-bubble">
+          {isBranchPhase ? (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <circle cx="6" cy="6" r="2" /><circle cx="6" cy="18" r="2" /><circle cx="18" cy="9" r="2" />
+              <path d="M6 8v8" /><path d="M6 14c0-3 1.5-5 5-5h5" />
+            </svg>
+          ) : arrowLeft ? (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M19 12H5" /><path d="m12 19-7-7 7-7" />
+            </svg>
+          ) : (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
+            </svg>
+          )}
+          <span className="swipe-demo-bubble-text">{tipText}</span>
+        </div>
+      </div>
+
+      {/* Got it / Dismiss buttons — above the card in the header bar dead space */}
+      {showButton && (
+        <div
+          className={`swipe-demo-actions${tipVisible ? " visible" : ""}`}
+          style={btnBottom !== undefined ? { bottom: btnBottom } : undefined}
+        >
+          <button className="swipe-demo-got-it" onClick={handleGotIt}>Got it</button>
+          <button className="swipe-demo-dismiss" onClick={handleDismiss}>Dismiss tutorial</button>
+        </div>
+      )}
+    </>,
+    document.body
   );
 }

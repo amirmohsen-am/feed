@@ -1024,16 +1024,16 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   const hasCriteria = subqueries.length > 0;
 
-  // The "intention" surface is the feed pane's content for ANY feed without
-  // criteria (branched feeds excepted — branch-init writes their config), so
-  // the empty "no posts" state never shows for an unconfigured feed. It stays
-  // up while the user chats and only clears when the first config lands.
+  // The "intention" surface is the feed pane's content for ANY feed that has
+  // no posts (branched feeds excepted — branch-init writes their config), so
+  // the empty "no posts" state never shows. It stays up while the user chats
+  // and only clears when the first posts land.
   // Undecided until both the feed's first load and the chat transcript (which
   // carries sourcePost) settle; while undecided the feed pane stays veiled and
   // the layout chrome stays hidden — otherwise the empty feed paints for a
   // frame before onboarding covers it.
   const onboardingDecisionPending = !configReady || !chatReady;
-  const showOnboarding = !onboardingDecisionPending && !hasCriteria && !sourcePost;
+  const showOnboarding = !onboardingDecisionPending && !sourcePost && activePostCount === 0 && !hasCriteria;
   // Resolve whether THIS onboarding is the browser's first ever (the immersive
   // intro, with topbar + sidebar chrome hidden via context). Resolved as a
   // render-phase update — an effect would let the bare feed paint for a frame
@@ -1052,9 +1052,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   useEffect(() => {
     if (!onboardingDecisionPending) setContextConfigReady(true);
   }, [onboardingDecisionPending, setContextConfigReady]);
-  // First feed criteria arriving = onboarding complete: close the chat pane so
-  // the fresh feed shows, and only now mark the once-ever intro as seen — a
-  // visitor who bounced before configuring anything replays it next visit.
+  // Mark the once-ever intro seen when criteria land, and close the chat pane
+  // when criteria first arrive (new feed) or when posts first arrive (a
+  // reconfigured-but-empty feed that finally finds results) — so the fresh
+  // feed takes center stage.
   const prevHasCriteriaRef = useRef(hasCriteria);
   useEffect(() => {
     if (hasCriteria) markIntroSeen();
@@ -1064,6 +1065,14 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     }
     prevHasCriteriaRef.current = hasCriteria;
   }, [hasCriteria, setMobileTab]);
+  const prevActivePostCountRef = useRef(activePostCount);
+  useEffect(() => {
+    if (prevActivePostCountRef.current === 0 && activePostCount > 0) {
+      setExpanded(false);
+      setMobileTab("feed");
+    }
+    prevActivePostCountRef.current = activePostCount;
+  }, [activePostCount, setMobileTab]);
 
   // The last assistant turn drives the options card.
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");

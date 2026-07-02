@@ -5,8 +5,6 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import "./curator.css";
 import "./tour.css";
-import CuratorTour from "./CuratorTour";
-import CuratorMobileTour from "./CuratorMobileTour";
 import {
   Dialog,
   DialogContent,
@@ -644,7 +642,7 @@ function CuratorShell({
                   fontStyle: "normal",
                 }}
               >
-                No topics yet — branch one off Home.
+                No topics yet — try branching or create a new topic below.
               </div>
             )}
           </div>
@@ -1258,8 +1256,6 @@ function CuratorShell({
           onNewFeed={startNewFeed}
         />
 
-        <CuratorTour />
-        <CuratorMobileTour />
       </div>
     </CuratorProvider>
   );
