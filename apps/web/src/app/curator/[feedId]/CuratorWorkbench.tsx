@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "rea
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import BranchTopicsHeader from "@/components/BranchTopicsHeader";
+import CollapsedPostCard from "@/components/CollapsedPostCard";
 import FilterPanel from "@/components/FilterPanel";
 import SendButton from "@/components/SendButton";
 import Capsule from "./Capsule";
@@ -76,8 +77,8 @@ function isFollowUpQuestion(parsed: { text: string; options: { key: string; labe
 
 // A swipe sends a user message prefixed with ⟦swipe:<verdict>:<uri>⟧ so the
 // chat can render the reacted-to post as a card (instead of the raw text the
-// agent reads). Author + snippet are parsed from the body as a reload-safe
-// fallback when the in-session post cache is gone.
+// agent reads). On reload GET /api/chat re-hydrates the post by URI; author +
+// snippet parsed from the body are the fallback if the post is gone.
 function parseSwipeMessage(content: string): {
   verdict: "approve" | "reject";
   uri: string;
@@ -294,10 +295,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
     return opts;
   });
 
-  // In-session lookup so swipe messages can render the reacted post as a card.
-  const [swipedPostCache, setSwipedPostCache] = useState<
-    Record<string, { displayName: string; handle: string | null; text: string }>
-  >({});
+  // Per-URI posts for the swipe cards in chat: stamped in-session on swipe,
+  // and re-hydrated by GET /api/chat on reload (the transcript only stores the
+  // URI). Renders through the same PostCard as the feed.
+  const [swipedPostCache, setSwipedPostCache] = useState<Record<string, Post>>({});
 
   const endRef = useRef<HTMLDivElement>(null);
   const feedSignatureRef = useRef<string>("");
@@ -388,6 +389,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       const msgs: Message[] = data.messages || [];
       const src: ChatSourcePost | null = data.sourcePost ?? null;
       setSourcePost(src);
+      // Server-hydrated posts for the swipe cards; in-session entries win (they
+      // came straight from the feed snapshot the user swiped on).
+      if (data.swipedPosts && typeof data.swipedPosts === "object") {
+        setSwipedPostCache((prev) => ({ ...(data.swipedPosts as Record<string, Post>), ...prev }));
+      }
       const f = data.feed;
       if (f) {
         if (Array.isArray(f.subqueries)) setSubqueries(f.subqueries);
@@ -462,17 +468,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
   // Swipe-left tune from the root feed: stamp the post into the swipe cache
   // (so it renders as a card in chat) and run it through the chat agent.
   const handleRootTune = useCallback((message: string, post: Post) => {
-    setSwipedPostCache((prev) => ({
-      ...prev,
-      [post.uri]: {
-        displayName:
-          post.author_display_name?.trim() ||
-          post.author_handle ||
-          post.author_did.slice(0, 16) + "…",
-        handle: post.author_handle,
-        text: post.text,
-      },
-    }));
+    setSwipedPostCache((prev) => ({ ...prev, [post.uri]: post }));
     void send(message, { tailReload: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1333,10 +1329,7 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                 const swipe = isUser ? parseSwipeMessage(msg.content) : null;
                 const parsed = !isUser ? parseMessage(msg.content) : null;
                 if (isUser && swipe) {
-                  const cached = swipedPostCache[swipe.uri];
-                  const name = cached?.displayName ?? swipe.displayName;
-                  const handle = cached?.handle ?? null;
-                  const text = cached?.text ?? swipe.text;
+                  const post = swipedPostCache[swipe.uri];
                   const url = bskyUrlFromUri(swipe.uri);
                   return (
                     <div key={i} className="cur-msg cur-swipe-card">
@@ -1347,24 +1340,27 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
                           ? "\u2713 More like this"
                           : "\u2715 Less like this"}
                       </span>
-                      <a
-                        className="cur-branch-source-card"
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <div className="cur-branch-source-author">
-                          {name || "A post"}
-                          {handle && (
-                            <span className="cur-branch-source-handle">
-                              @{handle}
-                            </span>
+                      {post ? (
+                        // Same PostCard as the feed, folded like the pinned
+                        // branch source.
+                        <CollapsedPostCard post={post} />
+                      ) : (
+                        // Post no longer hydratable (deleted / pruned): fall
+                        // back to the author + snippet parsed from the message.
+                        <a
+                          className="cur-branch-source-card"
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <div className="cur-branch-source-author">
+                            {swipe.displayName || "A post"}
+                          </div>
+                          {swipe.text && (
+                            <div className="cur-branch-source-text">{swipe.text}</div>
                           )}
-                        </div>
-                        {text && (
-                          <div className="cur-branch-source-text">{text}</div>
-                        )}
-                      </a>
+                        </a>
+                      )}
                     </div>
                   );
                 }

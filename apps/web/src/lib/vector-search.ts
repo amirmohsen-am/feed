@@ -369,6 +369,35 @@ export async function hydratePostByUri(uri: string): Promise<VectorHit | null> {
   return res.rows[0] ? rowToHit(res.rows[0]) : null;
 }
 
+// Batch variant of hydratePostByUri, plus AppView media (image URLs, link-card
+// + video thumbs) so the hits render as full post cards, not text-only stubs.
+// Used by the chat transcript to show the posts the user swiped on. Fail-soft
+// on the AppView call; posts missing from the DB are simply absent.
+const HYDRATE_BY_URIS_SQL = HYDRATE_BY_URI_SQL.replace(
+  "WHERE p.uri = $1\nLIMIT 1",
+  "WHERE p.uri = ANY($1)"
+);
+
+export async function hydratePostsByUris(uris: string[]): Promise<VectorHit[]> {
+  if (uris.length === 0) return [];
+  const res = await bskyQuery<PgRow>(HYDRATE_BY_URIS_SQL, [uris]);
+  const hits = res.rows.map(rowToHit);
+  const meta = await fetchAppViewMeta(hits.map((h) => h.uri)).catch(
+    () => null as Map<string, AppViewMeta> | null
+  );
+  if (meta) {
+    for (const h of hits) {
+      const m = meta.get(h.uri);
+      if (!m) continue;
+      if (m.imageUrls.length > 0) h.image_urls = m.imageUrls;
+      if (m.externalThumb) h.external_thumb = m.externalThumb;
+      if (m.videoThumbnail) h.video_thumbnail = m.videoThumbnail;
+      if (m.videoPlaylist) h.video_playlist = m.videoPlaylist;
+    }
+  }
+  return hits;
+}
+
 function rowToHit(r: PgRow): VectorHit {
   return {
     uri: r.uri,

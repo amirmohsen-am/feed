@@ -170,11 +170,26 @@
   font-weight: 600;
 }
 
-/* Swipe message rendered in the chat: a verdict tag above a branch-style card
-   showing the reacted-to post. */
+/* Swipe message rendered in the chat: a verdict tag above the reacted-to post,
+   rendered through the shared PostCard folded to a compact preview. */
 .cur-swipe-card {
   align-items: stretch !important;
   gap: 6px;
+}
+/* Drop the feed's centering margin + width cap so the card fills the message
+   column (the swipe card's own gap spaces it under the verdict tag), and swap
+   the feed's white for the app's paper tone — pure white pops too hard against
+   the chat pane's darker paper background. */
+.cur-swipe-card .cur-post-card {
+  margin: 0;
+  max-width: none;
+  background: var(--paper);
+}
+.cur-swipe-card .cur-post-fold-toggle {
+  background: var(--paper);
+}
+.cur-swipe-card .cur-post-fold-toggle:hover {
+  background: var(--aurora-deep);
 }
 .cur-swipe-card-tag {
   align-self: flex-start;

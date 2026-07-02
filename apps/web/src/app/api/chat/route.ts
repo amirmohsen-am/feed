@@ -12,7 +12,11 @@ import {
 } from "@/lib/pg";
 import { ensureEnvFromSecret } from "@/lib/secrets";
 import { logLlmCall } from "@/lib/llm-log";
-import { hydratePostByUri, type VectorHit } from "@/lib/vector-search";
+import {
+  hydratePostByUri,
+  hydratePostsByUris,
+  type VectorHit,
+} from "@/lib/vector-search";
 import { normalizeRankingBias } from "@/lib/defaults";
 import type { MechanicalFilters } from "@/lib/types";
 import { buildFeedToolCall, type FeedToolArgs } from "@/lib/feed-tool-call";
@@ -192,6 +196,60 @@ function toChatSourcePost(hit: VectorHit): ChatSourcePost {
     author_handle: hit.author_handle,
     author_display_name: hit.author_display_name,
   };
+}
+
+// Swipe turns are stored as "⟦swipe:<verdict>:<uri>⟧ <reason>…" (see
+// useBranchController.submitTune). The transcript only carries the URI, so on
+// reload the UI needs the posts re-hydrated to render them as full cards.
+const SWIPE_TOKEN_RE = /^⟦swipe:(?:approve|reject):(.+?)⟧/;
+
+// Full post payload in the same shape the feed endpoints send (the client's
+// `Post` type), so the chat renders swiped posts with the same PostCard.
+function toChatPost(h: VectorHit) {
+  return {
+    uri: h.uri,
+    text: h.text,
+    author_did: h.did,
+    author_handle: h.author_handle,
+    author_display_name: h.author_display_name,
+    author_avatar_cid: h.author_avatar_cid,
+    score: h.vector_score,
+    like_nsfw: h.like_nsfw,
+    indexed_at: h.created_at,
+    like_count: h.like_count ?? 0,
+    repost_count: h.repost_count ?? 0,
+    reply_count: h.reply_count ?? 0,
+    quote_count: h.quote_count ?? 0,
+    external_uri: h.external_uri,
+    external_title: h.external_title,
+    external_desc: h.external_desc,
+    external_thumb: h.external_thumb,
+    quote_uri: h.quote_uri,
+    has_images: h.has_images,
+    has_video: h.has_video,
+    image_count: h.image_count,
+    image_alts: h.image_alts,
+    image_urls: h.image_urls,
+    video_thumbnail: h.video_thumbnail,
+    video_playlist: h.video_playlist,
+    is_reply: h.is_reply,
+    reply_parent_uri: h.reply_parent_uri,
+  };
+}
+
+async function hydrateSwipedPosts(
+  messages: { role: string; content: string }[]
+): Promise<Record<string, ReturnType<typeof toChatPost>>> {
+  const uris = [
+    ...new Set(
+      messages
+        .filter((m) => m.role === "user")
+        .map((m) => m.content.match(SWIPE_TOKEN_RE)?.[1])
+        .filter((u): u is string => !!u)
+    ),
+  ];
+  const hits = await hydratePostsByUris(uris).catch(() => [] as VectorHit[]);
+  return Object.fromEntries(hits.map((h) => [h.uri, toChatPost(h)]));
 }
 
 export async function POST(req: NextRequest) {
@@ -448,10 +506,13 @@ export async function GET(req: NextRequest) {
   const tFeed = performance.now();
   const messages = await getChatMessages(feedId);
   let sourcePost: ChatSourcePost | null = null;
-  if (feed.source_post_uri) {
-    const hit = await hydratePostByUri(feed.source_post_uri).catch(() => null);
-    if (hit) sourcePost = toChatSourcePost(hit);
-  }
+  const [sourceHit, swipedPosts] = await Promise.all([
+    feed.source_post_uri
+      ? hydratePostByUri(feed.source_post_uri).catch(() => null)
+      : Promise.resolve(null),
+    hydrateSwipedPosts(messages),
+  ]);
+  if (sourceHit) sourcePost = toChatSourcePost(sourceHit);
   const tMessages = performance.now();
   console.log(
     `[timing] GET /api/chat auth=${(tAuth - t0).toFixed(0)}ms ` +
@@ -460,5 +521,5 @@ export async function GET(req: NextRequest) {
       `total=${(tMessages - t0).toFixed(0)}ms feedId=${feedId} count=${messages.length}`
   );
 
-  return NextResponse.json({ messages, feed, sourcePost });
+  return NextResponse.json({ messages, feed, sourcePost, swipedPosts });
 }
