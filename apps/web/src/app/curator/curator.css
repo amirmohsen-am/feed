@@ -2302,6 +2302,139 @@
   font-size: 12px;
   color: var(--text-muted, #888);
 }
+
+/* ── Removal sweep ("less like this" revalidation) ─────────────────
+   Posts the updated reranker rejected collapse into slim receipt rows.
+   The collapse is the CSS-grid 1fr → 0fr trick so arbitrary card heights
+   animate without JS measurement; RemovedPostRow staggers each row via
+   inline transition-delay, then swaps to the receipt at transition end. */
+.cur-removed-collapse{
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.45s var(--ease-out), opacity 0.4s ease;
+}
+.cur-removed-collapse.closing{
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.cur-removed-collapse-inner{
+  overflow: hidden;
+  min-height: 0;
+}
+/* Receipt row: matches the card column (same max-width/centering as
+   .cur-post-card) and borrows the swipe-left red so the mark reads as the
+   outcome of that gesture. */
+.cur-removed-row{
+  max-width: calc(600px * 0.85);
+  width: 100%;
+  margin: 10px auto;
+}
+.cur-removed-receipt{
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 14px;
+  border: 1px dashed rgba(192, 80, 80, 0.35);
+  border-radius: 999px;
+  background: rgba(192, 80, 80, 0.05);
+  font-family: var(--rf-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: #c05050;
+  animation: cur-removed-in 0.35s var(--ease-out) both;
+}
+.cur-removed-x{
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1.5px solid #c05050;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1;
+}
+.cur-removed-label{
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cur-removed-peek-btn{
+  margin-left: auto;
+  flex-shrink: 0;
+  font-family: var(--rf-mono);
+  font-size: 11px;
+  color: var(--aurora-deep);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cur-removed-peek-btn:hover{ color: var(--aurora-deeper); }
+/* Peek: the removed post expands back open under the receipt, dimmed —
+   a look, not a restore. Same grid collapse trick, driven by .open. */
+.cur-removed-peek{
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.4s var(--ease-out);
+}
+.cur-removed-peek.open{ grid-template-rows: 1fr; }
+.cur-removed-peek-inner{
+  overflow: hidden;
+  min-height: 0;
+}
+.cur-removed-peek-inner .cur-post-card{
+  opacity: 0.55;
+  filter: grayscale(0.35);
+  margin-top: 8px;
+  margin-bottom: 2px;
+}
+@keyframes cur-removed-in{
+  from{ opacity: 0; transform: translateY(-4px); }
+  to{ opacity: 1; transform: none; }
+}
+/* Sweep toast: floats above the capsule, informational only (recovery lives
+   on the per-post receipts), auto-dismissed by FeedView. */
+.cur-removed-toast{
+  position: fixed;
+  left: 50%;
+  bottom: calc(84px + env(safe-area-inset-bottom) + var(--cap-kb-offset, 0px));
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--hair-strong);
+  background: #fff;
+  color: var(--ink);
+  font-size: 12.5px;
+  white-space: nowrap;
+  box-shadow: 0 10px 30px rgba(24, 22, 20, 0.16);
+  animation: cur-removed-in 0.3s var(--ease-out) both;
+}
+.cur-removed-toast-x{
+  width: 15px; height: 15px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1.5px solid #c05050;
+  color: #c05050;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  line-height: 1;
+}
+@media (prefers-reduced-motion: reduce){
+  .cur-removed-collapse,
+  .cur-removed-peek{ transition: none; }
+  .cur-removed-receipt,
+  .cur-removed-toast{ animation: none; }
+}
 /* Row that holds the pipeline loader on the left and the Refresh button on the
    right. When the loader is idle it renders nothing, so the row carries the
    bottom spacing and the Refresh button sits alone, still right-aligned. */

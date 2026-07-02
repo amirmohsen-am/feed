@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { searchPosts } from "../vector-search";
-import { rerank } from "../rerank";
+import { rerank, type RerankCandidate } from "../rerank";
 import { DEFAULT_RERANK_PROMPT } from "../defaults";
 import { query } from "./connection";
 import { rowToFeed, type DbFeed } from "./feeds";
@@ -214,6 +214,79 @@ export async function getFeedPreviewPosts(
   );
   if (seenFiltered > 0) opts?.onSeenFiltered?.(seenFiltered);
   return visible.slice(0, limit);
+}
+
+// --- Live-post revalidation (swipe-left "less like this") ---
+// After a tune commits a config change, the tail reload recomputes only the
+// posts past the commit point — the frozen prefix the user is reading keeps
+// posts the updated reranker would now reject. The client echoes those posts
+// back (see the stream route's `revalidate` body field) and this re-judges
+// them against the CURRENT rerank prompt, returning the URIs to remove.
+
+export interface RevalidateCandidate extends RerankCandidate {
+  uri: string;
+}
+
+// Appended to the feed's rerank prompt for the revalidation call. The model
+// tends to include every candidate in its ranking regardless of instructions
+// to omit (the output contract asks for a sorted list), so the working verdict
+// signal is the SCORE: offenders of a fresh "less like this" come back very
+// low (~10) while fine posts stay high (~90). The suffix pins that semantic
+// and REVALIDATE_SCORE_FLOOR draws the removal line, deliberately low so only
+// clear offenders fall under it — removing a visible post is disruptive.
+const REVALIDATE_PROMPT_SUFFIX = `
+
+The candidates below are posts ALREADY SHOWING in the user's feed, selected before the criteria above were last refined. Re-score each against the current criteria: a post that clearly matches something the user asked to see less of must score very low (under 20); a post that still fits the feed keeps a high score. When unsure, score high — removing a visible post is disruptive, so only clear offenders should score low.`;
+
+const REVALIDATE_SCORE_FLOOR = 35;
+
+/**
+ * Re-judge already-served posts against the feed's current rerank prompt.
+ * Returns the URIs the reranker would no longer surface (omitted from the
+ * ranking or scored under the floor). Best-effort: any failure returns []
+ * (remove nothing) — a broken sweep must never break the tail reload it
+ * rides along with.
+ */
+export async function revalidateFrozenPosts(
+  feed: DbFeed,
+  candidates: RevalidateCandidate[]
+): Promise<string[]> {
+  if (candidates.length === 0 || feed.subqueries.length === 0) return [];
+  const systemPrompt =
+    (feed.rerank_prompt.trim().length > 0
+      ? feed.rerank_prompt
+      : DEFAULT_RERANK_PROMPT) + REVALIDATE_PROMPT_SUFFIX;
+  try {
+    // No images and no extended thinking: the sweep races the full tail
+    // recompute and should land first so removals animate while the tail
+    // loader is still up. Text + image alts carry enough signal to spot
+    // clear offenders.
+    const r = await rerank({
+      query: feed.subqueries.join(" | "),
+      candidates,
+      topK: candidates.length,
+      systemPrompt,
+      model: feed.rerank_model,
+      feedId: feed.id,
+    });
+    const keptAbove = new Set(
+      r.kept.filter((k) => k.score >= REVALIDATE_SCORE_FLOOR).map((k) => k.i)
+    );
+    const removed = candidates
+      .map((c, i) => (keptAbove.has(i) ? null : c.uri))
+      .filter((u): u is string => u !== null);
+    console.log(
+      `[revalidate] feedId=${feed.id} candidates=${candidates.length} ` +
+        `removed=${removed.length} ms=${r.ms_rerank}`
+    );
+    return removed;
+  } catch (e) {
+    console.warn(
+      "[revalidate] failed:",
+      e instanceof Error ? e.message : String(e)
+    );
+    return [];
+  }
 }
 
 /**
