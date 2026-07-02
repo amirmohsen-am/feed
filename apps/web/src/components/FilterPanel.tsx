@@ -735,7 +735,9 @@ function SubqueryEditor({
               aria-label="Remove subquery"
               title="Remove"
             >
-              ×
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
             </button>
           </div>
         )
@@ -761,8 +763,12 @@ function SubqueryEditor({
             className="ctrl-subquery-add"
             onClick={add}
             disabled={!draft.trim()}
+            aria-label="Add subquery"
+            title="Add"
           >
-            +
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
           </button>
         </div>
       )}

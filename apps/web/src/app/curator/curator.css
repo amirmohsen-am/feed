@@ -3104,8 +3104,9 @@
   gap: 6px;
 }
 .ctrl-subquery-row{
+  position: relative;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 6px;
 }
 .ctrl-subquery-text{
@@ -3114,7 +3115,7 @@
   background: #fff;
   border: 1px solid var(--hair-strong);
   border-radius: 10px;
-  padding: 8px 10px;
+  padding: 8px 32px 8px 10px;
   font-family: var(--rf-body);
   font-size: 13px;
   line-height: 1.35;
@@ -3139,23 +3140,49 @@
 }
 .ctrl-subquery-input::placeholder{ color: var(--ink-4); }
 .ctrl-subquery-input:focus{ border-color: var(--aurora-deep); }
-.ctrl-subquery-remove,
+/* Remove: small circular ghost icon pinned to the card's top-right corner,
+   so it stays put no matter how many lines the subquery wraps to. */
+.ctrl-subquery-remove{
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  color: var(--ink-4);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+.ctrl-subquery-row:hover .ctrl-subquery-remove,
+.ctrl-subquery-remove:focus-visible{
+  opacity: 1;
+}
+.ctrl-subquery-remove:hover{
+  color: #952424;
+  background: rgba(200,80,80,0.12);
+}
+@media (hover: none){
+  .ctrl-subquery-remove{ opacity: 1; }
+}
 .ctrl-subquery-add{
   flex-shrink: 0;
   width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border: 1px solid var(--hair-strong);
-  border-radius: 10px;
+  border-radius: 50%;
   color: var(--ink-4);
-  font-size: 16px;
-  line-height: 1;
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
-}
-.ctrl-subquery-remove:hover{
-  border-color: rgba(200,80,80,0.6);
-  color: #952424;
-  background: rgba(200,80,80,0.08);
 }
 .ctrl-subquery-add:hover:not(:disabled){
   border-color: var(--aurora-deep);
