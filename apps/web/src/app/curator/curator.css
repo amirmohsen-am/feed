@@ -513,7 +513,10 @@
 .cur-feed-posts{
   flex: 1;
   overflow-y: auto;
-  padding: 28px 32px;
+  /* Top padding as a var: the sticky branch Back bar must pull itself up by
+     exactly this amount to reach the visible top (see .cur-branch-back-pinned). */
+  --cur-feed-pad-top: 28px;
+  padding: var(--cur-feed-pad-top) 32px;
   min-width: 0;
   background: var(--paper);
   border-right: 1px solid var(--hair);
@@ -1763,7 +1766,13 @@
      hairline so scrolled posts vanish cleanly under it instead of bleeding
      past a compact pill. */
   position: sticky;
-  top: 0;
+  /* Sticky insets resolve against the scroller's content edge, so with
+     .cur-feed-posts's top padding a plain top:0 pins the bar 28px below the
+     visible top, with posts bleeding through the band above it. Pull it up by
+     the scroller's own padding so it hugs the pane's top edge. (Mobile
+     overrides this: the document scrolls there, so the bar offsets below the
+     fixed topbar instead.) */
+  top: calc(-1 * var(--cur-feed-pad-top, 0px));
   z-index: 5;
   width: 100%;
   border-bottom: 1px solid var(--hair);
