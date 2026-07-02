@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import SwipeableCard from "@/components/SwipeableCard";
+import RemovedPostRow from "@/components/RemovedPostRow";
 import SwipeFollowupCard from "@/components/SwipeFollowupCard";
 import SwipeApproveCard from "@/components/SwipeApproveCard";
 import BranchTopicsHeader from "@/components/BranchTopicsHeader";
@@ -115,6 +116,23 @@ function FeedViewImpl(
   // posts past `tailCommitIndex` are recomputed. Null when not in a tail load.
   const [tailCommitIndex, setTailCommitIndex] = useState<number | null>(null);
 
+  // Posts the post-tune revalidation sweep removed, uri → stagger index for the
+  // batch collapse animation. They stay in `posts` (so tail splices keep
+  // working) but render as receipt rows (RemovedPostRow) instead of cards.
+  // Cleared by any full load — receipts persist until the next refresh.
+  const [removedUris, setRemovedUris] = useState<Map<string, number>>(new Map());
+  const removedUrisRef = useRef(removedUris);
+  useEffect(() => { removedUrisRef.current = removedUris; }, [removedUris]);
+  // Mirror of branch.swipedUris readable from loadPosts (declared before the
+  // branch controller exists); synced in an effect below the controller.
+  const swipedUrisRef = useRef<Set<string>>(new Set());
+  // Count for the transient "N similar posts removed" toast. 0 = hidden.
+  const [removedToast, setRemovedToast] = useState(0);
+  const removedToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (removedToastTimer.current) clearTimeout(removedToastTimer.current);
+  }, []);
+
   // ── Local pipeline state (each FeedView owns its own loader so a nested
   //    branch's progress never collides with its parent's) ──
   const [pipelineStage, setPipelineStage] = useState<PipelineStage>("idle");
@@ -154,6 +172,52 @@ function FeedViewImpl(
     postsRef.current = posts;
     onPostsChange?.(posts);
   }, [posts, onPostsChange]);
+
+  // The feed's inner container — the fold/lift choreography scopes its DOM
+  // queries to it, and the removal sweep reads card geometry through it.
+  const feedInnerRef = useRef<HTMLDivElement | null>(null);
+
+  // Apply a revalidation verdict: turn frozen-prefix posts the updated reranker
+  // rejected into receipt rows, staggered in feed order, and flash the toast.
+  // Posts fully above the viewport are left alone — they are already read, and
+  // collapsing content above the reading position would shift the scroll under
+  // the user.
+  const applyRemovals = useCallback((uris: string[], frozen: Post[]) => {
+    const frozenIndex = new Map(frozen.map((p, i) => [p.uri, i]));
+    const pane = feedInnerRef.current?.closest(".cur-feed-posts");
+    const topEdge = pane ? Math.max(pane.getBoundingClientRect().top, 0) : 0;
+    const removable = uris
+      .filter(
+        (u) =>
+          frozenIndex.has(u) &&
+          !removedUrisRef.current.has(u) &&
+          !swipedUrisRef.current.has(u)
+      )
+      .filter((u) => {
+        const el = feedInnerRef.current?.querySelector(
+          `[data-post-uri="${CSS.escape(u)}"]`
+        );
+        if (!el) return true;
+        return el.getBoundingClientRect().bottom >= topEdge + 8;
+      })
+      .sort((a, b) => (frozenIndex.get(a) ?? 0) - (frozenIndex.get(b) ?? 0));
+    if (removable.length === 0) return;
+    setRemovedUris((prev) => {
+      const next = new Map(prev);
+      removable.forEach((u, i) => next.set(u, i));
+      return next;
+    });
+    setRemovedToast(removable.length);
+    if (removedToastTimer.current) clearTimeout(removedToastTimer.current);
+    removedToastTimer.current = setTimeout(() => setRemovedToast(0), 5200);
+    // Suppress the removed posts on future serves — same best-effort path a
+    // swipe-left reject uses (see useBranchController.markRejected).
+    void authedFetch("/api/seen", {
+      method: "POST",
+      body: JSON.stringify({ feedId, uris: removable }),
+      suppressErrorToast: true,
+    }).catch(() => {});
+  }, [feedId]);
 
   // Register posts for shared quote + AI-label hydration.
   useEffect(() => { trackPosts(posts); }, [posts, trackPosts]);
@@ -201,9 +265,11 @@ function FeedViewImpl(
       setTailCommitIndex(frozen.length - 1);
     } else {
       // Full load generation: clear per-fetch impression dedup so the incoming
-      // results are all freshly trackable.
+      // results are all freshly trackable. Receipt rows from a prior removal
+      // sweep end with the reload ("until next refresh").
       seenTracker.reset();
       setTailCommitIndex(null);
+      setRemovedUris(new Map());
       setPosts([]);
       setPostCount(0);
     }
@@ -222,10 +288,31 @@ function FeedViewImpl(
     try {
       // Tail recomputes POST the frozen prefix as excludeUris; everything else is
       // a plain GET (cache-eligible, or ?refresh=1 to force a fresh snapshot).
+      // The frozen posts are also echoed back as `revalidate` candidates: the
+      // tune that triggered this tail reload may have turned some of them
+      // unwanted, so the server re-judges them against the updated rerank
+      // prompt and streams back the URIs to remove (event "revalidated").
+      const revalidate = isTail
+        ? frozen
+            .filter(
+              (p) =>
+                !swipedUrisRef.current.has(p.uri) &&
+                !removedUrisRef.current.has(p.uri)
+            )
+            .map((p) => ({
+              uri: p.uri,
+              text: p.text,
+              author_handle: p.author_handle,
+              like_count: p.like_count,
+              repost_count: p.repost_count,
+              image_alts: p.image_alts,
+              external_title: p.external_title,
+            }))
+        : [];
       const res = isTail
         ? await authedFetch("/api/feed-preview/stream", {
             method: "POST",
-            body: JSON.stringify({ feedId, excludeUris }),
+            body: JSON.stringify({ feedId, excludeUris, revalidate }),
           })
         : await authedFetch(
             `/api/feed-preview/stream?feedId=${feedId}${force ? "&refresh=1" : ""}`
@@ -267,6 +354,7 @@ function FeedViewImpl(
               rerank_prompt?: string;
               rerank_model?: string;
               rerank_thinking_enabled?: boolean;
+              removed_uris?: string[];
               message?: string;
             };
             if (ev.event === "stage" && ev.stage) {
@@ -310,6 +398,11 @@ function FeedViewImpl(
                 rerank_model: ev.rerank_model,
                 rerank_thinking_enabled: ev.rerank_thinking_enabled,
               });
+            } else if (ev.event === "revalidated") {
+              const uris = Array.isArray(ev.removed_uris)
+                ? ev.removed_uris.filter((u): u is string => typeof u === "string")
+                : [];
+              if (uris.length > 0) applyRemovals(uris, frozen);
             } else if (ev.event === "error") {
               console.warn("[feed-preview/stream] error:", ev.message);
             }
@@ -326,7 +419,7 @@ function FeedViewImpl(
       setTailCommitIndex(null);
       onLoaded?.();
     }
-  }, [feedId, isRoot, setActivePostCount, onConfigLoaded, onLoaded, seenTracker]);
+  }, [feedId, isRoot, setActivePostCount, onConfigLoaded, onLoaded, seenTracker, applyRemovals]);
 
   // Keep the latest loadPosts reachable from the stable handle without rebuilding
   // it (rebuilding would re-register the leaf on every reload). Updated in an
@@ -357,16 +450,12 @@ function FeedViewImpl(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // The feed's inner container — the fold/lift choreography scopes its DOM queries
-  // to it. Owned here (not by the controller) so the render reads a plain local
-  // ref, and the controller's return stays ref-free.
-  const feedInnerRef = useRef<HTMLDivElement | null>(null);
-
   // Swipe-to-branch ("dive deeper") + swipe-to-tune ("less like this") state
   // machine, plus the fold/lift choreography that pins the source post as the
   // inline branch opens. The animation mechanics live in useBranchController so
   // this component stays "load + render a feed".
   const branch = useBranchController({ feedId, isRoot, postCount, feedInnerRef, loadPosts, onTune });
+  useEffect(() => { swipedUrisRef.current = branch.swipedUris; }, [branch.swipedUris]);
 
   // ── Embed-mode availability probe (mirrors count up only when root) ──
   const [unavailableUris, setUnavailableUris] = useState<Set<string>>(() => new Set());
@@ -520,8 +609,16 @@ function FeedViewImpl(
           })();
           if (post.uri === excludeUri) return null;
           if (hideUnavailable && unavailableUris.has(post.uri)) return null;
+          const embedRemovedIdx = removedUris.get(post.uri);
+          if (embedRemovedIdx !== undefined) {
+            return (
+              <div key={post.uri} className="cur-post-item cur-post-item-removed">
+                <RemovedPostRow post={post} staggerIndex={embedRemovedIdx} />
+              </div>
+            );
+          }
           return (
-            <div key={post.uri} ref={seenTracker.register(post.uri)} className="cur-post-item cur-post-item-embed" style={{ animationDelay: `${Math.min(idx, 6) * 0.05}s` }}>
+            <div key={post.uri} ref={seenTracker.register(post.uri)} data-post-uri={post.uri} className="cur-post-item cur-post-item-embed" style={{ animationDelay: `${Math.min(idx, 6) * 0.05}s` }}>
               <div className="cur-post-embed-wrap" data-bsky-uri={post.uri}>
                 <div className="cur-post-embed-frame">
                   {post.is_reply && (
@@ -575,6 +672,16 @@ function FeedViewImpl(
           .filter((post) => !branch.swipedUris.has(post.uri))
           .filter((post) => !branch.othersCleared || post.uri === branch.committedBranchUri)
           .map((post, idx) => {
+            // Removed by the revalidation sweep: the card collapses into a
+            // receipt row (no swipe/branch affordances, no impression tracking).
+            const removedIdx = removedUris.get(post.uri);
+            if (removedIdx !== undefined) {
+              return (
+                <div key={post.uri} className="cur-post-item cur-post-item-removed">
+                  <RemovedPostRow post={post} staggerIndex={removedIdx} />
+                </div>
+              );
+            }
             const sourceUri = branch.committedBranchUri ?? branch.pendingBranch?.post?.uri ?? branch.returningSourceUri ?? null;
             const isBranchSource = post.uri === sourceUri;
             const isCommittedSource = branch.committedBranchUri === post.uri;
@@ -602,7 +709,7 @@ function FeedViewImpl(
                     Back
                   </button>
                 )}
-                <div ref={seenTracker.register(post.uri)} className={`cur-post-item${isBranchSource ? " cur-post-item-source" : " cur-post-item-other"}`} style={{ animationDelay: `${Math.min(idx, 6) * 0.05}s` }}>
+                <div ref={seenTracker.register(post.uri)} data-post-uri={post.uri} className={`cur-post-item${isBranchSource ? " cur-post-item-source" : " cur-post-item-other"}`} style={{ animationDelay: `${Math.min(idx, 6) * 0.05}s` }}>
                   <SwipeableCard
                     disabled={isCommittedSource}
                     onSwipe={(v) => branch.handleCardSwipe(post, v)}
@@ -691,6 +798,17 @@ function FeedViewImpl(
             topK={25}
           />
           <p className="cur-feed-tail-loading-note">Updating what comes next</p>
+        </div>
+      )}
+
+      {/* Removal sweep toast: informational only (recovery lives on the
+          per-post receipts), auto-dismisses. */}
+      {removedToast > 0 && (
+        <div className="cur-removed-toast" role="status">
+          <span className="cur-removed-toast-x" aria-hidden>✕</span>
+          {removedToast === 1
+            ? "1 similar post removed"
+            : `${removedToast} similar posts removed`}
         </div>
       )}
 

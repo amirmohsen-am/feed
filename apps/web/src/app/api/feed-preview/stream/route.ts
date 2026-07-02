@@ -4,7 +4,9 @@ import { enforceRateLimit, LLM_RULES } from "@/lib/rate-limit";
 import {
   getFeedForUser,
   getFeedPreviewPosts,
+  revalidateFrozenPosts,
   type PreviewStageEvent,
+  type RevalidateCandidate,
 } from "@/lib/pg";
 
 /**
@@ -37,14 +39,27 @@ export async function GET(req: NextRequest) {
  * (posts already read + the look-ahead buffer) as `excludeUris`; the server
  * recomputes the snapshot from the feed's current config and returns only the
  * posts NOT in that prefix, so the client can splice the tail in place without
- * disturbing the read position. Body: { feedId, excludeUris?, refresh? }.
+ * disturbing the read position.
+ *
+ * `revalidate` (optional) carries the frozen-prefix posts themselves. They are
+ * re-judged against the feed's CURRENT rerank prompt in parallel with the tail
+ * recompute, and the URIs the reranker would no longer surface stream out as a
+ * `{"event":"revalidated","removed_uris":[…]}` line (usually before "done" —
+ * the sweep is one small rerank call vs the tail's full pipeline).
+ *
+ * Body: { feedId, excludeUris?, revalidate?, refresh? }.
  */
 export async function POST(req: NextRequest) {
   const limited = enforceRateLimit(req, "feed-preview", LLM_RULES);
   if (limited) return limited;
   const auth = await requireAuth();
 
-  let body: { feedId?: number; excludeUris?: string[]; refresh?: boolean } = {};
+  let body: {
+    feedId?: number;
+    excludeUris?: string[];
+    revalidate?: unknown;
+    refresh?: boolean;
+  } = {};
   try {
     body = await req.json();
   } catch {
@@ -57,13 +72,51 @@ export async function POST(req: NextRequest) {
   return streamPreview(feedId, auth.userId, {
     forceFresh: body.refresh === true,
     excludeUris,
+    revalidate: sanitizeRevalidate(body.revalidate),
   });
+}
+
+// The revalidate posts are client-echoed content headed into an LLM call —
+// clamp counts and lengths, keep only the fields the reranker reads, and never
+// forward client-supplied image URLs (the model would fetch them).
+const REVALIDATE_MAX_POSTS = 60;
+function sanitizeRevalidate(raw: unknown): RevalidateCandidate[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RevalidateCandidate[] = [];
+  for (const item of raw.slice(0, REVALIDATE_MAX_POSTS)) {
+    if (!item || typeof item !== "object") continue;
+    const p = item as Record<string, unknown>;
+    if (typeof p.uri !== "string" || !p.uri.startsWith("at://")) continue;
+    if (typeof p.text !== "string") continue;
+    out.push({
+      uri: p.uri.slice(0, 400),
+      text: p.text.slice(0, 3000),
+      author_handle:
+        typeof p.author_handle === "string" ? p.author_handle.slice(0, 100) : null,
+      like_count: typeof p.like_count === "number" ? p.like_count : 0,
+      repost_count: typeof p.repost_count === "number" ? p.repost_count : 0,
+      image_alts: Array.isArray(p.image_alts)
+        ? p.image_alts
+            .filter((a): a is string => typeof a === "string")
+            .slice(0, 4)
+            .map((a) => a.slice(0, 500))
+        : [],
+      image_urls: [],
+      external_title:
+        typeof p.external_title === "string" ? p.external_title.slice(0, 300) : null,
+    });
+  }
+  return out;
 }
 
 async function streamPreview(
   feedId: number,
   userId: string,
-  opts: { forceFresh?: boolean; excludeUris?: string[] }
+  opts: {
+    forceFresh?: boolean;
+    excludeUris?: string[];
+    revalidate?: RevalidateCandidate[];
+  }
 ): Promise<Response> {
   if (!feedId) {
     return new Response(
@@ -109,6 +162,20 @@ async function streamPreview(
       // the snapshot is built.
       let seenFiltered = 0;
 
+      // Live-post sweep, raced against the tail recompute below. Emits its own
+      // event the moment verdicts land so the client can animate removals while
+      // the tail loader is still up. revalidateFrozenPosts never throws.
+      const revalidate = opts.revalidate ?? [];
+      const revalidatePromise =
+        revalidate.length > 0
+          ? revalidateFrozenPosts(feed, revalidate)
+              .then((uris) => {
+                send({ event: "revalidated", removed_uris: uris });
+              })
+              // enqueue throws if the client disconnected mid-stream.
+              .catch(() => {})
+          : null;
+
       try {
         const posts = await getFeedPreviewPosts(feedId, 25, onStage, {
           forceFresh,
@@ -137,6 +204,9 @@ async function streamPreview(
         console.warn("[feed-preview/stream] error:", message);
         send({ event: "error", message });
       } finally {
+        // Don't close the stream under a still-running sweep (its verdicts may
+        // land after "done" when the tail was a cache hit).
+        if (revalidatePromise) await revalidatePromise;
         controller.close();
       }
     },

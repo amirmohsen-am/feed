@@ -51,6 +51,20 @@ async function client(): Promise<Anthropic> {
   return _client;
 }
 
+// The candidate fields the reranker actually reads (trimCandidate + the image
+// attach loop). VectorHit satisfies this; the revalidation path passes posts
+// echoed back from the client instead of fresh vector hits.
+export type RerankCandidate = Pick<
+  VectorHit,
+  | "text"
+  | "author_handle"
+  | "like_count"
+  | "repost_count"
+  | "image_alts"
+  | "image_urls"
+  | "external_title"
+>;
+
 interface RerankedItem {
   i: number;
   score: number;
@@ -62,7 +76,7 @@ interface RerankResult {
   ms_rerank: number;
 }
 
-function trimCandidate(h: VectorHit, i: number) {
+function trimCandidate(h: RerankCandidate, i: number) {
   return {
     i,
     text: h.text,
@@ -97,7 +111,7 @@ interface RerankPhaseInfo {
 
 export async function rerank(opts: {
   query: string;
-  candidates: VectorHit[];
+  candidates: RerankCandidate[];
   topK: number;
   systemPrompt: string;
   // Override the model for this call. Defaults to RERANK_MODEL.
