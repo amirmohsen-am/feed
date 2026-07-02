@@ -87,12 +87,22 @@ The pgvector HNSW index is built once out-of-band (`CREATE INDEX CONCURRENTLY`, 
 
 # Conventions
 
-- **Fresh worktrees have no `node_modules`.** Don't check for it or skip steps because deps are missing — always run `npm install` first as part of any verify step (near-noop when current; pre-approved, never ask). Bundle it in:
+- **Fresh worktrees: run `./scripts/bootstrap-worktree.sh` first.** It installs deps for both apps and runs `npx next typegen` (without it, `tsc --noEmit` fails on landing.tsx png imports until a dev server has run once). Pre-approved, never ask. For one-off checks the inline forms still work:
   - Web typecheck: `cd apps/web && npm install && npx tsc --noEmit` · lint: `... && npm run lint`
   - Indexer typecheck: `cd apps/jetstream-indexer && npm install && npm run typecheck`
 - **Landing copy & design:** never use italics (emphasis is color only; `em` is styled `font-style: normal`), and never use dashes ("-", "—") in user-facing copy — rephrase with commas or new sentences.
 - API routes under `apps/web/src/app/api/*` use `requireAuth(req)` — except the intentionally public `/api/introspect/*`, `/api/subscribe`, `/api/feedgen/info`, and the xrpc / `did.json` endpoints.
 - Curator sidebar loads feeds from Postgres (`/api/feeds`, filtered to non-empty topics/keywords). Postgres is the only source of truth — no client-side cache. Feed switching is non-blocking; no auto-polling (user clicks **Refresh**).
+
+# Dev testing the curator UI
+
+A fresh anonymous session starts with an empty Home feed, so the onboarding surface shows and the Tune panel is unreachable (the topbar Tune button needs a feed with topics). To get a working feed in one step, import the template config (`apps/web/src/lib/template-feed.ts`) from the browser session:
+
+```js
+await fetch('/api/feeds/template', { method: 'POST' })  // then reload
+```
+
+This fills the session's Home feed (or `{feedId}` in the JSON body) with starter topics + rerank prompt, which also makes onboarding disappear. Rows land in prod feed-db (fine — throwaway anon sessions already accumulate). The import is per anonymous session: a fresh browser profile means a fresh empty Home feed, so seed once per session — or use a persistent browser profile (e.g. `playwright-cli open --persistent`) to keep the session cookie and the seeded feed across runs. The desktop/mobile feature tours never auto-run in dev; `NEXT_PUBLIC_SKIP_TOURS=1 npm run dev` additionally disables the mobile swipe demo (and force-skips tours in non-dev builds).
 
 # Secrets
 
