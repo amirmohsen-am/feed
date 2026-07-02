@@ -1,15 +1,14 @@
-// The tool-call payload for one curator turn: what update_feed_config (and/or
-// finalize_feed) set that turn. Persisted on the assistant chat_messages row
-// (tool_calls jsonb) and rendered as the in-chat "feed updated" row. This is NOT
-// a diff — it's what the tool gave us, scoped to the fields the agent chose to
-// set. The Claude context uses role + content only, so this never reaches the
-// model. See DECISIONS.md.
+// The tool-call payload for one curator turn: what update_feed_config set that
+// turn. Persisted on the assistant chat_messages row (tool_calls jsonb) and
+// rendered as the in-chat "feed updated" row. This is NOT a diff — it's what
+// the tool gave us, scoped to the fields the agent chose to set. The Claude
+// context uses role + content only, so this never reaches the model. See
+// DECISIONS.md.
 
 import type { MechanicalFilters } from "./types";
 
 export interface FeedToolCall {
   v: 1;
-  finalize?: boolean;
   name?: string;
   topics?: string[]; // subqueries the agent set
   steer?: string; // rerank_prompt set (may be an empty string = rerank disabled)
@@ -19,7 +18,6 @@ export interface FeedToolCall {
 
 // The fields a turn actually set, as gathered in /api/chat.
 export interface FeedToolArgs {
-  finalize: boolean;
   name?: string;
   subqueries?: string[];
   rerank_prompt?: string;
@@ -95,11 +93,10 @@ function phraseRanking(args: FeedToolArgs): string[] {
   return out;
 }
 
-// Build the stored payload for a turn, or null when the turn set nothing and
-// didn't finalize (a pure chat/question turn gets no row).
+// Build the stored payload for a turn, or null when the turn set nothing
+// (a pure chat/question turn gets no row).
 export function buildFeedToolCall(args: FeedToolArgs): FeedToolCall | null {
   const tc: FeedToolCall = { v: 1 };
-  if (args.finalize) tc.finalize = true;
   if (args.name !== undefined) tc.name = args.name;
   if (args.subqueries !== undefined) tc.topics = args.subqueries;
   if (args.rerank_prompt !== undefined) tc.steer = args.rerank_prompt;
@@ -113,7 +110,7 @@ export function buildFeedToolCall(args: FeedToolArgs): FeedToolCall | null {
   const hasContent =
     tc.name !== undefined || tc.topics !== undefined || tc.steer !== undefined ||
     tc.filters !== undefined || tc.ranking !== undefined;
-  if (!hasContent && !tc.finalize) return null;
+  if (!hasContent) return null;
   return tc;
 }
 
@@ -125,7 +122,10 @@ export function parseFeedToolCall(value: unknown): FeedToolCall | null {
   }
   if (!obj || typeof obj !== "object") return null;
   const tc = obj as FeedToolCall;
-  return tc.v === 1 ? tc : null;
+  if (tc.v !== 1) return null;
+  // Legacy rows from the removed finalize_feed tool could carry finalize:true
+  // with no set fields — drop those instead of rendering an empty row.
+  return feedToolCallHasDetail(tc) ? tc : null;
 }
 
 export function feedToolCallHasDetail(tc: FeedToolCall): boolean {
