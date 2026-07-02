@@ -340,13 +340,17 @@ export default function SwipeableCard({
     firstLeftFired.current = false;
     firstRightFired.current = false;
     // Start hold timer — fires HOLD_DELAY ms after press if no horizontal movement.
-    holdTimerRef.current = setTimeout(() => {
-      if (!draggingRef.current || engagedRef.current) return;
-      holdActiveRef.current = true;
-      setHoldActive(true);
-      onHoldStart?.();
-      draggingRef.current = false; // prevent endDrag from processing a swipe
-    }, HOLD_DELAY);
+    // Only when branching is offered: the hold overlay's sole action is Dive
+    // deeper, so without onBranch a long-press would open a dead dialog.
+    if (onBranch) {
+      holdTimerRef.current = setTimeout(() => {
+        if (!draggingRef.current || engagedRef.current) return;
+        holdActiveRef.current = true;
+        setHoldActive(true);
+        onHoldStart?.();
+        draggingRef.current = false; // prevent endDrag from processing a swipe
+      }, HOLD_DELAY);
+    }
     startXRef.current = e.clientX;
     startYRef.current = e.clientY;
     dxRef.current = 0;
