@@ -632,6 +632,9 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
       });
       if (!res.ok) return;
       const d = await res.json();
+      // A chat exchange counts toward the account gate's refinement
+      // threshold — let the shell re-evaluate (debounced there).
+      window.dispatchEvent(new CustomEvent("ripple:gate-recheck"));
       // User backed out of onboarding while this turn was in flight — drop it.
       if (epoch !== chatEpochRef.current) return;
       const msgs = d.messages || [];

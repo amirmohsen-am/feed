@@ -18,7 +18,14 @@ import FeedbackModal from "@/components/FeedbackModal";
 import EditableFeedName from "@/components/EditableFeedName";
 import PublishFeedModal from "@/components/PublishFeedModal";
 import FeedSearch from "@/components/FeedSearch";
-import { authedFetch } from "@/lib/authed-fetch";
+import ConnectBlueskyModal, { type ConnectVariant } from "@/components/ConnectBlueskyModal";
+import { authedFetch, type ApiErrorDetail } from "@/lib/authed-fetch";
+import type { GateStatus, GateMetric } from "@/lib/account-gate";
+import {
+  takePendingAction,
+  discardPendingAction,
+  type PendingAction,
+} from "@/lib/pending-action";
 import { useResizable } from "./useResizable";
 import {
   CuratorProvider,
@@ -26,6 +33,7 @@ import {
   type SavedFeed,
   type MobileTab,
   type ViewMode,
+  type OpenConnectModalOptions,
 } from "./curatorContext";
 
 const SIDEBAR_W_KEY = "curator:sidebarWidth";
@@ -50,6 +58,13 @@ const ANON_PROFILE: UserProfile = {
 export default function CuratorLayout({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile>(ANON_PROFILE);
   const [bskyOAuthReady, setBskyOAuthReady] = useState(false);
+  // Account gate status (grace period → nudge → wall), hydrated with the
+  // profile and refreshed by the shell's recheck listener.
+  const [gate, setGate] = useState<GateStatus | null>(null);
+  // Action stashed before the OAuth redirect, consumed exactly once when the
+  // user lands back with ?bsky_connected=1 (see mount effect below).
+  const [resumeAction, setResumeAction] = useState<PendingAction | null>(null);
+  const clearResumeAction = useCallback(() => setResumeAction(null), []);
   // Per-user "hide posts I've already seen" preference (users.seen_filter_enabled,
   // default on). Server-persisted (unlike the localStorage display settings),
   // hydrated from /api/user below and pushed back via PATCH on toggle.
@@ -91,6 +106,7 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
             setHideSeenState(row.seen_filter_enabled);
           }
           setBskyOAuthReady(!!data.oauthReady);
+          setGate(data.gate ?? null);
         }
       }
     } catch { /* use anonymous profile */ }
@@ -98,10 +114,19 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
 
   // Fetch user info on mount. If we just returned from Bluesky OAuth,
   // clean up the URL param — the fetch will pick up the linked DID.
+  // The pending-action stash is consumed ONLY on a successful OAuth return;
+  // any other mount discards it (abandoned flow, error, back button), so a
+  // stale action can never fire later.
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      if (params.get("bsky_connected") === "1" || params.get("bsky_error")) {
+      const connected = params.get("bsky_connected") === "1";
+      if (connected) {
+        setResumeAction(takePendingAction());
+      } else {
+        discardPendingAction();
+      }
+      if (connected || params.get("bsky_error")) {
         const url = new URL(window.location.href);
         url.searchParams.delete("bsky_connected");
         url.searchParams.delete("bsky_error");
@@ -119,7 +144,21 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
 
   if (!ready) return <CuratorBoot />;
 
-  return <CuratorShell profile={profile} bskyOAuthReady={bskyOAuthReady} refreshProfile={fetchProfile} hideSeen={hideSeen} setHideSeen={setHideSeen}>{children}</CuratorShell>;
+  return (
+    <CuratorShell
+      profile={profile}
+      bskyOAuthReady={bskyOAuthReady}
+      refreshProfile={fetchProfile}
+      hideSeen={hideSeen}
+      setHideSeen={setHideSeen}
+      gate={gate}
+      setGate={setGate}
+      resumeAction={resumeAction}
+      clearResumeAction={clearResumeAction}
+    >
+      {children}
+    </CuratorShell>
+  );
 }
 
 /** Loading boilerplate shown while the anonymous session/user is provisioned. */
@@ -134,12 +173,24 @@ function CuratorBoot() {
   );
 }
 
+// Copy for the usage nudge, keyed by the first pending threshold.
+const NUDGE_REASONS: Record<GateMetric, string> = {
+  feeds: "You've made a few feeds now. Connect an account so they stay yours.",
+  posts: "You've read a lot of posts here. Connect an account to make Amadi fully yours.",
+  refinements: "You've been tuning your feeds. Connect an account so your work sticks around.",
+  days: "You've been coming back. Connect an account to keep your feeds.",
+};
+
 function CuratorShell({
   profile,
   bskyOAuthReady,
   refreshProfile,
   hideSeen,
   setHideSeen,
+  gate,
+  setGate,
+  resumeAction,
+  clearResumeAction,
   children,
 }: {
   profile: UserProfile;
@@ -147,6 +198,10 @@ function CuratorShell({
   refreshProfile: () => Promise<void>;
   hideSeen: boolean;
   setHideSeen: (b: boolean) => void;
+  gate: GateStatus | null;
+  setGate: (g: GateStatus | null | ((prev: GateStatus | null) => GateStatus | null)) => void;
+  resumeAction: PendingAction | null;
+  clearResumeAction: () => void;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -172,10 +227,24 @@ function CuratorShell({
   const [showFeedback, setShowFeedback] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showPublish, setShowPublish] = useState(false);
+  const [autoPublish, setAutoPublish] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [showBskyConnect, setShowBskyConnect] = useState(false);
-  const [bskyHandle, setBskyHandle] = useState("");
-  const [bskyConnecting, setBskyConnecting] = useState(false);
+  // Connect/create Bluesky modal (chooser). The wall variant is derived from
+  // the gate below and takes precedence over this state.
+  const [connectModal, setConnectModal] = useState<{
+    open: boolean;
+    variant: ConnectVariant;
+    reason?: string;
+    pendingAction?: PendingAction | null;
+  }>({ open: false, variant: "default" });
+  const openConnectModal = useCallback((opts?: OpenConnectModalOptions) => {
+    setConnectModal({
+      open: true,
+      variant: opts?.variant ?? "default",
+      reason: opts?.reason,
+      pendingAction: opts?.pendingAction ?? null,
+    });
+  }, []);
   const [loggingOut, setLoggingOut] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const openTuneRef = useRef<(() => void) | null>(null);
@@ -264,6 +333,83 @@ function CuratorShell({
     }
   }, []);
 
+  // ── Account gate trigger engine ──────────────────────────────────
+  // No polling: the boot /api/user fetch seeds `gate`; interested code
+  // dispatches `ripple:gate-recheck` after threshold-moving actions (feed
+  // create, chat exchange, seen flush) and we refetch, debounced. A 403
+  // `account_wall` from any route flips the client to the wall immediately
+  // (belt and braces for stale tabs).
+  const recheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const onRecheck = () => {
+      if (recheckTimerRef.current) clearTimeout(recheckTimerRef.current);
+      recheckTimerRef.current = setTimeout(async () => {
+        try {
+          const res = await authedFetch("/api/account-gate", { suppressErrorToast: true });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.gate) setGate(data.gate);
+          }
+        } catch { /* next recheck will catch up */ }
+      }, 2000);
+    };
+    const onApiError = (e: Event) => {
+      const detail = (e as CustomEvent<ApiErrorDetail>).detail;
+      if (detail?.code !== "account_wall") return;
+      setGate((prev) =>
+        prev
+          ? { ...prev, phase: "wall", pendingNudges: [] }
+          : {
+              phase: "wall",
+              usage: { feeds: 0, posts: 0, refinements: 0, days: 0 },
+              pendingNudges: [],
+              nudgesShown: 0,
+            }
+      );
+    };
+    window.addEventListener("ripple:gate-recheck", onRecheck);
+    window.addEventListener("ripple:api-error", onApiError);
+    return () => {
+      if (recheckTimerRef.current) clearTimeout(recheckTimerRef.current);
+      window.removeEventListener("ripple:gate-recheck", onRecheck);
+      window.removeEventListener("ripple:api-error", onApiError);
+    };
+  }, [setGate]);
+
+  // Linked users never see the gate; the wall variant overrides the chooser.
+  const wallActive = !profile.blueskyDid && gate?.phase === "wall";
+
+  // Usage nudge: open the modal once per crossed threshold. Marked shown at
+  // DISPLAY time (server-persisted), so a reload can never re-trigger it.
+  useEffect(() => {
+    if (profile.blueskyDid || wallActive) return;
+    if (!gate || gate.phase !== "nudge" || gate.pendingNudges.length === 0) return;
+    if (connectModal.open) return;
+    const keys = gate.pendingNudges;
+    openConnectModal({ variant: "nudge", reason: NUDGE_REASONS[keys[0]] });
+    authedFetch("/api/account-gate", {
+      method: "POST",
+      body: JSON.stringify({ shown: keys }),
+      suppressErrorToast: true,
+    }).catch(() => { /* worst case the nudge shows once more */ });
+    setGate((prev) => (prev ? { ...prev, pendingNudges: [] } : prev));
+  }, [gate, profile.blueskyDid, wallActive, connectModal.open, openConnectModal, setGate]);
+
+  // Publish resume: the stashed publish fires once the profile confirms the
+  // link and the URL is back on the stashed feed. Like/repost/reply/quote
+  // resumes are consumed by FeedActionsProvider via the context.
+  useEffect(() => {
+    if (!resumeAction || resumeAction.type !== "publish") return;
+    if (!profile.blueskyDid) return;
+    if (String(resumeAction.feedId) !== activeFeedId) {
+      clearResumeAction();
+      return;
+    }
+    clearResumeAction();
+    setAutoPublish(true);
+    setShowPublish(true);
+  }, [resumeAction, profile.blueskyDid, activeFeedId, clearResumeAction]);
+
   const reloadFeeds = useCallback(async () => {
     try {
       const res = await authedFetch("/api/feeds");
@@ -349,6 +495,7 @@ function CuratorShell({
       const data = await res.json();
       const id = data.feed?.id ?? data.id;
       if (id == null) return;
+      window.dispatchEvent(new CustomEvent("ripple:gate-recheck"));
       await reloadFeeds();
       router.push(`/curator/${id}`);
     } catch {
@@ -574,6 +721,10 @@ function CuratorShell({
         openPublish: () => setShowPublish(true),
         openTune: () => openTuneRef.current?.(),
         registerOpenTune: (fn: () => void) => { openTuneRef.current = fn; },
+        gate,
+        openConnectModal,
+        resumeAction,
+        clearResumeAction,
       }}
     >
       <div className={`curator-shell${(!configReady || showOnboarding) ? " curator-shell--onboarding" : ""}`}>
@@ -683,123 +834,17 @@ function CuratorShell({
           aria-label="Resize sidebar"
         />
 
-        {/* BLUESKY CONNECT MODAL */}
-        <Dialog open={showBskyConnect} onOpenChange={(open) => { if (!open) { setShowBskyConnect(false); setBskyHandle(""); } }}>
-          <DialogContent className="settings-dialog">
-            <DialogHeader>
-              <DialogTitle style={{ fontFamily: "var(--rf-display)", fontSize: 22, fontWeight: 400, color: "var(--ink)" }}>
-                Connect Bluesky
-              </DialogTitle>
-            </DialogHeader>
-            <Separator />
-            <div className="profile-section">
-              <label className="profile-label" htmlFor="bsky-handle-input">
-                Your Bluesky handle
-              </label>
-              <input
-                id="bsky-handle-input"
-                type="text"
-                placeholder="yourname.bsky.social"
-                value={bskyHandle}
-                onChange={(e) => setBskyHandle(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && bskyHandle.trim()) {
-                    e.preventDefault();
-                    setBskyConnecting(true);
-                    authedFetch("/api/bsky/oauth/authorize", {
-                      method: "POST",
-                      body: JSON.stringify({ handle: bskyHandle.trim().replace(/^@/, "") }),
-                    })
-                      .then((r) => r.json())
-                      .then((data) => { if (data.url) window.location.href = data.url; })
-                      .catch(() => setBskyConnecting(false));
-                  }
-                }}
-                autoFocus
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  background: "#fff",
-                  border: "1px solid var(--hair-strong)",
-                  borderRadius: 8,
-                  color: "var(--ink)",
-                  fontFamily: "var(--rf-body)",
-                  fontSize: 14,
-                  outline: "none",
-                }}
-              />
-              <p style={{ color: "var(--ink-3)", fontFamily: "var(--rf-body)", fontSize: 12, marginTop: 6 }}>
-                You&apos;ll be redirected to Bluesky to authorize access.
-              </p>
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-              <button
-                onClick={() => { setShowBskyConnect(false); setBskyHandle(""); }}
-                style={{
-                  background: "#fff",
-                  border: "1px solid var(--hair-strong)",
-                  color: "var(--ink-2)",
-                  fontFamily: "var(--rf-mono)",
-                  fontSize: 10,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                  borderRadius: 999,
-                  padding: "8px 16px",
-                  cursor: "pointer",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                disabled={!bskyHandle.trim() || bskyConnecting}
-                onClick={() => {
-                  setBskyConnecting(true);
-                  authedFetch("/api/bsky/oauth/authorize", {
-                    method: "POST",
-                    body: JSON.stringify({ handle: bskyHandle.trim().replace(/^@/, "") }),
-                  })
-                    .then((r) => r.json())
-                    .then((data) => { if (data.url) window.location.href = data.url; })
-                    .catch(() => setBskyConnecting(false));
-                }}
-                style={{
-                  background: bskyHandle.trim() && !bskyConnecting ? "var(--aurora-deep)" : "var(--hair-strong)",
-                  color: "#fff",
-                  fontFamily: "var(--rf-mono)",
-                  fontSize: 10,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                  borderRadius: 999,
-                  padding: "8px 16px",
-                  border: "none",
-                  cursor: bskyHandle.trim() && !bskyConnecting ? "pointer" : "not-allowed",
-                  opacity: bskyHandle.trim() && !bskyConnecting ? 1 : 0.5,
-                }}
-              >
-                {bskyConnecting ? "Connecting…" : "Connect"}
-              </button>
-            </div>
-            <div style={{ height: 1, background: "var(--hair)", margin: "20px 0 16px" }} />
-            <div>
-              <p style={{ fontFamily: "var(--rf-display)", fontSize: 15, fontWeight: 500, color: "var(--ink)", margin: "0 0 6px" }}>
-                New to Bluesky?
-              </p>
-              <p style={{ fontSize: 12, color: "var(--ink-3)", lineHeight: 1.55, margin: "0 0 12px" }}>
-                Bluesky is an open social network where you own your identity
-                and your feed. Create a free account to start engaging with
-                the posts you curate.
-              </p>
-              <a
-                href="https://bsky.app"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ fontSize: 13, fontFamily: "var(--rf-body)", color: "var(--aurora-deep)", fontWeight: 500, textDecoration: "none" }}
-              >
-                Create a Bluesky account <span aria-hidden>↗</span>
-              </a>
-            </div>
-          </DialogContent>
-        </Dialog>
+        {/* BLUESKY CONNECT / CREATE MODAL — chooser with two paths (connect
+            an existing account, or create one via OAuth prompt=create). The
+            wall variant is non-dismissible and takes precedence; the server
+            enforces the wall regardless. */}
+        <ConnectBlueskyModal
+          open={wallActive || connectModal.open}
+          variant={wallActive ? "wall" : connectModal.variant}
+          reason={wallActive ? undefined : connectModal.reason}
+          pendingAction={connectModal.pendingAction}
+          onClose={() => setConnectModal((c) => ({ ...c, open: false, pendingAction: null }))}
+        />
 
         {/* MAIN — topbar + page workbench + mobile tabs all live in cur-main
             so the data-mobile-tab CSS selectors can scope which pane shows. */}
@@ -854,7 +899,7 @@ function CuratorShell({
                 <button
                   type="button"
                   className="cur-topbar-btn ghost"
-                  onClick={() => setShowBskyConnect(true)}
+                  onClick={() => openConnectModal({ reason: "Connect to introspect your engagements." })}
                   title="Connect Bluesky to introspect your engagements"
                   aria-label="Connect Bluesky to introspect your engagements"
                 >
@@ -1027,7 +1072,7 @@ function CuratorShell({
                           className="settings-action-row"
                           onClick={() => {
                             setShowSettings(false);
-                            setShowBskyConnect(true);
+                            openConnectModal({ reason: "Connect to introspect your engagements." });
                           }}
                         >
                           <span aria-hidden>✦</span>
@@ -1136,30 +1181,22 @@ function CuratorShell({
                           className="cur-bsky-connect-btn"
                           onClick={() => {
                             setProfileOpen(false);
-                            setShowBskyConnect(true);
+                            openConnectModal({ reason: "Your Bluesky session expired. Reconnect to keep engaging." });
                           }}
                         >
                           Reconnect Bluesky
                         </button>
                       )
                     ) : (
-                      <span>
-                        <button
-                          className="cur-bsky-connect-btn"
-                          onClick={() => {
-                            setProfileOpen(false);
-                            setShowBskyConnect(true);
-                          }}
-                        >
-                          Connect Bluesky
-                        </button>
-                        <span style={{ fontSize: 11, color: "var(--ink-4)", display: "block", marginTop: 4 }}>
-                          No account yet?{" "}
-                          <a href="https://bsky.app" target="_blank" rel="noopener noreferrer" style={{ color: "var(--aurora-deep)" }}>
-                            Create one for free
-                          </a>
-                        </span>
-                      </span>
+                      <button
+                        className="cur-bsky-connect-btn"
+                        onClick={() => {
+                          setProfileOpen(false);
+                          openConnectModal();
+                        }}
+                      >
+                        Connect Bluesky
+                      </button>
                     )}
                   </div>
                   <div className="profile-row">
@@ -1214,7 +1251,7 @@ function CuratorShell({
                       className="profile-auth-btn login"
                       onClick={() => {
                         setProfileOpen(false);
-                        setShowBskyConnect(true);
+                        openConnectModal();
                       }}
                     >
                       Log in with Bluesky
@@ -1238,14 +1275,18 @@ function CuratorShell({
 
         {showPublish && activeFeed && (
           <PublishFeedModal
-            onClose={() => setShowPublish(false)}
+            onClose={() => { setShowPublish(false); setAutoPublish(false); }}
             blueskyHandle={profile.blueskyHandle}
             blueskyDid={profile.blueskyDid}
             feedName={activeFeed.name}
             feedId={Number(activeFeed.id)}
+            autoPublish={autoPublish}
             onConnectBluesky={() => {
               setShowPublish(false);
-              setShowBskyConnect(true);
+              openConnectModal({
+                reason: "Connect to publish this feed to Bluesky.",
+                pendingAction: { type: "publish", feedId: Number(activeFeed.id) },
+              });
             }}
           />
         )}

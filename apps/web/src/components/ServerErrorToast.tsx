@@ -26,6 +26,9 @@ export default function ServerErrorToast() {
       const ce = ev as CustomEvent<ApiErrorDetail>;
       const d = ce.detail;
       if (!d) return;
+      // The account wall has its own full-screen modal (CuratorShell listens
+      // for this same event) — a toast on top would be redundant noise.
+      if (d.code === "account_wall") return;
       counter += 1;
       setCurrent({ ...d, id: counter, ts: Date.now() });
     }

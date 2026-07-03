@@ -167,15 +167,34 @@ export function getBskyOAuthClient(): NodeOAuthClient {
 }
 
 /**
- * Start the OAuth authorization flow for a Bluesky handle.
+ * Start the OAuth authorization flow. `input` is a Bluesky handle, or an
+ * `https://` service URL (the client library resolves URLs via
+ * resolveFromService, sending no login_hint).
  * Returns the URL to redirect the user to.
  */
-export async function startBskyOAuth(handle: string): Promise<string> {
+export async function startBskyOAuth(
+  input: string,
+  opts: { prompt?: "create" } = {}
+): Promise<string> {
   const client = getBskyOAuthClient();
-  const url = await client.authorize(handle, {
+  const url = await client.authorize(input, {
     scope: BSKY_OAUTH_SCOPE,
+    ...(opts.prompt ? { prompt: opts.prompt } : {}),
   });
   return url.toString();
+}
+
+const BSKY_ENTRYWAY = "https://bsky.social";
+
+/**
+ * Start the OAuth flow on Bluesky's hosted ACCOUNT CREATION screen
+ * (`prompt=create` against the bsky.social entryway — advertised in its
+ * prompt_values_supported). The user signs up there and returns through the
+ * normal /oauth/callback already authenticated, so create and connect share
+ * the entire downstream path.
+ */
+export async function startBskyCreateOAuth(): Promise<string> {
+  return startBskyOAuth(BSKY_ENTRYWAY, { prompt: "create" });
 }
 
 /**

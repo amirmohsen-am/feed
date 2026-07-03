@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { gateGuard } from "@/lib/account-gate";
 import {
   createFeed,
   ensureHomeFeed,
@@ -34,6 +35,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const auth = await requireAuth();
+  const walled = await gateGuard(auth.userId);
+  if (walled) return walled;
 
   const { name } = await req.json().catch(() => ({ name: undefined }));
   const feed = await createFeed(auth.userId, name || "Untitled");
@@ -42,6 +45,8 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const auth = await requireAuth();
+  const walled = await gateGuard(auth.userId);
+  if (walled) return walled;
 
   const body = await req.json();
   const {

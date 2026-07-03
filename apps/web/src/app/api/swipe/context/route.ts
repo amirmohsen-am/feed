@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError } from "@/lib/auth";
+import { gateGuard } from "@/lib/account-gate";
 import { getFeedForUser, addChatMessage } from "@/lib/pg";
 import { hydratePostByUri } from "@/lib/vector-search";
 import { composeSourcePostText } from "@/lib/branch";
@@ -8,6 +9,8 @@ import { jsonError } from "@/lib/api";
 export async function POST(req: NextRequest) {
   const auth = await requireAuth();
   if (isAuthError(auth)) return auth;
+  const walled = await gateGuard(auth.userId);
+  if (walled) return walled;
 
   try {
     const { feedId, postUri } = await req.json();

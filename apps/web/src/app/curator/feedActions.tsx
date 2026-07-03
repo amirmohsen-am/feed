@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { authedFetch } from "@/lib/authed-fetch";
+import type { PendingAction } from "@/lib/pending-action";
 import { useCurator } from "./curatorContext";
 import type { Post } from "./feedTypes";
 
@@ -118,7 +119,7 @@ export function useFeedActions(): FeedActionsValue {
 }
 
 export function FeedActionsProvider({ children }: { children: React.ReactNode }) {
-  const { profile, bskyOAuthReady, viewMode } = useCurator();
+  const { profile, bskyOAuthReady, viewMode, openConnectModal, resumeAction, clearResumeAction } = useCurator();
   // OAuth session required for repo writes; app password is a legacy fallback.
   const hasBskyAuth = bskyOAuthReady || !!profile.bskyAppPassword;
 
@@ -135,43 +136,36 @@ export function FeedActionsProvider({ children }: { children: React.ReactNode })
   useEffect(() => { repostStateRef.current = repostState; }, [repostState]);
 
   // ── On-demand Bluesky auth prompt ───────────────────────────────
-  const [showBskyAuth, setShowBskyAuth] = useState(false);
-  const [bskyHandle, setBskyHandle] = useState("");
-  const [bskyAuthLoading, setBskyAuthLoading] = useState(false);
-  const [bskyAuthError, setBskyAuthError] = useState("");
+  // Unauthenticated engagement opens the shared connect/create modal (owned
+  // by CuratorShell) with the attempted action stashed for auto-resume after
+  // the OAuth round trip.
+  const ACTION_REASONS: Record<PendingAction["type"], string> = {
+    like: "Connect to like posts from here.",
+    repost: "Connect to repost from here.",
+    reply: "Connect to reply from here.",
+    quote: "Connect to quote posts from here.",
+    publish: "Connect to publish this feed to Bluesky.",
+  };
 
-  const ensureBskyAuth = useCallback((): boolean => {
-    if (!hasBskyAuth) {
-      setShowBskyAuth(true);
-      return false;
-    }
-    return true;
-  }, [hasBskyAuth]);
-
-  async function startBskyAuth() {
-    if (!bskyHandle.trim()) return;
-    setBskyAuthLoading(true);
-    setBskyAuthError("");
-    try {
-      const res = await authedFetch("/api/bsky/oauth/authorize", {
-        method: "POST",
-        body: JSON.stringify({ handle: bskyHandle.trim().replace(/^@/, "") }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to start sign-in");
+  const ensureBskyAuth = useCallback(
+    (pending?: PendingAction): boolean => {
+      if (!hasBskyAuth) {
+        openConnectModal({
+          reason: pending ? ACTION_REASONS[pending.type] : undefined,
+          pendingAction: pending ?? null,
+        });
+        return false;
       }
-      const { url } = await res.json();
-      window.location.href = url;
-    } catch (e) {
-      setBskyAuthError(e instanceof Error ? e.message : "Sign-in failed");
-      setBskyAuthLoading(false);
-    }
-  }
+      return true;
+    },
+    // ACTION_REASONS is a per-render constant of literals.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hasBskyAuth, openConnectModal]
+  );
 
   const toggleLike = useCallback(
     async (postUri: string, currentlyLiked: boolean, currentLikeUri?: string) => {
-      if (!ensureBskyAuth()) return;
+      if (!ensureBskyAuth(currentlyLiked ? undefined : { type: "like", uri: postUri })) return;
       const prev = likeStateRef.current[postUri];
       setLikeState((s) => ({
         ...s,
@@ -204,7 +198,7 @@ export function FeedActionsProvider({ children }: { children: React.ReactNode })
 
   const toggleRepost = useCallback(
     async (postUri: string, currentlyReposted: boolean, currentRepostUri?: string) => {
-      if (!ensureBskyAuth()) return;
+      if (!ensureBskyAuth(currentlyReposted ? undefined : { type: "repost", uri: postUri })) return;
       const prev = repostStateRef.current[postUri];
       setRepostState((s) => ({
         ...s,
@@ -243,13 +237,31 @@ export function FeedActionsProvider({ children }: { children: React.ReactNode })
 
   const openComposer = useCallback(
     (postUri: string, kind: "reply" | "quote") => {
-      if (!ensureBskyAuth()) return;
+      if (!ensureBskyAuth({ type: kind, uri: postUri })) return;
       setComposer({ uri: postUri, kind });
       setComposerText("");
       setComposerError("");
     },
     [ensureBskyAuth]
   );
+
+  // ── Resume the action stashed before the OAuth redirect ─────────
+  // Fires once, only after the refreshed profile confirms auth. Reply/quote
+  // reopen the composer (never auto-post text); publish is handled by the
+  // shell. The stash was already consumed from sessionStorage by the layout,
+  // so this can never double-fire across reloads.
+  useEffect(() => {
+    if (!resumeAction || resumeAction.type === "publish") return;
+    if (!hasBskyAuth) return;
+    clearResumeAction();
+    if (resumeAction.type === "like") {
+      toggleLike(resumeAction.uri, false);
+    } else if (resumeAction.type === "repost") {
+      toggleRepost(resumeAction.uri, false);
+    } else {
+      openComposer(resumeAction.uri, resumeAction.type);
+    }
+  }, [resumeAction, hasBskyAuth, clearResumeAction, toggleLike, toggleRepost, openComposer]);
 
   async function submitComposer() {
     if (!composer || !composerText.trim()) return;
@@ -527,54 +539,6 @@ export function FeedActionsProvider({ children }: { children: React.ReactNode })
         </div>
       )}
 
-      {/* Bluesky auth prompt */}
-      {showBskyAuth && (
-        <div className="cur-bsky-auth-overlay" onClick={() => setShowBskyAuth(false)}>
-          <div className="cur-bsky-auth-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Sign in with Bluesky</h3>
-            <p>Connect your Bluesky account to reply, repost, quote, and like from here.</p>
-            <input
-              type="text"
-              value={bskyHandle}
-              onChange={(e) => { setBskyHandle(e.target.value); setBskyAuthError(""); }}
-              placeholder="yourname.bsky.social"
-              autoFocus
-              onKeyDown={(e) => { if (e.key === "Enter") startBskyAuth(); }}
-              className="cur-bsky-auth-input"
-            />
-            {bskyAuthError && <div className="cur-bsky-auth-error">{bskyAuthError}</div>}
-            <div className="cur-bsky-auth-actions">
-              <button className="cur-bsky-auth-cancel" onClick={() => setShowBskyAuth(false)}>
-                Cancel
-              </button>
-              <button
-                className="cur-bsky-auth-submit"
-                onClick={startBskyAuth}
-                disabled={!bskyHandle.trim() || bskyAuthLoading}
-              >
-                {bskyAuthLoading ? "Redirecting…" : "Sign in"}
-              </button>
-            </div>
-            <div className="cur-bsky-auth-divider" />
-            <div className="cur-bsky-auth-signup">
-              <p className="cur-bsky-auth-signup-title">New to Bluesky?</p>
-              <p className="cur-bsky-auth-signup-body">
-                Bluesky is an open social network where you own your identity
-                and your feed. Create a free account to start engaging with
-                the posts you curate.
-              </p>
-              <a
-                href="https://bsky.app"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="cur-bsky-auth-signup-link"
-              >
-                Create a Bluesky account <span aria-hidden>↗</span>
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
     </FeedActionsContext.Provider>
   );
 }
