@@ -487,24 +487,9 @@
 
 .proto-team-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, 220px);
+  justify-content: center;
   gap: 40px;
-}
-
-@media (max-width: 1040px) {
-  .proto-team-grid {
-    grid-template-columns: repeat(2, 1fr);
-    max-width: 720px;
-    margin: 0 auto;
-  }
-}
-
-@media (max-width: 860px) {
-  .proto-team-grid {
-    grid-template-columns: 1fr;
-    max-width: 420px;
-    margin: 0 auto;
-  }
 }
 
 .proto-team-card {
