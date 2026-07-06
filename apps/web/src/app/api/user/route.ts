@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { canRestoreBskySession } from "@/lib/bsky-oauth";
+import { getAccountGateStatus } from "@/lib/account-gate";
 import { getUserById, setUserSeenFilterEnabled } from "@/lib/pg";
 
 export async function GET(req: NextRequest) {
@@ -16,10 +17,13 @@ export async function GET(req: NextRequest) {
     oauthReady = await canRestoreBskySession(user.bluesky_did);
   }
 
+  const gate = await getAccountGateStatus(auth.userId);
+
   return NextResponse.json({
     user,
     oauthReady,
     linked: !!(user.bluesky_handle || user.bluesky_did),
+    gate,
   });
 }
 

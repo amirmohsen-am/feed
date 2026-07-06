@@ -230,7 +230,9 @@ function FeedViewImpl(
       method: "POST",
       body: JSON.stringify({ feedId, uris: removable }),
       suppressErrorToast: true,
-    }).catch(() => {});
+    })
+      .then(() => window.dispatchEvent(new CustomEvent("ripple:gate-recheck")))
+      .catch(() => {});
   }, [feedId]);
 
   // Register posts for shared quote + AI-label hydration.

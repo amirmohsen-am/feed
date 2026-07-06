@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { gateGuard } from "@/lib/account-gate";
 import { enforceRateLimit, LLM_RULES } from "@/lib/rate-limit";
 import {
   getFeedForUser,
@@ -26,6 +27,8 @@ export async function GET(req: NextRequest) {
   const limited = enforceRateLimit(req, "feed-preview", LLM_RULES);
   if (limited) return limited;
   const auth = await requireAuth();
+  const walled = await gateGuard(auth.userId);
+  if (walled) return walled;
 
   const feedId = Number(req.nextUrl.searchParams.get("feedId"));
   // ?refresh=1 forces a fresh recompute and overwrites the cached snapshot.
@@ -53,6 +56,8 @@ export async function POST(req: NextRequest) {
   const limited = enforceRateLimit(req, "feed-preview", LLM_RULES);
   if (limited) return limited;
   const auth = await requireAuth();
+  const walled = await gateGuard(auth.userId);
+  if (walled) return walled;
 
   let body: {
     feedId?: number;

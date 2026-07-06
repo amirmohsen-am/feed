@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { requireAuth, isAuthError } from "@/lib/auth";
+import { gateGuard } from "@/lib/account-gate";
 import { enforceRateLimit, LLM_RULES } from "@/lib/rate-limit";
 import { jsonError } from "@/lib/api";
 import { hydratePostByUri } from "@/lib/vector-search";
@@ -68,6 +69,8 @@ export async function POST(req: NextRequest) {
   const t0 = performance.now();
   const auth = await requireAuth();
   if (isAuthError(auth)) return auth;
+  const walled = await gateGuard(auth.userId);
+  if (walled) return walled;
 
   try {
     const { feedId, postUri } = await req.json();

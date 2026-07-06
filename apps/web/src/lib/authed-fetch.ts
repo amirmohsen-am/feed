@@ -3,6 +3,8 @@ export interface ApiErrorDetail {
   status: number;
   message: string;
   hint?: string;
+  /** Machine-readable error code from the JSON body (e.g. "account_wall"). */
+  code?: string;
   /** Seconds from the `Retry-After` header, set on 429 responses. */
   retryAfter?: number;
 }
@@ -35,21 +37,24 @@ export async function authedFetch(
     const ct = clone.headers.get("content-type") || "";
     let message = `${res.status} ${res.statusText || "Error"}`;
     let hint: string | undefined;
+    let code: string | undefined;
     try {
       if (ct.includes("application/json")) {
         const data = (await clone.json()) as {
           error?: string;
           message?: string;
           hint?: string;
+          code?: string;
         };
         if (data.message) message = data.message;
         else if (data.error) message = data.error;
         if (data.hint) hint = data.hint;
+        if (data.code) code = data.code;
       }
     } catch {
       /* response body unparseable — keep status-line message */
     }
-    const detail: ApiErrorDetail = { url, status: res.status, message, hint };
+    const detail: ApiErrorDetail = { url, status: res.status, message, hint, code };
     const retryAfter = clone.headers.get("retry-after");
     if (retryAfter && /^\d+$/.test(retryAfter)) {
       detail.retryAfter = parseInt(retryAfter, 10);

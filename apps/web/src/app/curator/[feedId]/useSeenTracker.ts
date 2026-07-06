@@ -68,6 +68,9 @@ export function useSeenTracker(feedId: number, enabled: boolean): SeenTracker {
         keepalive,
         suppressErrorToast: true,
       });
+      // Posts-seen count moved — let the account gate re-evaluate (debounced
+      // in the curator shell).
+      window.dispatchEvent(new CustomEvent("ripple:gate-recheck"));
     } catch {
       // Re-queue so the next flush retries (best-effort, idempotent server-side).
       uris.forEach((u) => queue.current.add(u));

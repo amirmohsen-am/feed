@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { gateGuard } from "@/lib/account-gate";
 import { ensureHomeFeed, getFeedForUser, updateFeed } from "@/lib/db/feeds";
 import { TEMPLATE_FEED_CONFIG } from "@/lib/template-feed";
 
@@ -8,6 +9,8 @@ import { TEMPLATE_FEED_CONFIG } from "@/lib/template-feed";
 //   fetch('/api/feeds/template', { method: 'POST' })
 export async function POST(req: NextRequest) {
   const auth = await requireAuth();
+  const walled = await gateGuard(auth.userId);
+  if (walled) return walled;
 
   let feedId: number | undefined;
   try {

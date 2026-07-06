@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { requireAuth } from "@/lib/auth";
+import { gateGuard } from "@/lib/account-gate";
 import { enforceRateLimit, LLM_RULES } from "@/lib/rate-limit";
 import {
   getFeedForUser,
@@ -251,6 +252,8 @@ export async function POST(req: NextRequest) {
   if (limited) return limited;
   const t0 = performance.now();
   const auth = await requireAuth();
+  const walled = await gateGuard(auth.userId);
+  if (walled) return walled;
   const tAuth = performance.now();
 
   try {

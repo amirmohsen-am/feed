@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import {
   startBskyOAuth,
+  startBskyCreateOAuth,
   setPendingOAuthUserId,
   setPendingOAuthSessionId,
 } from "@/lib/bsky-oauth";
@@ -10,17 +11,21 @@ import { jsonError } from "@/lib/api";
 
 /**
  * POST /api/bsky/oauth/authorize
- * Body: { handle: string }
+ * Body: { handle?: string, mode?: "connect" | "create", returnTo?: string }
  *
  * Starts the Bluesky OAuth flow. Stores the userId in the OAuth state
  * row so the callback can link the DID to the correct user — even when
  * cookies don't survive the cross-site redirect (e.g. incognito mode).
+ *
+ * mode "create" sends the user to Bluesky's hosted signup (prompt=create,
+ * no handle needed); the callback path is identical to connect.
  */
 export async function POST(req: NextRequest) {
   const auth = await requireAuth();
 
-  const { handle, returnTo } = await req.json();
-  if (!handle || typeof handle !== "string") {
+  const { handle, mode, returnTo } = await req.json();
+  const isCreate = mode === "create";
+  if (!isCreate && (!handle || typeof handle !== "string")) {
     return NextResponse.json({ error: "handle required" }, { status: 400 });
   }
 
@@ -30,7 +35,9 @@ export async function POST(req: NextRequest) {
     setPendingOAuthUserId(auth.userId);
     const sessionId = req.cookies.get(SESSION_COOKIE)?.value;
     if (sessionId) setPendingOAuthSessionId(sessionId);
-    const url = await startBskyOAuth(handle.trim().replace(/^@/, ""));
+    const url = isCreate
+      ? await startBskyCreateOAuth()
+      : await startBskyOAuth(handle.trim().replace(/^@/, ""));
     const res = NextResponse.json({ url });
 
     // Remember where to send the user after the callback. Only same-origin

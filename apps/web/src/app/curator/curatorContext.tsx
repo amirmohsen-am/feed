@@ -2,6 +2,17 @@
 
 import { createContext, useContext } from "react";
 import type { UserProfile } from "@/lib/types";
+import type { GateStatus } from "@/lib/account-gate";
+import type { PendingAction } from "@/lib/pending-action";
+import type { ConnectVariant } from "@/components/ConnectBlueskyModal";
+
+export interface OpenConnectModalOptions {
+  variant?: ConnectVariant;
+  /** Contextual copy line shown in the modal, e.g. "Connect to like posts from here." */
+  reason?: string;
+  /** Action to auto-resume after the OAuth round trip. */
+  pendingAction?: PendingAction | null;
+}
 
 export interface SavedFeed {
   id: string;
@@ -57,6 +68,15 @@ interface CuratorContextValue {
   openPublish: () => void;
   openTune: () => void;
   registerOpenTune: (fn: () => void) => void;
+  // Account gate (anonymous grace period → nudges → wall). Null until the
+  // boot /api/user fetch resolves; "linked" users never see nudges or wall.
+  gate: GateStatus | null;
+  /** Open the connect/create Bluesky modal (chooser page). */
+  openConnectModal: (opts?: OpenConnectModalOptions) => void;
+  // Action stashed before an OAuth redirect, replayed once after the user
+  // returns connected. Null when there is nothing to resume.
+  resumeAction: PendingAction | null;
+  clearResumeAction: () => void;
 }
 
 const CuratorContext = createContext<CuratorContextValue | null>(null);

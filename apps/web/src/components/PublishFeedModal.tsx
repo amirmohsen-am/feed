@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { authedFetch } from "@/lib/authed-fetch";
 import {
   Dialog,
@@ -17,6 +17,10 @@ interface PublishFeedModalProps {
   feedName: string;
   feedId: number;
   onConnectBluesky: () => void;
+  /** Resume mode: publish automatically once authorization checks out
+      (set when the user returns from an OAuth round trip they started
+      by clicking Publish). */
+  autoPublish?: boolean;
 }
 
 type AuthPhase = "checking" | "local_dev" | "unlinked" | "needs_oauth" | "ready";
@@ -28,6 +32,7 @@ export default function PublishFeedModal({
   feedName,
   feedId,
   onConnectBluesky,
+  autoPublish = false,
 }: PublishFeedModalProps) {
   const [authPhase, setAuthPhase] = useState<AuthPhase>("checking");
   const [appPassword, setAppPassword] = useState("");
@@ -106,6 +111,18 @@ export default function PublishFeedModal({
       setAuthorizing(false);
     }
   }
+
+  // Resumed publish: fire once when the auth check lands on "ready". Any
+  // other phase (local_dev, needs_oauth, unlinked) falls through to the
+  // normal interactive UI for that phase.
+  const autoPublishFiredRef = useRef(false);
+  useEffect(() => {
+    if (!autoPublish || authPhase !== "ready" || autoPublishFiredRef.current) return;
+    autoPublishFiredRef.current = true;
+    void handlePublish();
+    // handlePublish is stable for the modal's lifetime (plain closure over state setters).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPublish, authPhase]);
 
   async function handlePublish() {
     setLoading(true);
@@ -328,10 +345,22 @@ export default function PublishFeedModal({
             </div>
             <p style={{ fontSize: 12, color: "var(--ink-4)", marginTop: 14, lineHeight: 1.5 }}>
               Don&apos;t have Bluesky yet?{" "}
-              <a href="https://bsky.app" target="_blank" rel="noopener noreferrer" style={{ color: "var(--aurora-deep)" }}>
+              <button
+                type="button"
+                onClick={onConnectBluesky}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  color: "var(--aurora-deep)",
+                  fontSize: 12,
+                  fontFamily: "var(--rf-body)",
+                }}
+              >
                 Create a free account
-              </a>
-              , then come back to publish.
+              </button>{" "}
+              and it publishes right after.
             </p>
           </div>
         ) : authPhase === "needs_oauth" ? (
