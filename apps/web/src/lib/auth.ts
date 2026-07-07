@@ -2,7 +2,7 @@ import { getSession, type SessionUser } from "./session";
 
 /**
  * Session-based auth. No sign-in required — every visitor gets an anonymous
- * session via the middleware cookie. Bluesky OAuth is layered on top when
+ * session via the proxy cookie. Bluesky OAuth is layered on top when
  * the user wants to perform authenticated Bluesky actions.
  *
  * The export names (`requireAuth`, `isAuthError`, `AuthUser`) are kept for
@@ -17,7 +17,7 @@ interface AuthUser {
 
 /**
  * Get the current session user. Never returns an error response — every
- * request has a session via the middleware cookie.
+ * request has a session via the proxy cookie.
  */
 export async function requireAuth(): Promise<AuthUser> {
   const session: SessionUser = await getSession();

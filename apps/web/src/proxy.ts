@@ -10,7 +10,18 @@ const SESSION_COOKIE = "sid";
  * restoration to ensure the user stays on their original session after
  * the cross-site redirect from Bluesky.
  */
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
+  // Canonical host: amadi.social. Permanently redirect www so search
+  // engines index a single host instead of flagging duplicates.
+  const host = req.headers.get("host");
+  if (host === "www.amadi.social") {
+    const url = req.nextUrl.clone();
+    url.protocol = "https";
+    url.host = "amadi.social";
+    url.port = "";
+    return NextResponse.redirect(url, 301);
+  }
+
   // Don't create new sessions on OAuth callback — the route handler
   // restores the original session cookie on its response.
   if (req.nextUrl.pathname.startsWith("/oauth/callback")) {

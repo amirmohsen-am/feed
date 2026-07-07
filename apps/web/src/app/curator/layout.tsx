@@ -204,7 +204,7 @@ function CuratorShell({
     setLoggingOut(true);
     try {
       await authedFetch("/api/auth/logout", { method: "POST" });
-      // Full reload: middleware mints a fresh anonymous session.
+      // Full reload: the proxy mints a fresh anonymous session.
       window.location.href = "/curator";
     } catch {
       setLoggingOut(false);

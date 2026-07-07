@@ -6,7 +6,7 @@ import { SESSION_COOKIE } from "@/lib/session";
  * POST /api/auth/logout
  *
  * Detaches this browser session from its amadi user and clears the cookie.
- * The next request gets a fresh anonymous session from the middleware;
+ * The next request gets a fresh anonymous session from the proxy;
  * logging back in with Bluesky re-attaches the canonical account (and its
  * feeds) via the DID-based identity in link-bluesky.ts.
  */

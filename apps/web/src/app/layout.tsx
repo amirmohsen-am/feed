@@ -10,6 +10,7 @@ const geistMono = Geist_Mono({subsets:['latin'],variable:'--font-geist-mono'});
 const spaceGrotesk = Space_Grotesk({subsets:['latin'],variable:'--font-display'});
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://amadi.social"),
   title: "amadi. A quieter, more intentional feed.",
   description: "Curate your Bluesky feed with AI. In the same way you curate what you eat, now curate what you read.",
 };
