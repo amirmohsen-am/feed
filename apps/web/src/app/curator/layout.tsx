@@ -174,6 +174,7 @@ function CuratorShell({
   const [showPublish, setShowPublish] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showBskyConnect, setShowBskyConnect] = useState(false);
+  const [connectForIntrospect, setConnectForIntrospect] = useState(false);
   const [bskyHandle, setBskyHandle] = useState("");
   const [bskyConnecting, setBskyConnecting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -684,11 +685,11 @@ function CuratorShell({
         />
 
         {/* BLUESKY CONNECT MODAL */}
-        <Dialog open={showBskyConnect} onOpenChange={(open) => { if (!open) { setShowBskyConnect(false); setBskyHandle(""); } }}>
+        <Dialog open={showBskyConnect} onOpenChange={(open) => { if (!open) { setShowBskyConnect(false); setBskyHandle(""); setConnectForIntrospect(false); } }}>
           <DialogContent className="settings-dialog">
             <DialogHeader>
               <DialogTitle style={{ fontFamily: "var(--rf-display)", fontSize: 22, fontWeight: 400, color: "var(--ink)" }}>
-                Connect Bluesky
+                {connectForIntrospect ? "Introspect my Engagements" : "Connect Bluesky"}
               </DialogTitle>
             </DialogHeader>
             <Separator />
@@ -729,7 +730,9 @@ function CuratorShell({
                 }}
               />
               <p style={{ color: "var(--ink-3)", fontFamily: "var(--rf-body)", fontSize: 12, marginTop: 6 }}>
-                You&apos;ll be redirected to Bluesky to authorize access.
+                {connectForIntrospect
+                  ? "Connect your Bluesky account to introspect your habits."
+                  : "You\u2019ll be redirected to Bluesky to authorize access."}
               </p>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
@@ -783,11 +786,6 @@ function CuratorShell({
             <div>
               <p style={{ fontFamily: "var(--rf-display)", fontSize: 15, fontWeight: 500, color: "var(--ink)", margin: "0 0 6px" }}>
                 New to Bluesky?
-              </p>
-              <p style={{ fontSize: 12, color: "var(--ink-3)", lineHeight: 1.55, margin: "0 0 12px" }}>
-                Bluesky is an open social network where you own your identity
-                and your feed. Create a free account to start engaging with
-                the posts you curate.
               </p>
               <a
                 href="https://bsky.app"
@@ -854,7 +852,7 @@ function CuratorShell({
                 <button
                   type="button"
                   className="cur-topbar-btn ghost"
-                  onClick={() => setShowBskyConnect(true)}
+                  onClick={() => { setConnectForIntrospect(true); setShowBskyConnect(true); }}
                   title="Connect Bluesky to introspect your engagements"
                   aria-label="Connect Bluesky to introspect your engagements"
                 >
@@ -1027,6 +1025,7 @@ function CuratorShell({
                           className="settings-action-row"
                           onClick={() => {
                             setShowSettings(false);
+                            setConnectForIntrospect(true);
                             setShowBskyConnect(true);
                           }}
                         >
@@ -1063,17 +1062,25 @@ function CuratorShell({
                 </svg>
               </button>
             )}
-            {activeFeed && activeHasCriteria && (
+            {profile.blueskyHandle ? (
+              <Link
+                href={`/introspect/${encodeURIComponent(profile.blueskyHandle.replace(/^@/, "").toLowerCase())}`}
+                className="cur-topbar-icon cur-topbar-introspect"
+                prefetch={false}
+                title="Introspect my engagements"
+                aria-label="Introspect my engagements"
+              >
+                <span aria-hidden>✦</span>
+              </Link>
+            ) : (
               <button
                 type="button"
-                className="cur-topbar-icon cur-topbar-publish-bsky"
-                onClick={() => setShowPublish(true)}
-                title="Publish to Bluesky"
-                aria-label="Publish to Bluesky"
+                className="cur-topbar-icon cur-topbar-introspect"
+                onClick={() => { setConnectForIntrospect(true); setShowBskyConnect(true); }}
+                title="Introspect my engagements"
+                aria-label="Introspect my engagements"
               >
-                <svg width="16" height="16" viewBox="0 0 600 530" fill="currentColor" aria-hidden>
-                  <path d="M135.72 44.03C202.216 93.951 273.74 195.86 300 249.97c26.26-54.11 97.784-156.019 164.28-205.94C512.26 8.009 590-19.862 590 68.825c0 17.712-10.155 148.79-16.111 170.07-20.703 73.984-96.144 92.854-163.25 81.433 117.3 19.964 147.14 86.092 82.697 152.22-122.39 125.59-175.91-31.511-189.63-71.766-2.514-7.38-3.69-10.832-3.706-7.905-.017-2.927-1.192.525-3.706 7.905-13.72 40.255-67.24 197.356-189.63 71.766-64.444-66.128-34.604-132.256 82.697-152.22-67.106 11.421-142.547-7.449-163.25-81.433C20.155 217.615 10 86.537 10 68.825c0-88.687 77.74-60.816 125.72-24.795z" />
-                </svg>
+                <span aria-hidden>✦</span>
               </button>
             )}
             <button
@@ -1103,101 +1110,98 @@ function CuratorShell({
                     Profile
                   </DialogTitle>
                 </DialogHeader>
-                <Separator />
-                <div className="profile-section">
-                  <div className="profile-label">Account</div>
-                  <div className="profile-row">
-                    <span className="profile-key">Name</span>
-                    <span className="profile-val">{profile.name}</span>
-                  </div>
-                  <div className="profile-row">
-                    <span className="profile-key">Email</span>
-                    <span className="profile-val">{profile.email}</span>
-                  </div>
-                </div>
-                <Separator />
-                <div className="profile-section">
-                  <div className="profile-label">Bluesky</div>
-                  <div className="profile-row">
-                    <span className="profile-key">Handle</span>
-                    <span className="profile-val">
-                      {profile.blueskyHandle ? `@${profile.blueskyHandle}` : "Not connected"}
-                    </span>
-                  </div>
-                  <div className="profile-row">
-                    <span className="profile-key">Status</span>
-                    {profile.blueskyDid ? (
-                      bskyOAuthReady ? (
-                        <span className="profile-val" style={{ color: "var(--aurora-deep)" }}>
-                          ● Connected
-                        </span>
-                      ) : (
-                        <button
-                          className="cur-bsky-connect-btn"
-                          onClick={() => {
-                            setProfileOpen(false);
-                            setShowBskyConnect(true);
-                          }}
-                        >
-                          Reconnect Bluesky
-                        </button>
-                      )
-                    ) : (
-                      <span>
-                        <button
-                          className="cur-bsky-connect-btn"
-                          onClick={() => {
-                            setProfileOpen(false);
-                            setShowBskyConnect(true);
-                          }}
-                        >
-                          Connect Bluesky
-                        </button>
-                        <span style={{ fontSize: 11, color: "var(--ink-4)", display: "block", marginTop: 4 }}>
-                          No account yet?{" "}
-                          <a href="https://bsky.app" target="_blank" rel="noopener noreferrer" style={{ color: "var(--aurora-deep)" }}>
-                            Create one for free
-                          </a>
-                        </span>
-                      </span>
-                    )}
-                  </div>
-                  <div className="profile-row">
-                    <span className="profile-key">Feed status</span>
-                    <span className="profile-val">{activeHasCriteria ? "Active" : "Not configured"}</span>
-                  </div>
-                </div>
-                <Separator />
-                <div className="profile-section">
-                  <div className="profile-label">Usage</div>
-                  <div className="profile-row">
-                    <span className="profile-key">Posts scored</span>
-                    <span className="profile-val">{activePostCount}</span>
-                  </div>
-                  <div className="profile-row">
-                    <span className="profile-key">Feeds created</span>
-                    <span className="profile-val">{feeds.length}</span>
-                  </div>
-                </div>
-                {activeFeed && activeHasCriteria && (
+                {profile.blueskyDid && (
                   <>
                     <Separator />
                     <div className="profile-section">
-                      <div className="profile-label">Share</div>
+                      <div className="profile-label">Account</div>
                       <div className="profile-row">
-                        <span className="profile-key">This feed</span>
-                        <button
-                          type="button"
-                          className="cur-bsky-connect-btn"
-                          onClick={() => handleShare(activeFeed)}
-                        >
-                          {shareCopied ? "Link copied!" : "Copy link"}
-                        </button>
+                        <span className="profile-key">Name</span>
+                        <span className="profile-val">{profile.name}</span>
+                      </div>
+                      <div className="profile-row">
+                        <span className="profile-key">Email</span>
+                        <span className="profile-val">{profile.email}</span>
                       </div>
                     </div>
+                    <Separator />
+                    <div className="profile-section">
+                      <div className="profile-label">Bluesky</div>
+                      <div className="profile-row">
+                        <span className="profile-key">Handle</span>
+                        <span className="profile-val">
+                          {profile.blueskyHandle ? `@${profile.blueskyHandle}` : "Not connected"}
+                        </span>
+                      </div>
+                      <div className="profile-row">
+                        <span className="profile-key">Status</span>
+                        {bskyOAuthReady ? (
+                          <span className="profile-val" style={{ color: "var(--aurora-deep)" }}>
+                            ● Connected
+                          </span>
+                        ) : (
+                          <button
+                            className="cur-bsky-connect-btn"
+                            onClick={() => {
+                              setProfileOpen(false);
+                              setShowBskyConnect(true);
+                            }}
+                          >
+                            Reconnect Bluesky
+                          </button>
+                        )}
+                      </div>
+                      <div className="profile-row">
+                        <span className="profile-key">Feed status</span>
+                        <span className="profile-val">{activeHasCriteria ? "Active" : "Not configured"}</span>
+                      </div>
+                    </div>
+                    <Separator />
+                    <div className="profile-section">
+                      <div className="profile-label">Usage</div>
+                      <div className="profile-row">
+                        <span className="profile-key">Posts scored</span>
+                        <span className="profile-val">{activePostCount}</span>
+                      </div>
+                      <div className="profile-row">
+                        <span className="profile-key">Feeds created</span>
+                        <span className="profile-val">{feeds.length}</span>
+                      </div>
+                    </div>
+                    {activeFeed && activeHasCriteria && (
+                      <>
+                        <Separator />
+                        <div className="profile-section">
+                          <div className="profile-label">Share</div>
+                          <div className="profile-row">
+                            <span className="profile-key">This feed</span>
+                            <button
+                              type="button"
+                              className="cur-bsky-connect-btn"
+                              onClick={() => handleShare(activeFeed)}
+                            >
+                              {shareCopied ? "Link copied!" : "Copy link"}
+                            </button>
+                          </div>
+                          <div className="profile-row">
+                            <span className="profile-key">Publish</span>
+                            <button
+                              type="button"
+                              className="cur-bsky-connect-btn"
+                              onClick={() => {
+                                setProfileOpen(false);
+                                setShowPublish(true);
+                              }}
+                            >
+                              Publish to Bluesky
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                    <Separator />
                   </>
                 )}
-                <Separator />
                 <div className="profile-section" style={{ paddingBottom: 0 }}>
                   {profile.blueskyDid ? (
                     <button
