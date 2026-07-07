@@ -428,9 +428,8 @@
 .cur-topbar--onboarding .cur-topbar-burger,
 .cur-topbar--onboarding .cur-topbar-left,
 .cur-topbar--onboarding .cur-topbar-right,
-.cur-topbar--onboarding .cur-topbar-tune,
-.cur-topbar--onboarding .cur-topbar-publish-bsky { display: none; }
-.cur-topbar--onboarding .cur-topbar-share { margin-left: auto; }
+.cur-topbar--onboarding .cur-topbar-tune { display: none; }
+.cur-topbar--onboarding .cur-topbar-introspect { margin-left: auto; }
 
 .cur-topbar-left{
   display: flex; align-items: center; gap: 12px;
@@ -485,9 +484,9 @@
 }
 .cur-topbar-icon:hover{ border-color: var(--aurora-deep); color: var(--aurora-deep); background: rgba(72,96,168,0.07); }
 .cur-topbar-icon.active{ border-color: var(--aurora-deep); color: var(--aurora-deep); background: rgba(136,144,216,0.12); }
-/* Publish-bsky icon is mobile-only; the Tune icon now shows on desktop too
+/* Introspect icon is mobile-only; the Tune icon now shows on desktop too
    (it's the only way to reach the Tune slide-over in the capsule layout). */
-.cur-topbar-publish-bsky{ display: none; }
+.cur-topbar-introspect{ display: none; }
 .cur-topbar-burger{
   display: none;
   width: 36px; height: 36px;
@@ -3828,7 +3827,7 @@
   .cur-topbar-icon,
   .cur-topbar-btn.ghost{ display: none; }
   .cur-topbar-icon.cur-topbar-share,
-  .cur-topbar-icon.cur-topbar-publish-bsky,
+  .cur-topbar-icon.cur-topbar-introspect,
   .cur-topbar-icon.cur-topbar-tune{ display: flex; }
   .cur-sidebar-gear{ display: flex; }
   .settings-mobile-more{ display: block; }
