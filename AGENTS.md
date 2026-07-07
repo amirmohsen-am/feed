@@ -19,7 +19,7 @@ apps/
 
 | Concern | Choice |
 |---|---|
-| Auth | Anonymous session cookie (`apps/web/src/middleware.ts`); server resolves it in `lib/auth.ts` (`requireAuth`) via `session.ts`. Bluesky OAuth (`lib/bsky-oauth.ts`) layers on for authenticated Bluesky actions. |
+| Auth | Anonymous session cookie (`apps/web/src/proxy.ts`); server resolves it in `lib/auth.ts` (`requireAuth`) via `session.ts`. Bluesky OAuth (`lib/bsky-oauth.ts`) layers on for authenticated Bluesky actions. |
 | Chat LLM | Anthropic Claude (`claude-sonnet-4-6`) via `@anthropic-ai/sdk` — `/api/chat`, `/api/import-memory` |
 | Post search | pgvector (HNSW, halfvec) on `bsky-db` — `apps/web/src/lib/vector-search.ts`. Query embedding via Vertex Gemini. |
 | Hosting | Both on Cloud Run in `timelines-492720` |

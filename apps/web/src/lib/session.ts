@@ -22,7 +22,7 @@ export async function getSession(): Promise<SessionUser> {
 
   if (!sessionId) {
     // Middleware should always set this, but handle edge case
-    throw new Error("No session cookie — middleware may not be running");
+    throw new Error("No session cookie — proxy may not be running");
   }
 
   const userId = await ensureSessionUser(sessionId);

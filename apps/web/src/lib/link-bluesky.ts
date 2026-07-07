@@ -6,7 +6,7 @@ import { getUserByBlueskyDid } from "./db/users";
  *
  * This is a get-or-create keyed on the session id. On a brand-new visitor the
  * browser fires several `/api/*` calls in parallel, all carrying the same fresh
- * `sid` that has no user row yet (the cookie is minted on the middleware
+ * `sid` that has no user row yet (the cookie is minted on the proxy
  * *response*, so it can't be provisioned during that first server render). Every
  * step here must therefore be concurrency-safe: the writes are atomic upserts,
  * never a check-then-insert that two requests could both pass.

@@ -41,6 +41,7 @@ export async function generateMetadata({
   const feed = Number.isFinite(id) ? await getFeedById(id) : null;
   const name = feed?.name || "A curated feed";
   return {
+    alternates: { canonical: `/f/${feedId}` },
     title: `${name} — amadi`,
     description: `A feed curated on amadi${
       feed?.subqueries.length ? `: ${feed.subqueries.slice(0, 3).join(", ")}` : ""
