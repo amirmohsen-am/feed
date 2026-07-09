@@ -19,6 +19,7 @@ import EditableFeedName from "@/components/EditableFeedName";
 import PublishFeedModal from "@/components/PublishFeedModal";
 import FeedSearch from "@/components/FeedSearch";
 import { authedFetch } from "@/lib/authed-fetch";
+import { cleanBskyHandle, bskyHandleError } from "@/lib/bsky-handle";
 import { useResizable } from "./useResizable";
 import {
   CuratorProvider,
@@ -177,9 +178,40 @@ function CuratorShell({
   const [connectForIntrospect, setConnectForIntrospect] = useState(false);
   const [bskyHandle, setBskyHandle] = useState("");
   const [bskyConnecting, setBskyConnecting] = useState(false);
+  const [bskyConnectError, setBskyConnectError] = useState("");
   const [loggingOut, setLoggingOut] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const openTuneRef = useRef<(() => void) | null>(null);
+
+  function connectBsky() {
+    const handle = cleanBskyHandle(bskyHandle);
+    if (!handle || bskyConnecting) return;
+    const invalid = bskyHandleError(handle);
+    if (invalid) {
+      setBskyConnectError(invalid);
+      return;
+    }
+    setBskyConnectError("");
+    setBskyConnecting(true);
+    authedFetch("/api/bsky/oauth/authorize", {
+      method: "POST",
+      body: JSON.stringify({ handle }),
+      suppressErrorToast: true,
+    })
+      .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (ok && data.url) {
+          window.location.href = data.url;
+        } else {
+          setBskyConnectError(data.error || "Could not start sign-in. Try again.");
+          setBskyConnecting(false);
+        }
+      })
+      .catch(() => {
+        setBskyConnectError("Could not start sign-in. Try again.");
+        setBskyConnecting(false);
+      });
+  }
 
   async function handleShare(feed: SavedFeed) {
     const url = `${window.location.origin}/f/${feed.id}`;
@@ -685,7 +717,7 @@ function CuratorShell({
         />
 
         {/* BLUESKY CONNECT MODAL */}
-        <Dialog open={showBskyConnect} onOpenChange={(open) => { if (!open) { setShowBskyConnect(false); setBskyHandle(""); setConnectForIntrospect(false); } }}>
+        <Dialog open={showBskyConnect} onOpenChange={(open) => { if (!open) { setShowBskyConnect(false); setBskyHandle(""); setBskyConnectError(""); setConnectForIntrospect(false); } }}>
           <DialogContent className="settings-dialog">
             <DialogHeader>
               <DialogTitle style={{ fontFamily: "var(--rf-display)", fontSize: 22, fontWeight: 400, color: "var(--ink)" }}>
@@ -702,18 +734,14 @@ function CuratorShell({
                 type="text"
                 placeholder="yourname.bsky.social"
                 value={bskyHandle}
-                onChange={(e) => setBskyHandle(e.target.value)}
+                onChange={(e) => {
+                  setBskyHandle(e.target.value);
+                  if (bskyConnectError) setBskyConnectError("");
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && bskyHandle.trim()) {
                     e.preventDefault();
-                    setBskyConnecting(true);
-                    authedFetch("/api/bsky/oauth/authorize", {
-                      method: "POST",
-                      body: JSON.stringify({ handle: bskyHandle.trim().replace(/^@/, "") }),
-                    })
-                      .then((r) => r.json())
-                      .then((data) => { if (data.url) window.location.href = data.url; })
-                      .catch(() => setBskyConnecting(false));
+                    connectBsky();
                   }
                 }}
                 autoFocus
@@ -729,6 +757,11 @@ function CuratorShell({
                   outline: "none",
                 }}
               />
+              {bskyConnectError && (
+                <p style={{ color: "#c4453a", fontFamily: "var(--rf-body)", fontSize: 12, marginTop: 6 }}>
+                  {bskyConnectError}
+                </p>
+              )}
               <p style={{ color: "var(--ink-3)", fontFamily: "var(--rf-body)", fontSize: 12, marginTop: 6 }}>
                 {connectForIntrospect
                   ? "Connect your Bluesky account to introspect your habits."
@@ -755,16 +788,7 @@ function CuratorShell({
               </button>
               <button
                 disabled={!bskyHandle.trim() || bskyConnecting}
-                onClick={() => {
-                  setBskyConnecting(true);
-                  authedFetch("/api/bsky/oauth/authorize", {
-                    method: "POST",
-                    body: JSON.stringify({ handle: bskyHandle.trim().replace(/^@/, "") }),
-                  })
-                    .then((r) => r.json())
-                    .then((data) => { if (data.url) window.location.href = data.url; })
-                    .catch(() => setBskyConnecting(false));
-                }}
+                onClick={connectBsky}
                 style={{
                   background: bskyHandle.trim() && !bskyConnecting ? "var(--aurora-deep)" : "var(--hair-strong)",
                   color: "#fff",
