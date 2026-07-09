@@ -1,0 +1,60 @@
+{
+  "displayName": "jetstream-indexer: post ingestion stalled",
+  "documentation": {
+    "content": "Post ingestion is degraded or dead.\n\nConditions (any):\n- indexed rate < 5 posts/s for 30 min (healthy floor is ~15-25/s)\n- posts-indexed metric absent for 20 min (worker down or all flushes wedged)\n- post consumer cursor lag > 30 min for 30 min (replay livelock: flushing but stuck in the past)\n\nPlaybook:\n1. `gcloud logging read 'resource.labels.service_name=\"jetstream-indexer\"' --project=timelines-492720 --freshness=1h` — look for flush_failed / queue_drop / embed_backoff / ws_error storms on the post consumer.\n2. Check bsky-db for a stuck autovacuum or IO-bound inserts: pg_stat_activity wait_event DataFileRead on INSERT INTO bsky.posts; pg_stat_progress_vacuum. A vacuum stuck >12h in 'vacuuming indexes' on the HNSW index starves inserts - cancel it (pg_cancel_backend) and consider scripts/reclaim-posts-bloat.ts (REINDEX).\n3. Restart the service if wedged: `gcloud run services update jetstream-indexer --region=us-central1 --project=timelines-492720 --update-env-vars=RESTARTED_AT=<now>`.\n\nSee the 2026-07-07 outage postmortem in the PR that added this alert.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "posts indexed rate < 5/s (30 min)",
+      "conditionThreshold": {
+        "filter": "metric.type=\"workload.googleapis.com/happy_feed_posts_indexed_total\" AND resource.type=\"generic_node\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_RATE",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ],
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 5,
+        "duration": "1800s",
+        "trigger": { "count": 1 }
+      }
+    },
+    {
+      "displayName": "posts indexed metric absent (20 min)",
+      "conditionAbsent": {
+        "filter": "metric.type=\"workload.googleapis.com/happy_feed_posts_indexed_total\" AND resource.type=\"generic_node\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_RATE",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ],
+        "duration": "1200s",
+        "trigger": { "count": 1 }
+      }
+    },
+    {
+      "displayName": "post cursor lag > 30 min (30 min)",
+      "conditionThreshold": {
+        "filter": "metric.type=\"workload.googleapis.com/happy_feed_cursor_lag_us\" AND resource.type=\"generic_node\" AND metric.labels.kind=\"post\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_MEAN",
+            "crossSeriesReducer": "REDUCE_MEAN"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 1800000000,
+        "duration": "1800s",
+        "trigger": { "count": 1 }
+      }
+    }
+  ],
+  "alertStrategy": { "autoClose": "86400s" }
+}

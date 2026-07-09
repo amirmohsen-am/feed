@@ -97,7 +97,7 @@ export const startLabelerConsumer = async (cfg: Config, workerId: string, initia
     wantedCollections: ['app.bsky.labeler.service'],
     initialCursorUs,
     log,
-    onCursorAdvance: () => {},
+    getCursorUs: () => latestCursorUs,
     setupHandlers: (js) => {
       const anyJs = js as unknown as Jetstream<string, string>
       const onUpsert = (ev: unknown) => {

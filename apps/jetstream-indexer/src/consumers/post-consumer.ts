@@ -170,7 +170,7 @@ export const startPostConsumer = async (cfg: Config, workerId: string, initialCu
     wantedCollections: ['app.bsky.feed.post'],
     initialCursorUs,
     log,
-    onCursorAdvance: () => {},
+    getCursorUs: () => latestCursorUs,
     setupHandlers: (js) => {
       js.onCreate('app.bsky.feed.post', async (ev) => {
         recordEventsConsumed(1, { kind: 'posts', worker: workerId })

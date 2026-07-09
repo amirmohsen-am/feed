@@ -216,6 +216,22 @@ const parseCreatedAtUs = (iso: string | undefined, fallback: number): number => 
   return Number.isFinite(ms) ? ms * 1000 : fallback
 }
 
+// Postgres rejects NUL (\u0000) in text and jsonb values ("invalid byte
+// sequence for encoding \"UTF8\": 0x00"), and one poisoned post fails its
+// entire flush batch. Strip NULs from every string in an extracted record.
+const stripNul = (s: string): string => (s.includes('\u0000') ? s.replaceAll('\u0000', '') : s)
+
+const deepStripNul = <T>(v: T): T => {
+  if (typeof v === 'string') return stripNul(v) as T
+  if (Array.isArray(v)) return v.map(deepStripNul) as T
+  if (v && typeof v === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, val] of Object.entries(v)) out[stripNul(k)] = deepStripNul(val)
+    return out as T
+  }
+  return v
+}
+
 const dedupCap = (arr: string[], cap: number): string[] => {
   const seen = new Set<string>()
   const out: string[] = []
@@ -377,7 +393,7 @@ export const extractPost = (ev: JetstreamCommitEvent): PostRecord | null => {
   const created_at = r.createdAt ?? new Date(ev.time_us / 1000).toISOString()
   const created_at_us = parseCreatedAtUs(r.createdAt, ev.time_us)
 
-  return {
+  return deepStripNul({
     uri: `at://${ev.did}/${ev.commit.collection}/${ev.commit.rkey}`,
     did: ev.did,
     rkey: ev.commit.rkey,
@@ -396,7 +412,7 @@ export const extractPost = (ev: JetstreamCommitEvent): PostRecord | null => {
     ...embed,
     ...facets,
     self_labels,
-  }
+  })
 }
 
 // ----- Like / repost extract -----
@@ -426,7 +442,7 @@ export const extractProfile = (ev: JetstreamCommitEvent): ProfileRecord | null =
   if (ev.commit.operation === 'delete') return null
   const r = ev.commit.record as ActorProfileRecord | undefined
   if (!r) return null
-  return {
+  return deepStripNul({
     did: ev.did,
     display_name: r.displayName ?? null,
     description: r.description ?? null,
@@ -434,7 +450,7 @@ export const extractProfile = (ev: JetstreamCommitEvent): ProfileRecord | null =
     banner_cid: r.banner?.ref?.$link ?? null,
     profile_rev: ev.commit.rev ?? null,
     time_us: ev.time_us,
-  }
+  })
 }
 
 export const extractLabelerService = (ev: JetstreamCommitEvent): LabelerServiceRecord | null => {
@@ -443,7 +459,7 @@ export const extractLabelerService = (ev: JetstreamCommitEvent): LabelerServiceR
   return { did: ev.did, time_us: ev.time_us }
 }
 
-export const extractIdentity = (ev: JetstreamIdentityEvent): IdentityRecord => ({
+export const extractIdentity = (ev: JetstreamIdentityEvent): IdentityRecord => deepStripNul({
   did: ev.did,
   handle: ev.identity.handle ?? null,
   time_us: ev.time_us,
