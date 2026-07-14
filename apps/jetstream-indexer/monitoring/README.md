@@ -20,8 +20,9 @@ Policy **"jetstream-indexer: post ingestion stalled"**, deployed as
 | metric absent | no data for 20 min | dead process / all flushes wedged |
 | post cursor lag | > 30 min for 30 min | replay livelock (flushing but stuck in the past) |
 
-Notification channels: Amir (email), Christian (email). The runbook is embedded
-in the policy's documentation field (shows up in the alert email).
+Notification channels: Amir (email), Christian (email), Slack `#amadi-alerts`.
+The runbook is embedded in the policy's documentation field (shows up in the
+alert email/message).
 
 Update flow — edit the JSON, then:
 
