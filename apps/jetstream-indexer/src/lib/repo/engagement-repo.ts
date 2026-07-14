@@ -26,11 +26,18 @@ const bumpCounters = async (rows: LikeRecord[], kind: Kind): Promise<void> => {
 
   const column = kind === 'like' ? 'like_count' : 'repost_count'
 
+  // The JOIN drops engagement for posts we never indexed (skipped language,
+  // nothing to embed, already pruned) — without it, orphan counter rows for
+  // unindexed posts grow to dwarf the real ones (93% of the table by
+  // 2026-07-14) and nothing ever reads them (the read side always joins
+  // bsky.posts). Cost: a like that lands before its post is indexed is lost,
+  // which is within the accepted monotonic-counter drift.
   await withClient((c) =>
     c.query(
       `INSERT INTO bsky.post_engagement (uri, ${column}, updated_at)
        SELECT u.uri, u.d, now()
        FROM unnest($1::text[], $2::int[]) AS u(uri, d)
+       JOIN bsky.posts p ON p.uri = u.uri
        ON CONFLICT (uri) DO UPDATE SET
          ${column} = bsky.post_engagement.${column} + EXCLUDED.${column},
          updated_at = now()`,

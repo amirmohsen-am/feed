@@ -132,12 +132,16 @@ export const bumpReplyAndQuoteCounters = async (posts: PostRecord[]): Promise<vo
       uris.push(uri)
       deltas.push(d)
     }
-    // Single statement using UNNEST for atomic batch upsert.
+    // Single statement using UNNEST for atomic batch upsert. The bsky.posts
+    // JOIN drops counters for parents/targets we never indexed — see the same
+    // guard in engagement-repo.ts (orphan rows are never read and dominated
+    // the table before 2026-07-14).
     await withClient((c) =>
       c.query(
         `INSERT INTO bsky.post_engagement (uri, ${column}, updated_at)
          SELECT u.uri, u.d, now()
          FROM unnest($1::text[], $2::int[]) AS u(uri, d)
+         JOIN bsky.posts p ON p.uri = u.uri
          ON CONFLICT (uri) DO UPDATE SET
            ${column} = bsky.post_engagement.${column} + EXCLUDED.${column},
            updated_at = now()`,
