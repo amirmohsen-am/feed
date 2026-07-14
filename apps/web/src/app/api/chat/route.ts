@@ -94,7 +94,7 @@ const MECHANICAL_FILTERS_SCHEMA = {
     min_like_count: { type: "number" },
     min_repost_count: { type: "number" },
     min_reply_count: { type: "number" },
-    time_window: { type: "string", enum: ["1h", "24h", "3d", "custom"], description: "Max 3d — the vector index currently covers ~3 days" },
+    time_window: { type: "string", enum: ["1h", "24h", "3d", "7d", "custom"], description: "Max 7d — post retention is 7 days" },
     created_after_iso: { type: "string", description: "Used only with time_window=custom" },
     created_before_iso: { type: "string", description: "Used only with time_window=custom" },
   },

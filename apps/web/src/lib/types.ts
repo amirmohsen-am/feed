@@ -36,9 +36,8 @@ export interface MechanicalFilters {
   created_before_iso: string;
 }
 
-// Capped at the partial HNSW index coverage (currently ~3 days — see
-// DECISIONS.md #12). A window longer than the indexed range would silently
-// return only what's indexed. Raise this back toward 7d/14d once the index
-// is rebuilt over a wider range. "custom" is not clamped — older bounds just
-// match nothing beyond the indexed range.
-export type TimeWindow = "1h" | "24h" | "3d" | "custom";
+// Capped at the indexer's retention (RETENTION_DAYS, currently 7 — the
+// partial HNSW index covers the whole retained table). A window longer than
+// retention would silently return only what's retained. "custom" is not
+// clamped — older bounds just match nothing beyond retention.
+export type TimeWindow = "1h" | "24h" | "3d" | "7d" | "custom";

@@ -235,6 +235,7 @@ export default function FilterPanel({
                   ["1h", "1h"],
                   ["24h", "24h"],
                   ["3d", "3d"],
+                  ["7d", "7d"],
                   ["custom", "Custom"],
                 ] as Array<[TimeWindow, string]>
               ).map(([value, label]) => (

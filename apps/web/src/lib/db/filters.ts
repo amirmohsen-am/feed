@@ -10,6 +10,8 @@ const PRESET_WINDOW_MS: Record<string, number> = {
   "1h": 60 * 60 * 1000,
   "24h": 24 * 60 * 60 * 1000,
   "3d": 3 * 24 * 60 * 60 * 1000,
+  // Keep the longest preset ≤ the indexer's RETENTION_DAYS (currently 7).
+  "7d": 7 * 24 * 60 * 60 * 1000,
 };
 
 function timeWindowToBounds(m: MechanicalFilters): {
