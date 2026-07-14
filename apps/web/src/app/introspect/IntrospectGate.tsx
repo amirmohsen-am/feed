@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { authedFetch } from "@/lib/authed-fetch";
+import { cleanBskyHandle, bskyHandleError } from "@/lib/bsky-handle";
 import IntrospectBackLink from "./IntrospectBackLink";
 
 type GateStatus = "checking" | "gated" | "allowed";
@@ -64,8 +65,13 @@ export default function IntrospectGate({
   }, []);
 
   const connect = useCallback(() => {
-    const h = handleInput.replace(/^@/, "").trim();
+    const h = cleanBskyHandle(handleInput);
     if (!h) return;
+    const invalid = bskyHandleError(h);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
     setConnecting(true);
     setError(null);
     authedFetch("/api/bsky/oauth/authorize", {

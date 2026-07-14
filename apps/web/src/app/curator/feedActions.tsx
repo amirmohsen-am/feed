@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { authedFetch } from "@/lib/authed-fetch";
+import { cleanBskyHandle, bskyHandleError } from "@/lib/bsky-handle";
 import { useCurator } from "./curatorContext";
 import type { Post } from "./feedTypes";
 
@@ -149,13 +150,20 @@ export function FeedActionsProvider({ children }: { children: React.ReactNode })
   }, [hasBskyAuth]);
 
   async function startBskyAuth() {
-    if (!bskyHandle.trim()) return;
+    const handle = cleanBskyHandle(bskyHandle);
+    if (!handle) return;
+    const invalid = bskyHandleError(handle);
+    if (invalid) {
+      setBskyAuthError(invalid);
+      return;
+    }
     setBskyAuthLoading(true);
     setBskyAuthError("");
     try {
       const res = await authedFetch("/api/bsky/oauth/authorize", {
         method: "POST",
-        body: JSON.stringify({ handle: bskyHandle.trim().replace(/^@/, "") }),
+        body: JSON.stringify({ handle }),
+        suppressErrorToast: true,
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));

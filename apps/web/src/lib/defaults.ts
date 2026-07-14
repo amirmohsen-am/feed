@@ -44,7 +44,7 @@ export const DEFAULT_MECHANICAL_FILTERS: MechanicalFilters = {
   min_like_count: 0,
   min_repost_count: 0,
   min_reply_count: 0,
-  time_window: "24h",
+  time_window: "3d",
   created_after_iso: "",
   created_before_iso: "",
 };
