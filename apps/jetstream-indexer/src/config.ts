@@ -29,7 +29,11 @@ export const config = {
 
   // Retention prune (caps the pgvector HNSW index). Supported feed windows
   // are capped at retentionDays — keep them in sync (web app TimeWindow).
-  retentionDays: parseInt(process.env.RETENTION_DAYS ?? '14', 10),
+  // 7d (down from 14d, 2026-07-14): feed windows max out at 3d, so longer
+  // retention only grew the HNSW index past what the instance's RAM can hold
+  // (autovacuum index passes then starve ingest inserts). The GCS parquet
+  // archive keeps everything; longer retention can be re-backfilled.
+  retentionDays: parseInt(process.env.RETENTION_DAYS ?? '7', 10),
   pruneIntervalMs: parseInt(process.env.PRUNE_INTERVAL_MS ?? String(24 * 60 * 60 * 1000), 10),
 } as const
 

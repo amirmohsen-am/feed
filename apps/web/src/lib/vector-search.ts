@@ -44,10 +44,9 @@ const EMBEDDING_DIMENSION = 768;
 // (a fixed point ~3 days before the index was built — see DECISIONS.md #12 and
 // scripts/build-hnsw.mjs). Every KNN query MUST carry this same literal floor,
 // otherwise the planner can't prove the query implies the partial predicate and
-// falls back to an exact scan over all 36M rows. The cutoff is fixed, so the
-// indexed/searchable window grows past 3 days over time (up to the 14d
-// retention) rather than rolling — offered feed windows are capped at 3d to
-// stay honest about what's reliably searchable today.
+// falls back to an exact scan over all rows. The cutoff is long past, so the
+// index covers the entire retained table (indexer prunes at RETENTION_DAYS,
+// currently 7) — feed window presets are capped at 7d to match retention.
 const INDEX_INGEST_CUTOFF_US = "1780253847390000";
 
 // AppView host + the official Bluesky moderation labeler. We ask the AppView

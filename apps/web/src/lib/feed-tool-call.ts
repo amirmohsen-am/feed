@@ -42,6 +42,7 @@ function phraseWindow(w: MechanicalFilters["time_window"]): string {
   if (w === "1h") return "last hour";
   if (w === "24h") return "last 24 hours";
   if (w === "3d") return "last 3 days";
+  if (w === "7d") return "last 7 days";
   return "custom date range";
 }
 

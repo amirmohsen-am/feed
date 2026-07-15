@@ -96,7 +96,7 @@ export const startProfileConsumer = async (cfg: Config, workerId: string, initia
     wantedCollections: ['app.bsky.actor.profile'],
     initialCursorUs,
     log,
-    onCursorAdvance: () => {},
+    getCursorUs: () => latestCursorUs,
     setupHandlers: (js) => {
       const anyJs = js as unknown as Jetstream<string, string>
       anyJs.onCreate('app.bsky.actor.profile', (ev) => {

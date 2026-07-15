@@ -11,7 +11,10 @@ export type JetstreamLoopOpts = {
   wantedCollections?: string[]
   initialCursorUs: number
   setupHandlers: (js: Jetstream<string, string>) => void
-  onCursorAdvance: (us: number) => void
+  // Latest processed cursor, read before every reconnect so the new
+  // subscription resumes where processing actually got to instead of
+  // replaying from the boot-time cursor.
+  getCursorUs: () => number
   log: (event: string, fields?: Record<string, unknown>) => void
 }
 
@@ -43,9 +46,7 @@ export const runJetstreamLoop = async (opts: JetstreamLoopOpts): Promise<void> =
 
     await sleep(backoff)
     backoff = Math.min(30_000, backoff * 2)
-    // currentCursor is updated externally via opts.onCursorAdvance; capture
-    // the latest before the next subscribe call.
-    currentCursor = opts.initialCursorUs
+    currentCursor = Math.max(currentCursor, opts.getCursorUs())
   }
 }
 
@@ -72,12 +73,29 @@ export const makeQueueHarness = <T>(opts: {
   // batch (poison pill) would loop at the front of the queue forever.
   onPoison?: (items: T[], err: unknown) => void
   maxRetries?: number
+  // A flush that exceeds this deadline is treated as failed (retry/poison
+  // path) and the queue moves on. Without it, one hung downstream call (PG,
+  // Vertex, GCS) leaves the `flushing` latch set forever and the queue drops
+  // every event from then on.
+  flushTimeoutMs?: number
 }): QueueHarness<T> => {
   const queue: T[] = []
   let flushing = false
   let timer: ReturnType<typeof setInterval> | null = null
   let failStreak = 0
   const maxRetries = opts.maxRetries ?? 5
+  const flushTimeoutMs = opts.flushTimeoutMs ?? 300_000
+
+  const withDeadline = (p: Promise<void>): Promise<void> =>
+    new Promise((resolve, reject) => {
+      const t = setTimeout(
+        () => reject(new Error(`flush timed out after ${flushTimeoutMs}ms`)),
+        flushTimeoutMs,
+      )
+      // The abandoned flush may still settle later; swallow it so an eventual
+      // rejection doesn't become an unhandled rejection.
+      p.then(() => { clearTimeout(t); resolve() }, (err) => { clearTimeout(t); reject(err) })
+    })
 
   const doFlush = async () => {
     if (flushing) return
@@ -85,7 +103,7 @@ export const makeQueueHarness = <T>(opts: {
     flushing = true
     const batch = queue.splice(0, opts.batchMax)
     try {
-      await opts.flush(batch)
+      await withDeadline(opts.flush(batch))
       failStreak = 0
     } catch (err) {
       failStreak++

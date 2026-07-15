@@ -97,7 +97,7 @@ export const startEngagementConsumer = async (cfg: Config, workerId: string, ini
     wantedCollections: ['app.bsky.feed.like', 'app.bsky.feed.repost'],
     initialCursorUs,
     log,
-    onCursorAdvance: () => {},
+    getCursorUs: () => latestCursorUs,
     setupHandlers: (js) => {
       js.onCreate('app.bsky.feed.like', (ev) => {
         recordEventsConsumed(1, { kind: 'likes', worker: workerId })
