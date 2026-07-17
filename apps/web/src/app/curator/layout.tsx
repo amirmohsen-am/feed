@@ -71,6 +71,21 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
   // sees an existing user.
   const [ready, setReady] = useState(false);
 
+  // Live OAuth status (can the stored Bluesky session be restored?) is fetched
+  // separately and never awaited: restoring can hit the PDS over the network,
+  // and only the profile dialog's status dot + the like/repost auth check read
+  // it — neither should block boot. Only fetched when the profile carries a
+  // DID; anonymous sessions can never have an OAuth session to restore.
+  const refreshOAuthStatus = useCallback(async () => {
+    try {
+      const res = await authedFetch("/api/bsky/status", { suppressErrorToast: true });
+      if (res.ok) {
+        const data = await res.json();
+        setBskyOAuthReady(!!data.oauthReady);
+      }
+    } catch { /* keep previous value */ }
+  }, []);
+
   const fetchProfile = useCallback(async () => {
     try {
       const res = await authedFetch("/api/user");
@@ -91,11 +106,11 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
           if (typeof row.seen_filter_enabled === "boolean") {
             setHideSeenState(row.seen_filter_enabled);
           }
-          setBskyOAuthReady(!!data.oauthReady);
+          if (row.bluesky_did) void refreshOAuthStatus();
         }
       }
     } catch { /* use anonymous profile */ }
-  }, []);
+  }, [refreshOAuthStatus]);
 
   // Fetch user info on mount. If we just returned from Bluesky OAuth,
   // clean up the URL param — the fetch will pick up the linked DID.
@@ -435,6 +450,12 @@ function CuratorShell({
   const activeFeed = feeds.find((f) => f.id === activeFeedId);
   const activeHasCriteria = activeFeed ? feedIsComplete(activeFeed) : false;
 
+  // Chrome (sidebar + topbar) hides while the onboarding decision is pending —
+  // but a feed the sidebar list already shows as configured can never resolve
+  // to onboarding, so show chrome immediately instead of waiting for the chat
+  // transcript + first feed load to settle.
+  const chromeHidden = (!configReady && !activeHasCriteria) || showOnboarding;
+
   // ── Lineage tree (Variant A) ──────────────────────────────
   // Home is the trunk; topic feeds branch off it. A normally-created topic has
   // no parent and so hangs directly off Home; a branched feed nests under the
@@ -609,7 +630,7 @@ function CuratorShell({
         registerOpenTune: (fn: () => void) => { openTuneRef.current = fn; },
       }}
     >
-      <div className={`curator-shell${(!configReady || showOnboarding) ? " curator-shell--onboarding" : ""}`}>
+      <div className={`curator-shell${chromeHidden ? " curator-shell--onboarding" : ""}`}>
         {sidebarOpen && (
           <div
             className="cur-sidebar-backdrop"
@@ -826,7 +847,7 @@ function CuratorShell({
         {/* MAIN — topbar + page workbench + mobile tabs all live in cur-main
             so the data-mobile-tab CSS selectors can scope which pane shows. */}
         <div className="cur-main" data-mobile-tab={mobileTab}>
-          <div className={`cur-topbar${(!configReady || showOnboarding) ? " cur-topbar--onboarding" : ""}`}>
+          <div className={`cur-topbar${chromeHidden ? " cur-topbar--onboarding" : ""}`}>
             <button
               className="cur-topbar-burger"
               onClick={() => setSidebarOpen(true)}

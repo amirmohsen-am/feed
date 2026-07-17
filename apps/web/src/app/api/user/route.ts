@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { canRestoreBskySession } from "@/lib/bsky-oauth";
 import { getUserById, setUserSeenFilterEnabled } from "@/lib/pg";
 
 export async function GET(req: NextRequest) {
@@ -11,14 +10,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  let oauthReady = false;
-  if (user.bluesky_did) {
-    oauthReady = await canRestoreBskySession(user.bluesky_did);
-  }
-
+  // Deliberately NO OAuth-session check here: restoring the Bluesky session
+  // can hit the PDS over the network (token refresh), and this endpoint gates
+  // the whole app boot. Clients that need live OAuth status (the profile
+  // dialog dot, publish/like flows) use /api/bsky/status instead.
   return NextResponse.json({
     user,
-    oauthReady,
     linked: !!(user.bluesky_handle || user.bluesky_did),
   });
 }
