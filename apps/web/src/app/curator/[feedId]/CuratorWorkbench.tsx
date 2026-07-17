@@ -19,7 +19,7 @@ import {
 } from "@/lib/defaults";
 import type { BranchOption } from "@/lib/branch";
 import { useResizable } from "../useResizable";
-import { useCurator } from "../curatorContext";
+import { useCurator, feedIsComplete } from "../curatorContext";
 import { FeedActionsProvider } from "../feedActions";
 import { FeedFocusProvider, type FeedFocusValue } from "../feedFocus";
 import type { Post, ChatSourcePost } from "../feedTypes";
@@ -487,7 +487,12 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         await loadChat(feedId);
         return;
       }
-      await loadChat(feedId);
+      // Chat transcript and the feed's first load are independent (the stream
+      // echoes the feed config back via handleConfigLoaded), so run them
+      // concurrently. The onboarding decision still waits for both — the veil
+      // is gated on chatReady && configReady — it just waits for max() of the
+      // two instead of their sum.
+      void loadChat(feedId);
       rootFeedRef.current?.reload();
     }, 0);
     return () => clearTimeout(t);
@@ -1083,6 +1088,11 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
 
   // Root feed Back affordance: a branched route can go back to its parent.
   const thisFeed = feeds.find((f) => f.id === String(feedId));
+  // A feed already known to be configured (from its own loaded config or the
+  // sidebar's feeds list) can never resolve to onboarding, so the decision
+  // veil is pointless for it — let FeedView's skeleton show while posts load
+  // instead of a blank pane.
+  const feedKnownConfigured = hasCriteria || (thisFeed ? feedIsComplete(thisFeed) : false);
   const homeFeed = feeds.find((f) => f.isHome);
   const rootParentId = thisFeed?.parentFeedId ?? homeFeed?.id;
   const rootOnBack =
@@ -1123,8 +1133,10 @@ export default function CuratorWorkbench({ feedId }: { feedId: number }) {
         <div className="cur-feed-posts" ref={feedPaneRef} style={{ position: "relative" }}>
           {/* Veil covers the feed while the onboarding decision is pending so
               neither "No posts yet" nor a half-loaded feed flashes before the
-              onboarding surface (or the real feed) is ready to paint. */}
-          {onboardingDecisionPending && (
+              onboarding surface (or the real feed) is ready to paint. Skipped
+              for feeds already known to be configured — they show the loading
+              skeleton instead. */}
+          {onboardingDecisionPending && !feedKnownConfigured && (
             <div style={{ position: "absolute", inset: 0, background: "var(--paper)", zIndex: 5, pointerEvents: "none" }} aria-hidden />
           )}
           <FeedFocusProvider value={feedFocusValue}>
