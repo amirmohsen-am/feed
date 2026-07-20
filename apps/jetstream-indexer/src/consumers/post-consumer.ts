@@ -26,7 +26,7 @@ import {
 } from '../lib/otel-metrics.js'
 import { bumpReplyAndQuoteCounters, deletePostsBatch, upsertPosts } from '../lib/repo/post-repo.js'
 import { writePosts } from '../lib/storage.js'
-import { makeQueueHarness, runJetstreamLoop, sleep } from './shared.js'
+import { guardHandler, makeQueueHarness, runJetstreamLoop, sleep } from './shared.js'
 
 const CONSUMER_KEY = 'post'
 const EMBED_USD_PER_1K_TOKENS = 0.00015
@@ -172,7 +172,7 @@ export const startPostConsumer = async (cfg: Config, workerId: string, initialCu
     log,
     getCursorUs: () => latestCursorUs,
     setupHandlers: (js) => {
-      js.onCreate('app.bsky.feed.post', async (ev) => {
+      js.onCreate('app.bsky.feed.post', guardHandler({ kind: 'posts', workerId, log }, async (ev) => {
         recordEventsConsumed(1, { kind: 'posts', worker: workerId })
         const post = extractPost(ev as unknown as JetstreamCommitEvent)
         if (!post) return
@@ -181,13 +181,13 @@ export const startPostConsumer = async (cfg: Config, workerId: string, initialCu
         // be findable by semantic search anyway.
         if (composeEmbedInput(post).length === 0) return
         harness.push({ post, cursorUs: (ev as unknown as JetstreamCommitEvent).time_us })
-      })
-      js.onDelete('app.bsky.feed.post', (ev) => {
+      }))
+      js.onDelete('app.bsky.feed.post', guardHandler({ kind: 'posts', workerId, log }, (ev) => {
         recordEventsConsumed(1, { kind: 'posts', worker: workerId })
         const e = ev as unknown as JetstreamCommitEvent
         const uri = `at://${e.did}/${e.commit.collection}/${e.commit.rkey}`
         deleteHarness.push(uri)
-      })
+      }))
     },
   })
 }
