@@ -51,6 +51,12 @@ Exported by `src/lib/otel-metrics.ts` (OTel → Cloud Monitoring, cumulative,
 - `happy_feed_flush_failed_total` / `happy_feed_flush_dropped_total` — failures / poison drops
 - `happy_feed_queue_depth`, `happy_feed_cursor_lag_us` — gauges per consumer (`kind` label)
 - `happy_feed_embed_cost_usd`, `happy_feed_embed_tokens_total`, `happy_feed_engagement_applied_total`
+- `happy_feed_extract_failed_total` (by `kind`) — one malformed Jetstream event dropped by the
+  per-event `guardHandler` (extractor threw). Should stay near zero; a sustained rate means the
+  firehose is delivering records that break an extractor.
+- `happy_feed_worker_error_total` (by `kind`) — process-level backstop for unhandled
+  rejections / uncaught exceptions. Must stay flat; any increment means an error escaped the
+  per-event guard.
 
 ## Background: the 2026-07-07 outage this alert exists for
 
@@ -63,3 +69,18 @@ on `DataFileRead` and a long-running `autovacuum: VACUUM bsky.posts` in
 `pg_stat_progress_vacuum`, cancel the vacuum (`pg_cancel_backend`) and consider
 `apps/web/scripts/reclaim-posts-bloat.ts`; durable options are more instance RAM,
 shorter retention, or scheduled REINDEX.
+
+## Background: the 2026-07-17 crash loop (fixed, PR #138)
+
+`extractPost` did `(r.text ?? '').trim()`, assuming `text` is a string. Jetstream
+delivers raw, unvalidated user records; a post with a non-string `text` made
+`.trim` undefined → `TypeError` thrown synchronously inside the `onCreate`
+handler → unhandled rejection → `exit(1)`. Cloud Run restarted, replayed the same
+cursor, hit the same record, and re-crashed — a ~2.5-day crash loop that only
+self-healed when the poison event aged out of Jetstream retention. Two fixes:
+(1) `extractPost` coerces non-string `text` to empty; (2) every consumer's event
+handler is wrapped in `guardHandler` (drops the one bad event, increments
+`happy_feed_extract_failed_total`) plus a process-level `unhandledRejection` /
+`uncaughtException` backstop in `worker.ts`. If `happy_feed_extract_failed_total`
+climbs, a new record shape is breaking an extractor — check the `handler_error`
+logs for the offending `did`/`rkey`/`collection`.

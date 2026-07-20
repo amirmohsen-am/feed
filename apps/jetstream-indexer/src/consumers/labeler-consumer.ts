@@ -25,7 +25,7 @@ import {
   registerQueueDepth,
 } from '../lib/otel-metrics.js'
 import { deleteLabelers, upsertLabelers } from '../lib/repo/labeler-repo.js'
-import { makeQueueHarness, runJetstreamLoop } from './shared.js'
+import { guardHandler, makeQueueHarness, runJetstreamLoop } from './shared.js'
 
 const CONSUMER_KEY = 'labeler'
 
@@ -100,18 +100,18 @@ export const startLabelerConsumer = async (cfg: Config, workerId: string, initia
     getCursorUs: () => latestCursorUs,
     setupHandlers: (js) => {
       const anyJs = js as unknown as Jetstream<string, string>
-      const onUpsert = (ev: unknown) => {
+      const onUpsert = guardHandler({ kind: 'labelers', workerId, log }, (ev: unknown) => {
         recordEventsConsumed(1, { kind: 'labelers', worker: workerId })
         const r = extractLabelerService(ev as JetstreamCommitEvent)
         if (r) harness.push({ kind: 'upsert', did: r.did, time_us: r.time_us })
-      }
+      })
       anyJs.onCreate('app.bsky.labeler.service', onUpsert)
       anyJs.onUpdate('app.bsky.labeler.service', onUpsert)
-      anyJs.onDelete('app.bsky.labeler.service', (ev) => {
+      anyJs.onDelete('app.bsky.labeler.service', guardHandler({ kind: 'labelers', workerId, log }, (ev) => {
         recordEventsConsumed(1, { kind: 'labelers', worker: workerId })
         const e = ev as unknown as JetstreamCommitEvent
         harness.push({ kind: 'delete', did: e.did, time_us: e.time_us })
-      })
+      }))
     },
   })
 }

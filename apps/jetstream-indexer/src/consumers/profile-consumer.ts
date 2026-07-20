@@ -22,7 +22,7 @@ import {
 } from '../lib/otel-metrics.js'
 import { applyIdentityEvents, upsertProfiles } from '../lib/repo/author-repo.js'
 import { writeIdentity, writeProfiles } from '../lib/storage.js'
-import { makeQueueHarness, runJetstreamLoop } from './shared.js'
+import { guardHandler, makeQueueHarness, runJetstreamLoop } from './shared.js'
 
 const CONSUMER_KEY = 'profile'
 
@@ -99,21 +99,21 @@ export const startProfileConsumer = async (cfg: Config, workerId: string, initia
     getCursorUs: () => latestCursorUs,
     setupHandlers: (js) => {
       const anyJs = js as unknown as Jetstream<string, string>
-      anyJs.onCreate('app.bsky.actor.profile', (ev) => {
+      anyJs.onCreate('app.bsky.actor.profile', guardHandler({ kind: 'profiles', workerId, log }, (ev) => {
         recordEventsConsumed(1, { kind: 'profiles', worker: workerId })
         const r = extractProfile(ev as unknown as JetstreamCommitEvent)
         if (r) harness.push({ kind: 'profile', r })
-      })
-      anyJs.onUpdate('app.bsky.actor.profile', (ev) => {
+      }))
+      anyJs.onUpdate('app.bsky.actor.profile', guardHandler({ kind: 'profiles', workerId, log }, (ev) => {
         recordEventsConsumed(1, { kind: 'profiles', worker: workerId })
         const r = extractProfile(ev as unknown as JetstreamCommitEvent)
         if (r) harness.push({ kind: 'profile', r })
-      })
-      anyJs.on('identity', (ev) => {
+      }))
+      anyJs.on('identity', guardHandler({ kind: 'identity', workerId, log }, (ev) => {
         recordEventsConsumed(1, { kind: 'identity', worker: workerId })
         const r = extractIdentity(ev as unknown as JetstreamIdentityEvent)
         harness.push({ kind: 'identity', r })
-      })
+      }))
     },
   })
 }

@@ -16,7 +16,7 @@ import { startProfileConsumer } from './consumers/profile-consumer.js'
 import { startPrune } from './consumers/prune.js'
 import { readCursor } from './lib/cursor-store.js'
 import { runMigrations } from './lib/migrator.js'
-import { shutdownMetrics } from './lib/otel-metrics.js'
+import { recordWorkerError, shutdownMetrics } from './lib/otel-metrics.js'
 import { closePool } from './lib/pg.js'
 
 const cfg = config
@@ -79,6 +79,25 @@ const cleanShutdown = async (signal: string) => {
 }
 process.on('SIGTERM', () => { cleanShutdown('SIGTERM') })
 process.on('SIGINT', () => { cleanShutdown('SIGINT') })
+
+// Last-resort backstop. Per-event handlers are individually guarded
+// (see guardHandler in consumers/shared.ts), so a single malformed record
+// can no longer reach here. If anything else escapes, log + count it but do
+// NOT exit: on this deployment (min=1/max=1) a crash just replays the same
+// cursor and re-crashes, which is exactly the multi-day crash loop this
+// hardening exists to prevent. Staying up keeps ingestion flowing while the
+// error is visible in happy_feed_worker_error_total.
+process.on('unhandledRejection', (reason) => {
+  recordWorkerError(1, { kind: 'unhandled_rejection', worker: WORKER_ID })
+  log('unhandled_rejection', {
+    error: String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined,
+  })
+})
+process.on('uncaughtException', (err) => {
+  recordWorkerError(1, { kind: 'uncaught_exception', worker: WORKER_ID })
+  log('uncaught_exception', { error: String(err), stack: err.stack })
+})
 
 main().catch(async (err) => {
   console.error('[worker] fatal:', err)

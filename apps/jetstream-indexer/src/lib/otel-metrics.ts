@@ -80,6 +80,22 @@ export const recordFlushDropped = (n: number, attrs: { kind: string; worker?: st
 export const recordEngagementApplied = (n: number, attrs: { kind: 'like' | 'repost' | 'reply' | 'quote'; worker?: string }) =>
   counter('happy_feed_engagement_applied_total', 'Engagement counter increments applied to bsky.post_engagement.').add(n, attrs)
 
+// A single Jetstream event whose handler/extractor threw on a malformed record
+// (e.g. a non-string `text` field). The event is dropped and processing
+// continues; before the per-event guard existed, this threw all the way up and
+// crash-looped the whole worker until the event aged out of Jetstream retention.
+export const recordExtractFailed = (n: number, attrs: { kind: string; worker?: string }) =>
+  counter(
+    'happy_feed_extract_failed_total',
+    'Jetstream events dropped because the handler/extractor threw on a malformed record. Each unit = one event skipped (not a process crash).',
+  ).add(n, attrs)
+
+// Last-resort backstop: an unhandled rejection / uncaught exception reached the
+// process-level handler. Should stay flat; any increment means an error path
+// escaped the per-event guard and is worth investigating.
+export const recordWorkerError = (n: number, attrs: { kind: 'unhandled_rejection' | 'uncaught_exception'; worker?: string }) =>
+  counter('happy_feed_worker_error_total', 'Process-level unhandled rejections / uncaught exceptions caught by the worker backstop.').add(n, attrs)
+
 // ----- Observable gauges (sampled at export time) -----
 
 // Per-consumer gauges share a single metric name + a `kind` label so the

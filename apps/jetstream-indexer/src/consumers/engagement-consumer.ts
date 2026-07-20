@@ -21,7 +21,7 @@ import {
 } from '../lib/otel-metrics.js'
 import { bumpLikeCounters, bumpRepostCounters } from '../lib/repo/engagement-repo.js'
 import { writeLikes, writeReposts } from '../lib/storage.js'
-import { makeQueueHarness, runJetstreamLoop } from './shared.js'
+import { guardHandler, makeQueueHarness, runJetstreamLoop } from './shared.js'
 
 const CONSUMER_KEY = 'engagement'
 
@@ -99,18 +99,18 @@ export const startEngagementConsumer = async (cfg: Config, workerId: string, ini
     log,
     getCursorUs: () => latestCursorUs,
     setupHandlers: (js) => {
-      js.onCreate('app.bsky.feed.like', (ev) => {
+      js.onCreate('app.bsky.feed.like', guardHandler({ kind: 'likes', workerId, log }, (ev) => {
         recordEventsConsumed(1, { kind: 'likes', worker: workerId })
         const r = extractLike(ev as unknown as JetstreamCommitEvent)
         if (!r) return
         harness.push({ kind: 'like', r })
-      })
-      js.onCreate('app.bsky.feed.repost', (ev) => {
+      }))
+      js.onCreate('app.bsky.feed.repost', guardHandler({ kind: 'reposts', workerId, log }, (ev) => {
         recordEventsConsumed(1, { kind: 'reposts', worker: workerId })
         const r = extractRepost(ev as unknown as JetstreamCommitEvent)
         if (!r) return
         harness.push({ kind: 'repost', r })
-      })
+      }))
     },
   })
 }

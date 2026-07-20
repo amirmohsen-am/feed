@@ -3,8 +3,53 @@
 
 import { Jetstream } from '@skyware/jetstream'
 import type { Config } from '../config.js'
+import { recordExtractFailed } from '../lib/otel-metrics.js'
 
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+// Best-effort identifying fields for logging a poison event, without trusting
+// the record's shape (it's raw, unvalidated Jetstream data).
+const eventRef = (ev: unknown): Record<string, unknown> => {
+  const e = (ev ?? {}) as {
+    did?: unknown
+    time_us?: unknown
+    commit?: { collection?: unknown; rkey?: unknown }
+  }
+  return { did: e.did, collection: e.commit?.collection, rkey: e.commit?.rkey, time_us: e.time_us }
+}
+
+// Wrap a Jetstream event handler so a throw (or rejected promise) on ONE
+// malformed record drops just that event instead of becoming an unhandled
+// rejection that crashes the whole worker. Extraction runs synchronously
+// inside these handlers, so the flush harness's poison-pill protection never
+// applied to it — this is the equivalent guard for the extract path.
+export const guardHandler = <E>(
+  ctx: {
+    kind: string
+    workerId: string
+    log: (event: string, fields?: Record<string, unknown>) => void
+  },
+  fn: (ev: E) => void | Promise<void>,
+): ((ev: E) => void) => {
+  const onError = (ev: E, err: unknown) => {
+    recordExtractFailed(1, { kind: ctx.kind, worker: ctx.workerId })
+    ctx.log('handler_error', {
+      kind: ctx.kind,
+      error: String(err),
+      ...eventRef(ev),
+    })
+  }
+  return (ev: E) => {
+    try {
+      const r = fn(ev)
+      if (r && typeof (r as Promise<void>).then === 'function') {
+        ;(r as Promise<void>).catch((err) => onError(ev, err))
+      }
+    } catch (err) {
+      onError(ev, err)
+    }
+  }
+}
 
 export type JetstreamLoopOpts = {
   cfg: Config

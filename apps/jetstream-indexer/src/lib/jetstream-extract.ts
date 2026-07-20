@@ -375,7 +375,11 @@ export const extractPost = (ev: JetstreamCommitEvent): PostRecord | null => {
   if (!isPostCreate(ev)) return null
   const r = ev.commit.record as FeedPostRecord | undefined
   if (!r) return null
-  const text = (r.text ?? '').trim()
+  // `text` is *typed* string but Jetstream delivers raw, unvalidated
+  // user records; a non-string `text` (number/object/bool) would make
+  // `.trim` throw and — before the per-event guard — crash-loop the worker.
+  // A malformed text is treated as text-empty (kept only if it has an embed).
+  const text = (typeof r.text === 'string' ? r.text : '').trim()
   // Allow text-empty posts only if they have an embed (image-only posts).
   if (!text && !r.embed) return null
 
